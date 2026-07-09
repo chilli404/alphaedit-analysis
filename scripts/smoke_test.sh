@@ -10,6 +10,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Load environment config
+if [[ -f "$PROJECT_DIR/.env" ]]; then
+    set -a; source "$PROJECT_DIR/.env"; set +a
+fi
+
+MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
+
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
 
 echo "=== SMOKE TEST ==="
@@ -20,7 +27,8 @@ echo ""
 cd "$PROJECT_DIR"
 
 # Verify stats are linked
-STATS_DIR="vendor/AlphaEdit/data/stats/Meta-Llama-3-8B-Instruct/wikipedia_stats"
+_MODEL_SHORT="${MODEL_NAME##*/}"
+STATS_DIR="vendor/AlphaEdit/data/stats/${_MODEL_SHORT}/wikipedia_stats"
 if [[ ! -d "$STATS_DIR" ]] || [[ -z "$(ls -A "$STATS_DIR" 2>/dev/null)" ]]; then
     echo "ERROR: Covariance stats not found at $STATS_DIR"
     echo "Run: bash scripts/link_stats.sh"
@@ -43,7 +51,7 @@ uv run python src/seeded_runner.py \
     --seed 42 \
     --cuda_device "$CUDA_DEVICE" \
     --alg_name AlphaEdit \
-    --model_name meta-llama/Meta-Llama-3-8B-Instruct \
+    --model_name "$MODEL_NAME" \
     --hparams_fname Llama3-8B.json \
     --ds_name mcf \
     --dataset_size_limit 10 \

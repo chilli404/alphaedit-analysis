@@ -1,5 +1,5 @@
 [project]
-name = "alphaedit-replication"
+name = "alphaedit-reproducibility"
 version = "0.1.0"
 description = "TMLR reproducibility study of AlphaEdit: null-space constrained knowledge editing"
 requires-python = "==3.10.*"

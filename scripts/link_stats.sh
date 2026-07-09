@@ -2,18 +2,34 @@
 set -euo pipefail
 
 # Links precomputed covariance statistics into the AlphaEdit data directory.
-# Usage: bash scripts/link_stats.sh [/path/to/stats/dir]
+# Uses S3 stats if available; otherwise falls back to project-local stats.
+# Usage: bash scripts/link_stats.sh
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+S3_DIR="/s3-data"
 
-# Default source: user's Downloads folder
-STATS_SRC="${1:-/Users/xksc003/Downloads/llama3-8b-instruct/wikipedia_stats}"
-STATS_DST="$PROJECT_DIR/vendor/AlphaEdit/data/stats/Meta-Llama-3-8B-Instruct/wikipedia_stats"
+# Load environment config
+if [[ -f "$PROJECT_DIR/.env" ]]; then
+    set -a; source "$PROJECT_DIR/.env"; set +a
+fi
+
+MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
+_MODEL_SHORT="${MODEL_NAME##*/}"
+
+S3_STATS_SRC="$S3_DIR/continual-learning/alphaedit/stats/llama3-8b-instruct/wikipedia_stats"
+PROJECT_STATS_SRC="$PROJECT_DIR/data/stats/llama-3-8b-instruct/wikipedia_stats"
+
+STATS_SRC="$PROJECT_STATS_SRC"
+[[ -d "$S3_STATS_SRC" ]] && STATS_SRC="$S3_STATS_SRC"
+
+STATS_DST="$PROJECT_DIR/vendor/AlphaEdit/data/stats/${_MODEL_SHORT}/wikipedia_stats"
 
 if [[ ! -d "$STATS_SRC" ]]; then
-    echo "ERROR: Stats source directory not found: $STATS_SRC"
-    echo "Usage: bash scripts/link_stats.sh /path/to/wikipedia_stats/"
+    echo "ERROR: Stats source directory not found."
+    echo "Checked:"
+    echo "  S3:      $S3_STATS_SRC"
+    echo "  Project: $PROJECT_STATS_SRC"
     exit 1
 fi
 
@@ -39,10 +55,11 @@ fi
 echo "  Linked $COUNT stats files."
 echo ""
 
-# Print checksums for reproducibility record
 echo "SHA256 checksums:"
 for f in "$STATS_DST"/*.npz; do
-    shasum -a 256 "$f"
+    if [[ -f "$f" ]]; then
+        shasum -a 256 "$f"
+    fi
 done
 
 echo ""

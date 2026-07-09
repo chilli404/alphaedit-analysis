@@ -7,6 +7,9 @@ dist/
 build/
 .venv/
 
+# Data
+data
+
 # Results (large, tracked separately)
 results/*.csv
 results/*.json

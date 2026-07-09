@@ -314,7 +314,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Measure general model capabilities (perplexity + MMLU)"
     )
-    parser.add_argument("--model_name", default="meta-llama/Meta-Llama-3-8B-Instruct")
+    parser.add_argument("--model_name", default=os.environ.get("MODEL_NAME", "meta-llama/Meta-Llama-3-8B-Instruct"))
     parser.add_argument("--output", type=Path, default=Path("results/capability_baseline.json"))
     parser.add_argument("--no_mmlu", action="store_true", help="Skip MMLU (faster)")
     parser.add_argument("--n_samples", type=int, default=WIKITEXT_N_SAMPLES)

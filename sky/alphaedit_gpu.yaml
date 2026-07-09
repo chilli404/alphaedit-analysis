@@ -8,87 +8,11 @@ workdir: .
 file_mounts:
   /data/stats: ~/Downloads/llama3-8b-instruct/wikipedia_stats
 
-envs:
-  HF_TOKEN:
-  EXPERIMENT_NAME: ""
-  SEED: "42"
-  CUDA_DEVICE: "0"
-  TOKENIZERS_PARALLELISM: "false"
-
 setup: |
-  set -e
-
-  echo "=== AlphaEdit GPU Job Setup ==="
-
-  # Install uv
-  echo "Installing uv..."
-  curl -LsSf https://astral.sh/uv/install.sh | sh
-  export PATH="$HOME/.local/bin:$PATH"
-
-  export HF_HUB_DOWNLOAD_TIMEOUT=120
-  export HF_HUB_CACHE=/home/sky/.cache/huggingface
-
-  # Artifactory auth (optional — only needed behind corporate proxy)
-  if [[ -n "${ARTIFACTORY_USERNAME:-}" && -n "${ARTIFACTORY_TOKEN:-}" ]]; then
-      echo "Configuring Artifactory auth for uv..."
-      cat > "$HOME/.netrc" <<NETRC_EOF
-  machine graingerinc.jfrog.io
-  login $ARTIFACTORY_USERNAME
-  password $ARTIFACTORY_TOKEN
-  NETRC_EOF
-      chmod 600 "$HOME/.netrc"
-
-      mkdir -p "$HOME/.config/uv"
-      cat > "$HOME/.config/uv/uv.toml" <<'UV_EOF'
-  [[index]]
-  name = "grainger-artifactory"
-  url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/simple"
-  default = true
-  UV_EOF
-  else
-      echo "  Skipping Artifactory (credentials not set, using standard PyPI)"
-  fi
+  set -euo pipefail
 
   cd ~/sky_workdir
-
-  # Install Python 3.10 and sync deps
-  echo "Installing Python 3.10..."
-  uv python install 3.10
-  echo "Syncing dependencies..."
-  uv sync
-
-  # Verify AlphaEdit submodule files are present (synced via workdir rsync)
-  echo "Verifying AlphaEdit source..."
-  if [[ ! -f "vendor/AlphaEdit/experiments/evaluate.py" ]]; then
-      echo "ERROR: vendor/AlphaEdit/experiments/evaluate.py not found"
-      echo "  Ensure the submodule is checked out locally before running sky launch."
-      exit 1
-  fi
-  if [[ ! -f "vendor/AlphaEdit/AlphaEdit/AlphaEdit_main.py" ]]; then
-      echo "ERROR: vendor/AlphaEdit/AlphaEdit/AlphaEdit_main.py not found"
-      exit 1
-  fi
-  echo "  AlphaEdit source files verified."
-
-  # Link covariance stats (uploaded via file_mounts)
-  echo "Linking covariance stats..."
-  STATS_DST="vendor/AlphaEdit/data/stats/Meta-Llama-3-8B-Instruct/wikipedia_stats"
-  mkdir -p "$STATS_DST"
-  cp /data/stats/*.npz "$STATS_DST/"
-  echo "  Linked $(ls "$STATS_DST"/*.npz | wc -l) stats files."
-
-  # HuggingFace login
-  if [[ -n "${HF_TOKEN:-}" ]]; then
-      echo "Logging into HuggingFace..."
-      uv run huggingface-cli login --token "$HF_TOKEN"
-  else
-      echo "WARNING: HF_TOKEN not set!"
-  fi
-
-  # NLTK data
-  uv run python -c "import nltk; nltk.download('punkt', quiet=True); nltk.download('punkt_tab', quiet=True)"
-
-  echo "=== Setup complete ==="
+  bash scripts/remote_setup.sh
 
 run: |
   set -e

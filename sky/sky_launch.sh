@@ -37,6 +37,7 @@ launch_job() {
         --env "EXPERIMENT_NAME=$exp_name" \
         --env "SEED=$seed" \
         --name "$job_name" \
+        --cluster "$job_name" \
         --detach-run \
         --env-file "$PROJECT_DIR/.env" \
         -y

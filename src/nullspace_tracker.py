@@ -395,7 +395,7 @@ def main():
     )
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--cuda_device", default="0")
-    parser.add_argument("--model_name", default="meta-llama/Meta-Llama-3-8B-Instruct")
+    parser.add_argument("--model_name", default=os.environ.get("MODEL_NAME", "meta-llama/Meta-Llama-3-8B-Instruct"))
     parser.add_argument("--hparams_fname", default="Llama3-8B.json")
     parser.add_argument("--ds_name", default="mcf", choices=["mcf", "cf", "zsre"])
     parser.add_argument("--dataset_size_limit", type=int, default=2000)

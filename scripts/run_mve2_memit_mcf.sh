@@ -10,6 +10,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Load environment config
+if [[ -f "$PROJECT_DIR/.env" ]]; then
+    set -a; source "$PROJECT_DIR/.env"; set +a
+fi
+
+MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
+
 SEED="${1:-42}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
 
@@ -23,7 +30,7 @@ uv run python src/seeded_runner.py \
     --seed "$SEED" \
     --cuda_device "$CUDA_DEVICE" \
     --alg_name MEMIT \
-    --model_name meta-llama/Meta-Llama-3-8B-Instruct \
+    --model_name "$MODEL_NAME" \
     --hparams_fname Llama3-8B.json \
     --ds_name mcf \
     --dataset_size_limit 2000 \

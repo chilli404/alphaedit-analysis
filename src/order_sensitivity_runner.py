@@ -284,7 +284,7 @@ def main():
     parser.add_argument("--alg_name", required=True,
                         choices=["AlphaEdit", "MEMIT"],
                         help="Algorithm to test")
-    parser.add_argument("--model_name", default="meta-llama/Meta-Llama-3-8B-Instruct")
+    parser.add_argument("--model_name", default=os.environ.get("MODEL_NAME", "meta-llama/Meta-Llama-3-8B-Instruct"))
     parser.add_argument("--hparams_fname", default="Llama3-8B.json")
     parser.add_argument("--ds_name", default="mcf", choices=["mcf", "cf"])
     parser.add_argument("--dataset_size_limit", type=int, default=2000)

@@ -16,6 +16,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Load environment config
+if [[ -f "$PROJECT_DIR/.env" ]]; then
+    set -a; source "$PROJECT_DIR/.env"; set +a
+fi
+
 SEED="${1:-42}"
 DATASET_SIZE_LIMIT="${2:-2000}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"

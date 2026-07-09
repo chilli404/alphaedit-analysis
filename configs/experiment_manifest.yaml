@@ -14,7 +14,10 @@ models:
   primary:
     name: "meta-llama/Meta-Llama-3-8B-Instruct"
     hparams_fname: "Llama3-8B.json"
-    notes: "Original paper's primary model. Requires HF access approval."
+    notes: >
+      Original paper's primary model. Requires HF access approval.
+      Set MODEL_NAME=NousResearch/Meta-Llama-3-8B-Instruct in .env
+      to use the ungated equivalent without approval.
   secondary:
     name: "mistralai/Mistral-7B-Instruct-v0.3"
     hparams_fname: "Mistral-7B.json"

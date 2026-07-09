@@ -556,7 +556,6 @@ def plot_order_sensitivity(
     Annotates with coefficient of variation and Levene's test p-value.
     """
     import json
-    from scipy import stats
 
     if not order_dir.exists():
         print("NOTE: No order_sensitivity/ directory found. Skipping order plot.")
