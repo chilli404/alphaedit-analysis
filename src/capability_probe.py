@@ -26,7 +26,6 @@ Usage (standalone, requires model on GPU):
 import argparse
 import json
 import os
-import sys
 import time
 from pathlib import Path
 
@@ -341,7 +340,7 @@ def main():
     with open(args.output, "w") as f:
         json.dump(result, f, indent=2)
 
-    print(f"\nResults:")
+    print("\nResults:")
     print(f"  Perplexity: {result['mean_perplexity']:.2f} (±{result['std_perplexity']:.2f})")
     print(f"  Samples: {result['n_samples']}, Tokens: {result['n_tokens']}")
     if "mmlu_accuracy" in result:

@@ -31,7 +31,6 @@ Usage:
 """
 
 import argparse
-import json
 import os
 import subprocess
 import sys
@@ -245,7 +244,7 @@ def run(args: argparse.Namespace) -> None:
     env["TOKENIZERS_PARALLELISM"] = "false"
 
     print(f"{'=' * 70}")
-    print(f"Edit Order Sensitivity Experiment")
+    print("Edit Order Sensitivity Experiment")
     print(f"  Algorithm:   {args.alg_name}")
     print(f"  Order seed:  {args.order_seed}")
     print(f"  Model seed:  {args.seed}")
@@ -265,7 +264,7 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(result.returncode)
 
     print(f"\n{'=' * 70}")
-    print(f"Order sensitivity experiment completed.")
+    print("Order sensitivity experiment completed.")
     print(f"  Algorithm: {args.alg_name}, order_seed={args.order_seed}")
     print(f"  Metadata: {metadata_jsonl}")
     print(f"  Finished: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")

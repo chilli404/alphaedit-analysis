@@ -17,8 +17,8 @@ fi
 MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 _MODEL_SHORT="${MODEL_NAME##*/}"
 
-S3_STATS_SRC="$S3_DIR/continual-learning/alphaedit/stats/llama3-8b-instruct/wikipedia_stats"
-PROJECT_STATS_SRC="$PROJECT_DIR/data/stats/llama-3-8b-instruct/wikipedia_stats"
+S3_STATS_SRC="$S3_DIR/continual-learning/alphaedit/stats/llama3-8b-instruct"
+PROJECT_STATS_SRC="$PROJECT_DIR/data/stats/llama3-8b-instruct/wikipedia_stats"
 
 STATS_SRC="$PROJECT_STATS_SRC"
 [[ -d "$S3_STATS_SRC" ]] && STATS_SRC="$S3_STATS_SRC"

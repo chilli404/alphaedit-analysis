@@ -252,7 +252,7 @@ def run(args: argparse.Namespace) -> None:
         print("WARNING: HF_TOKEN not set. Model download may fail.")
 
     print(f"{'=' * 70}")
-    print(f"AlphaEdit Seeded Runner")
+    print("AlphaEdit Seeded Runner")
     print(f"  Algorithm:  {args.alg_name}")
     print(f"  Dataset:    {args.ds_name} (limit={args.dataset_size_limit})")
     print(f"  Num edits:  {args.num_edits}")
@@ -266,7 +266,6 @@ def run(args: argparse.Namespace) -> None:
     record_metadata(args.seed, args, results_dir)
 
     # Find the uv executable to use the project's venv
-    project_root = get_project_root()
     cmd = [
         sys.executable, "-c", script
     ]
@@ -282,7 +281,7 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(result.returncode)
 
     print(f"\n{'=' * 70}")
-    print(f"Experiment completed successfully.")
+    print("Experiment completed successfully.")
     print(f"  Finished:  {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print(f"  Results:   {alphaedit_root / 'results' / args.alg_name}")
     print(f"{'=' * 70}")

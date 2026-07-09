@@ -27,20 +27,33 @@ echo "  Experiment: $EXPERIMENT"
 echo "  Seeds: ${SINGLE_SEED:-$SEEDS}"
 echo ""
 
+cluster_exists() {
+    sky status 2>/dev/null | sed $'s/\033\[[0-9;]*m//g' | grep -q "^$1 "
+}
+
 launch_job() {
     local exp_name="$1"
     local seed="$2"
     local job_name="ae-${exp_name}-s${seed}"
 
-    echo "Launching: $job_name"
-    sky launch "$SKY_YAML" \
-        --env "EXPERIMENT_NAME=$exp_name" \
-        --env "SEED=$seed" \
-        --name "$job_name" \
-        --cluster "$job_name" \
-        --detach-run \
-        --env-file "$PROJECT_DIR/.env" \
-        -y
+    if cluster_exists "$job_name"; then
+        echo "Exec on existing cluster: $job_name"
+        sky exec "$job_name" \
+            --env "EXPERIMENT_NAME=$exp_name" \
+            --env "SEED=$seed" \
+            --env-file "$PROJECT_DIR/.env" \
+            --detach-run \
+            "$SKY_YAML"
+    else
+        echo "Creating new cluster: $job_name"
+        sky launch "$SKY_YAML" \
+            --env "EXPERIMENT_NAME=$exp_name" \
+            --env "SEED=$seed" \
+            --cluster "$job_name" \
+            --detach-run \
+            --env-file "$PROJECT_DIR/.env" \
+            -y
+    fi
     echo "  Submitted: $job_name"
 }
 

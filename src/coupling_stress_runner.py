@@ -79,7 +79,7 @@ def build_coupling_script(
     """
     argv_parts = [
         "experiments.evaluate",
-        f"--alg_name=AlphaEdit",
+        "--alg_name=AlphaEdit",
         f"--model_name={model_name}",
         f"--hparams_fname={hparams_fname}",
         f"--ds_name={ds_name}",
@@ -362,7 +362,7 @@ def run(args: argparse.Namespace) -> None:
 
     dataset_path = results_dir / f"coupling_dataset_seed{args.seed}.json"
 
-    print(f"\nGenerating coupling dataset...")
+    print("\nGenerating coupling dataset...")
     from coupling_dataset import generate_coupling_dataset
 
     data_dir = alphaedit_root / "data"
@@ -405,7 +405,7 @@ def run(args: argparse.Namespace) -> None:
         print("WARNING: HF_TOKEN not set. Model download may fail.")
 
     print(f"\n{'=' * 70}")
-    print(f"Coupling Stress Test Runner")
+    print("Coupling Stress Test Runner")
     print(f"  Seed:           {args.seed}")
     print(f"  CUDA:           device {args.cuda_device}")
     print(f"  Model:          {args.model_name}")
@@ -445,7 +445,7 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(result.returncode)
 
     print(f"\n{'=' * 70}")
-    print(f"Coupling stress test completed.")
+    print("Coupling stress test completed.")
     print(f"  Finished:  {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print(f"  Trace:     {output_jsonl}")
     print(f"  Metadata:  {meta_path}")

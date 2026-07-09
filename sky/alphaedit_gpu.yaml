@@ -6,7 +6,7 @@ resources:
 workdir: .
 
 file_mounts:
-  /data/stats: ~/Downloads/llama3-8b-instruct/wikipedia_stats
+  ~/sky_workdir/.env: ./.env
 
 setup: |
   set -euo pipefail
@@ -21,29 +21,36 @@ run: |
   cd ~/sky_workdir
 
   if [[ -z "${EXPERIMENT_NAME:-}" ]]; then
-      echo "No EXPERIMENT_NAME set — interactive mode."
-      echo "SSH in with: sky ssh <cluster>"
-      echo "Then run:    cd ~/sky_workdir && bash scripts/run_mve1_alphaedit_mcf.sh 42"
-      exit 0
+    echo "No EXPERIMENT_NAME set - interactive mode."
+    echo "SSH in with: sky ssh <cluster>"
+    echo "Then run:    cd ~/sky_workdir && bash scripts/run_mve1_alphaedit_mcf.sh 42"
+    exit 0
   fi
 
-  echo "=== Running experiment: $EXPERIMENT_NAME (seed=$SEED) ==="
+  echo "[6/8] Linking covariance stats..."
+  bash scripts/link_stats.sh
+
+  echo "[8/8] Downloading NLTK data..."
+  uv run python -c "import nltk; [nltk.download(pkg, quiet=True) for pkg in ('punkt', 'punkt_tab')]"
+
+  echo "=== Running experiment: ${EXPERIMENT_NAME} seed=${SEED} ==="
   echo "GPU info:"
   nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
 
   export CUDA_DEVICE
   export TOKENIZERS_PARALLELISM
-  bash scripts/run_${EXPERIMENT_NAME}.sh "$SEED"
+
+  bash "scripts/run_${EXPERIMENT_NAME}.sh" "$SEED"
 
   echo ""
   echo "=== Experiment complete ==="
   echo "Results:"
-  find vendor/AlphaEdit/results/ results/ -name "*.json" -o -name "*.jsonl" 2>/dev/null | wc -l
+  find vendor/AlphaEdit/results/ results/ \( -name "*.json" -o -name "*.jsonl" \) 2>/dev/null | wc -l
   echo "output files generated."
 
-  # Archive results for retrieval
   echo "Archiving results..."
   ARCHIVE="results_${EXPERIMENT_NAME}_seed${SEED}_$(date +%Y%m%d_%H%M%S).tar.gz"
   tar -czf "/tmp/$ARCHIVE" vendor/AlphaEdit/results/ results/ 2>/dev/null || true
-  echo "Archive: /tmp/$ARCHIVE"
+  echo "Archive path: /tmp/$ARCHIVE"
   echo "Retrieve with: sky rsync <cluster>:/tmp/$ARCHIVE ./"
+  

@@ -17,7 +17,6 @@ formatted identically to the original so evaluate.py can consume it directly.
 
 import argparse
 import json
-import random
 from collections import defaultdict
 from pathlib import Path
 
@@ -108,7 +107,7 @@ def build_conflict_sequence(pairs: list, seed: int) -> list:
     The output is a flat list of records in application order,
     with metadata fields added to track conflict relationships.
     """
-    rng = random.Random(seed)
+    # rng = random.Random(seed)
 
     sequence = []
     for pair_idx, (first, second) in enumerate(pairs):
@@ -163,7 +162,7 @@ def main():
     output_dir = Path(args.output_dir)
     data_dir = output_dir
 
-    print(f"=== Conflict Dataset Generator ===")
+    print("=== Conflict Dataset Generator ===")
     print(f"  Seed: {args.seed}")
     print(f"  Max pairs: {args.max_pairs}")
     print(f"  Output: {output_dir}")
@@ -195,7 +194,7 @@ def main():
     if sequence:
         sample = sequence[0]
         rw = sample["requested_rewrite"]
-        print(f"\n  Sample edit:")
+        print("\n  Sample edit:")
         print(f"    Subject: {rw['subject']}")
         print(f"    Prompt:  {rw['prompt'].format(rw['subject'])}")
         print(f"    Target:  {rw['target_new']['str']}")

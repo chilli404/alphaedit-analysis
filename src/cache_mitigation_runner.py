@@ -30,7 +30,6 @@ Usage:
 """
 
 import argparse
-import json
 import os
 import subprocess
 import sys
@@ -298,9 +297,9 @@ def run(args: argparse.Namespace) -> None:
     env["TOKENIZERS_PARALLELISM"] = "false"
 
     print(f"{'=' * 70}")
-    print(f"Cache Mitigation Experiment")
+    print("Cache Mitigation Experiment")
     print(f"  Strategy:   {strategy_desc}")
-    print(f"  Algorithm:  AlphaEdit (with cache mitigation)")
+    print("  Algorithm:  AlphaEdit (with cache mitigation)")
     print(f"  Dataset:    {args.ds_name} (limit={args.dataset_size_limit})")
     print(f"  Num edits:  {args.num_edits}")
     print(f"  Seed:       {args.seed}")
@@ -318,7 +317,7 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(result.returncode)
 
     print(f"\n{'=' * 70}")
-    print(f"Cache mitigation experiment completed.")
+    print("Cache mitigation experiment completed.")
     print(f"  Strategy: {strategy_desc}")
     print(f"  Metadata: {metadata_jsonl}")
     print(f"  Finished: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")

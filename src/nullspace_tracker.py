@@ -105,25 +105,6 @@ def build_tracker_script(
 
     argv_str = repr(argv_parts)
 
-    # The tracking code injected AFTER PRE_EDIT_ANCHOR.
-    # At this point in evaluate.py, `cnt`, `cache_c`, `P`, `hparams`,
-    # `num_edits`, and `record_chunks` are all in local scope.
-    pre_edit_injection = r'''
-        # === NULLSPACE TRACKING: pre-edit measurement (injected) ===
-        if alg_name == "AlphaEdit" and '_ns_track_output' in dir():
-            _ns_track_pre_batch(cnt, cache_c, P, hparams, num_edits, len(record_chunks))
-        # === END pre-edit tracking ===
-'''
-
-    # The tracking code injected BEFORE POST_EDIT_ANCHOR.
-    # At this point, `cache_c` has been updated by apply_algo.
-    post_edit_injection = r'''
-        # === NULLSPACE TRACKING: post-edit measurement (injected) ===
-        if alg_name == "AlphaEdit" and '_ns_track_output' in dir():
-            _ns_track_post_batch(cnt, cache_c, P, hparams, num_edits)
-        # === END post-edit tracking ===
-'''
-
     script = textwrap.dedent(f"""\
 import os, sys, random, json, math
 import numpy as np
@@ -363,14 +344,14 @@ def run(args: argparse.Namespace) -> None:
     env["TOKENIZERS_PARALLELISM"] = "false"
 
     print(f"{'=' * 70}")
-    print(f"Null-Space Rank Consumption Tracker")
-    print(f"  Algorithm:  AlphaEdit (with inline instrumentation)")
+    print("Null-Space Rank Consumption Tracker")
+    print("  Algorithm:  AlphaEdit (with inline instrumentation)")
     print(f"  Dataset:    {args.ds_name} (limit={args.dataset_size_limit})")
     print(f"  Num edits:  {args.num_edits}")
     print(f"  Seed:       {args.seed}")
     print(f"  CUDA:       device {args.cuda_device}")
     print(f"  Model:      {args.model_name}")
-    print(f"  Threshold:  from hparams (nullspace_threshold)")
+    print("  Threshold:  from hparams (nullspace_threshold)")
     print(f"  Output:     {output_jsonl}")
     print(f"  Started:    {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print(f"{'=' * 70}")
@@ -383,7 +364,7 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(result.returncode)
 
     print(f"\n{'=' * 70}")
-    print(f"Null-space tracking completed.")
+    print("Null-space tracking completed.")
     print(f"  Output: {output_jsonl}")
     print(f"  Finished: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print(f"{'=' * 70}")

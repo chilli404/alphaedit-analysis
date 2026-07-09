@@ -25,7 +25,6 @@ Usage:
 """
 
 import argparse
-import json
 import os
 import subprocess
 import sys
@@ -286,7 +285,7 @@ def run(args: argparse.Namespace) -> None:
     env["TOKENIZERS_PARALLELISM"] = "false"
 
     print(f"{'=' * 70}")
-    print(f"Capability Probe Runner")
+    print("Capability Probe Runner")
     print(f"  Algorithm:      {args.alg_name}")
     print(f"  Dataset:        {args.ds_name} (limit={args.dataset_size_limit})")
     print(f"  Probe interval: every {args.probe_interval} edit rounds")

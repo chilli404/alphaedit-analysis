@@ -1,8 +1,9 @@
 """
-Model download utility with Artifactory fallback.
+Model download utility with Artifactory static token authentication.
 
-When standard HuggingFace Hub access fails (gated repos, auth issues),
-falls back to an internal Artifactory-hosted mirror.
+On corporate infrastructure (K8s clusters), uses a JFrog Identity Token
+(passed via HF_TOKEN env var) to download from the Artifactory HuggingFace
+shared virtual repo. Locally, falls back to standard HuggingFace access.
 
 Usage:
     from model_download import resolve_model_path
@@ -16,8 +17,8 @@ from pathlib import Path
 from huggingface_hub import snapshot_download
 
 
-# Internal HuggingFace mirror endpoint
-HF_ENDPOINT = "https://graingerreadonly.jfrog.io/artifactory/api/huggingfaceml/huggingfaceml-remote"
+# Artifactory HuggingFace shared virtual repo
+HF_ENDPOINT = "https://graingerinc.jfrog.io/artifactory/api/huggingfaceml/huggingfaceml-remote"
 
 
 def get_default_hf_cache_dir() -> Path:
@@ -51,7 +52,7 @@ def download_model(
     local: bool = False,
 ) -> str:
     """
-    Download a model from HuggingFace with custom endpoint configuration.
+    Download a model from Artifactory using a static JFrog Identity Token.
 
     Args:
         model_id: HuggingFace model identifier
@@ -67,18 +68,22 @@ def download_model(
 
     print(f"Downloading model: {model_id}")
     print(f"Cache directory: {cache_dir}")
+    print(f"Endpoint: {HF_ENDPOINT}")
 
     try:
+        token = os.getenv("HF_TOKEN")
+        if not token:
+            raise RuntimeError("HF_TOKEN not set — cannot authenticate to Artifactory")
+
         args = {
             "repo_id": model_id,
             "etag_timeout": 86400,
             "force_download": False,
             "endpoint": HF_ENDPOINT,
+            "token": token,
         }
 
         if local:
-            # Use a stable model-specific directory inside the HF cache.
-            # This avoids dumping files directly into ~/.cache/huggingface/hub.
             safe_model_name = model_id.replace("/", "--")
             local_dir = cache_dir / safe_model_name
             local_dir.mkdir(parents=True, exist_ok=True)
@@ -105,6 +110,21 @@ def download_model(
         raise
 
 
+def _artifactory_reachable() -> bool:
+    """Check if Artifactory is reachable (i.e., on corporate infra)."""
+    import urllib.request
+    import urllib.error
+
+    try:
+        req = urllib.request.Request(
+            "https://graingerinc.jfrog.io", method="HEAD"
+        )
+        urllib.request.urlopen(req, timeout=5)
+        return True
+    except (urllib.error.URLError, OSError):
+        return False
+
+
 def resolve_model_path(
     model_id: str,
     cache_dir: Path | str | None = None,
@@ -112,27 +132,23 @@ def resolve_model_path(
     """
     Resolve a model identifier to a usable path.
 
-    Tries standard HuggingFace access first. If that fails, falls back to
-    the internal Artifactory mirror with local=True.
+    On corporate infrastructure (Artifactory reachable), downloads through
+    Artifactory using the HF_TOKEN identity token. Locally (Artifactory
+    unreachable), returns the model_id for standard HuggingFace access.
 
     Args:
         model_id: HuggingFace model identifier, e.g.
             "meta-llama/Meta-Llama-3-8B-Instruct"
-        cache_dir: Where to download on fallback.
+        cache_dir: Where to download the model on corporate infra.
             Defaults to Hugging Face's default hub cache.
 
     Returns:
-        str: Either the original model_id if HF works, or a local path
+        str: Local path (on cluster) or model_id (locally)
     """
-    from huggingface_hub import model_info
+    if _artifactory_reachable():
+        print(f"Artifactory reachable — downloading via Artifactory: {model_id}")
+        local_path = download_model(model_id, cache_dir=cache_dir, local=True)
+        return local_path
 
-    try:
-        model_info(model_id)
-        print(f"Model accessible on HuggingFace: {model_id}")
-        return model_id
-    except Exception as e:
-        print(f"HuggingFace access failed for {model_id}: {e}")
-        print("Falling back to Artifactory mirror...")
-
-    local_path = download_model(model_id, cache_dir=cache_dir, local=True)
-    return local_path
+    print(f"Artifactory not reachable — using standard HuggingFace: {model_id}")
+    return model_id

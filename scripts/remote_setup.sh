@@ -24,10 +24,10 @@ echo "  Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # 1. Install uv if not present
 if ! command -v uv &>/dev/null; then
-    echo "[1/8] Installing uv..."
+    echo "[1/5] Installing uv..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
 else
-    echo "[1/8] uv already installed: $(uv --version)"
+    echo "[1/5] uv already installed: $(uv --version)"
 fi
 
 export PATH="$HOME/.local/bin:$PATH"
@@ -35,7 +35,7 @@ export HF_HUB_DOWNLOAD_TIMEOUT=120
 export HF_HUB_CACHE="${HF_HUB_CACHE:-$HOME/.cache/huggingface}"
 
 # 2. Configure Artifactory auth if available
-echo "[2/8] Configuring Python package index..."
+echo "[2/5] Configuring Python package index..."
 if [[ -n "${ARTIFACTORY_USERNAME:-}" && -n "${ARTIFACTORY_TOKEN:-}" ]]; then
     echo "  Using Grainger Artifactory for uv."
 
@@ -58,16 +58,17 @@ else
 fi
 
 # 3. Install Python 3.10 and sync
-echo "[3/8] Installing Python 3.10 and syncing dependencies..."
+echo "[3/5] Installing Python 3.10 and syncing dependencies..."
 uv python install 3.10
 uv sync
 
+
 # 4. Initialize submodule
-echo "[4/8] Initializing AlphaEdit submodule..."
+echo "[4/5] Initializing AlphaEdit submodule..."
 git submodule update --init --recursive
 
 # 5. Verify commit
-echo "[5/8] Verifying AlphaEdit commit..."
+echo "[5/5] Verifying AlphaEdit commit..."
 CURRENT="$(git -C vendor/AlphaEdit rev-parse HEAD)"
 EXPECTED="b84624f44dfe8fc6cd9e41df916c44124a0c46dc"
 
@@ -76,30 +77,7 @@ if [[ "$CURRENT" != "$EXPECTED" ]]; then
     exit 1
 fi
 
-echo "  AlphaEdit commit verified: ${CURRENT:0:7}"
-
-# 6. Link stats
-echo "[6/8] Linking covariance stats..."
-bash scripts/link_stats.sh
-
-# 7. HuggingFace login
-echo "[7/8] HuggingFace authentication..."
-if [[ -n "${HF_TOKEN:-}" ]]; then
-    uv run huggingface-cli login --token "$HF_TOKEN"
-    echo "  Logged in successfully."
-else
-    echo "  WARNING: HF_TOKEN not set. Set it and run:"
-    echo "    uv run huggingface-cli login --token \$HF_TOKEN"
-fi
-
-# 8. Download NLTK data
-echo "[8/8] Downloading NLTK data..."
-uv run python - <<'PY'
-import nltk
-
-for pkg in ("punkt", "punkt_tab"):
-    nltk.download(pkg, quiet=True)
-PY
+echo "  AlphaEdit commit verified: ${CURRENT:0:7}"# 6. Link stats
 
 # GPU check
 echo ""
