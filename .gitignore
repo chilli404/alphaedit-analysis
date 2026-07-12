@@ -48,6 +48,17 @@ vendor/AlphaEdit/null_space_project.pt
 .env
 .env.local
 
+# SkyPilot cloud orchestration
+sky/
+
+# Grainger-specific infrastructure (Artifactory, S3 paths)
+src/model_download.py
+scripts/remote_setup.sh
+scripts/link_stats.sh
+scripts/link_dsets.sh
+scripts/download_datasets.sh
+install-agent.sh
+
 # OS
 .DS_Store
 Thumbs.db
