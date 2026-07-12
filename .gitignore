@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+
+# Data
+data
+logs
+
+# Results (large, tracked separately)
+results/*.csv
+results/*.json
+results/figures/
+results/tables/
+results/metadata/
+results/coupling_stress/*.jsonl
+results/nullspace_tracking/*.jsonl
+results/order_sensitivity/*.jsonl
+
+# Vendor data (downloaded at runtime)
+vendor/AlphaEdit/data/multi_counterfact.json
+vendor/AlphaEdit/data/counterfact.json
+vendor/AlphaEdit/data/zsre_mend_eval.json
+vendor/AlphaEdit/data/MQuAKE-CF-3k-v2.json
+vendor/AlphaEdit/data/attribute_snippets.json
+vendor/AlphaEdit/data/idf.npy
+vendor/AlphaEdit/data/tfidf_vocab.json
+vendor/AlphaEdit/data/stats/
+vendor/AlphaEdit/results/
+vendor/AlphaEdit/null_space_project.pt
+
+# Models (never commit)
+*.bin
+*.safetensors
+*.gguf
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# SkyPilot cloud orchestration
+sky/
+
+# Grainger-specific infrastructure (Artifactory, S3 paths)
+src/model_download.py
+scripts/remote_setup.sh
+scripts/link_stats.sh
+scripts/link_dsets.sh
+scripts/download_datasets.sh
+install-agent.sh
+
+# OS
+.DS_Store
+Thumbs.db
+
+# uv
+.uv/
