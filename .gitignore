@@ -9,6 +9,7 @@ build/
 
 # Data
 data
+logs
 
 # Results (large, tracked separately)
 results/*.csv

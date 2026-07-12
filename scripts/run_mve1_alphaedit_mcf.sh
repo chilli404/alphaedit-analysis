@@ -35,7 +35,7 @@ uv run python src/seeded_runner.py \
     --ds_name mcf \
     --dataset_size_limit 2000 \
     --num_edits 100 \
-    --downstream_eval_steps 5 \
+    --downstream_eval_steps 20 \
     --conserve_memory
 
 echo "Completed: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

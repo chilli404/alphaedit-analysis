@@ -51,9 +51,17 @@ def extract_metrics_from_case(case_json: dict) -> dict:
     # Extract post-edit metrics
     for json_key, metric_name in METRICS.items():
         value = post.get(json_key)
-        if isinstance(value, list):
-            # Average across prompts if it's a list
-            row[metric_name] = sum(value) / len(value) if value else None
+        if isinstance(value, list) and value:
+            if isinstance(value[0], dict):
+                # Prob fields: list of {"target_new": float, "target_true": float}
+                row[metric_name] = sum(d["target_new"] for d in value) / len(value)
+            elif isinstance(value[0], bool):
+                # Correct fields: list of booleans
+                row[metric_name] = sum(value) / len(value)
+            else:
+                row[metric_name] = sum(value) / len(value)
+        elif isinstance(value, list):
+            row[metric_name] = None
         else:
             row[metric_name] = value
 

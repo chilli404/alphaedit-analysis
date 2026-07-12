@@ -106,7 +106,7 @@ run_at_edit_count() {
         --ds_name mcf \
         --dataset_size_limit "$edit_count" \
         --num_edits 100 \
-        --downstream_eval_steps 5 \
+        --downstream_eval_steps 20 \
         --conserve_memory
 
     echo "--- $alg_name at $edit_count edits: DONE ---"

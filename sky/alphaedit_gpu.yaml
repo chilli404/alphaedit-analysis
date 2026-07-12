@@ -27,10 +27,20 @@ run: |
     exit 0
   fi
 
-  echo "[6/8] Linking covariance stats..."
+  echo "Linking covariance stats..."
   bash scripts/link_stats.sh
 
-  echo "[8/8] Downloading NLTK data..."
+  echo "Linking datasets..."
+  bash scripts/link_dsets.sh
+
+  echo "Patching vendor submodule for compatibility..."
+  # Add NousResearch model name variants to context length map
+  sed -i 's/"llama3-8b-instruct": 4096,/"llama3-8b-instruct": 4096, "meta-llama-3-8b-instruct": 4096, "nousresearch--meta-llama-3-8b-instruct": 4096,/' vendor/AlphaEdit/glue_eval/useful_functions.py
+  # Fix MEMIT and AlphaEdit: accept extra kwargs (return_orig_weights_device) passed by evaluate.py
+  sed -i 's/    cache_template: Optional\[str\] = None,/    cache_template: Optional[str] = None, **_kwargs,/' vendor/AlphaEdit/memit/memit_main.py
+  sed -i 's/    P = None,/    P = None, **_kwargs,/' vendor/AlphaEdit/AlphaEdit/AlphaEdit_main.py
+
+  echo "Downloading NLTK data..."
   uv run python -c "import nltk; [nltk.download(pkg, quiet=True) for pkg in ('punkt', 'punkt_tab')]"
 
   echo "=== Running experiment: ${EXPERIMENT_NAME} seed=${SEED} ==="
@@ -53,4 +63,3 @@ run: |
   tar -czf "/tmp/$ARCHIVE" vendor/AlphaEdit/results/ results/ 2>/dev/null || true
   echo "Archive path: /tmp/$ARCHIVE"
   echo "Retrieve with: sky rsync <cluster>:/tmp/$ARCHIVE ./"
-  

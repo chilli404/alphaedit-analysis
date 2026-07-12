@@ -132,23 +132,28 @@ def resolve_model_path(
     """
     Resolve a model identifier to a usable path.
 
-    On corporate infrastructure (Artifactory reachable), downloads through
-    Artifactory using the HF_TOKEN identity token. Locally (Artifactory
-    unreachable), returns the model_id for standard HuggingFace access.
+    On corporate infrastructure (Artifactory reachable), sets HF_ENDPOINT
+    so that transformers downloads through Artifactory natively. This keeps
+    model.config._name_or_path as the original model_id, which is required
+    for stats lookup and GLUE eval context length mapping.
+
+    Locally (Artifactory unreachable), returns the model_id unchanged for
+    standard HuggingFace access.
 
     Args:
         model_id: HuggingFace model identifier, e.g.
             "meta-llama/Meta-Llama-3-8B-Instruct"
-        cache_dir: Where to download the model on corporate infra.
-            Defaults to Hugging Face's default hub cache.
+        cache_dir: Unused, kept for API compatibility.
 
     Returns:
-        str: Local path (on cluster) or model_id (locally)
+        str: model_id (always). On corporate infra, HF_ENDPOINT is set
+             so transformers routes through Artifactory automatically.
     """
     if _artifactory_reachable():
-        print(f"Artifactory reachable — downloading via Artifactory: {model_id}")
-        local_path = download_model(model_id, cache_dir=cache_dir, local=True)
-        return local_path
+        os.environ["HF_ENDPOINT"] = HF_ENDPOINT
+        print(f"Artifactory reachable — set HF_ENDPOINT={HF_ENDPOINT}")
+    else:
+        print(f"Artifactory not reachable — using standard HuggingFace")
 
-    print(f"Artifactory not reachable — using standard HuggingFace: {model_id}")
+    print(f"Model: {model_id}")
     return model_id
