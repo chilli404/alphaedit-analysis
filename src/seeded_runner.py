@@ -168,7 +168,7 @@ def record_metadata(
 
     metadata_dir = results_dir / "metadata"
     metadata_dir.mkdir(parents=True, exist_ok=True)
-    metadata_file = metadata_dir / f"run_seed{seed}_{args.alg_name}_{args.ds_name}.json"
+    metadata_file = metadata_dir / f"run_seed{seed}_{args.alg_name}_{args.ds_name}_{args.dataset_size_limit}.json"
 
     with open(metadata_file, "w") as f:
         json.dump(metadata, f, indent=2)
