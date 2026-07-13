@@ -56,37 +56,22 @@ check_already_complete() {
 
     # Check if result JSON files exist for this (alg, edit_count) combination.
     # AlphaEdit writes results as: results/{alg}/run_{id}/{num_edits}-edits-case_N.json
-    # We look for a run directory with EXACTLY the expected number of case files.
-    # A run with dataset_size_limit=2000 produces 20 cases (2000/100), which covers
-    # edit counts <= 2000 but NOT higher counts like 3000, 5000, etc.
+    # Each case file corresponds to one edit evaluation, so case_count ≈ dataset_size_limit.
+    # A run covers this edit count only if it has at least edit_count case files.
     local alg_dir="$RESULTS_BASE/$alg_name"
     if [[ ! -d "$alg_dir" ]]; then
         return 1  # Not complete
     fi
 
-    local expected_cases=$((edit_count / 100))  # num_edits=100, so cases = total/100
     for run_dir in "$alg_dir"/run_*/; do
         if [[ ! -d "$run_dir" ]]; then
             continue
         fi
         local case_count
         case_count=$(find "$run_dir" -name "*_edits-case_*.json" 2>/dev/null | wc -l | tr -d ' ')
-        # A run covers this edit count if it has at least the expected number of cases.
-        # But only trust it if the run's total cases match a dataset_size_limit >= edit_count.
-        # The highest case index tells us the actual dataset_size_limit used.
-        if [[ "$case_count" -ge "$expected_cases" ]]; then
-            # Verify the run actually reached this edit count by checking the highest case index
-            local highest_case
-            highest_case=$(find "$run_dir" -name "*_edits-case_*.json" 2>/dev/null \
-                | sed 's/.*case_\([0-9]*\)\.json/\1/' | sort -n | tail -1)
-            if [[ -n "$highest_case" ]]; then
-                # highest_case is 0-indexed, so (highest_case+1)*100 = total edits in this run
-                local run_total_edits=$(( (highest_case + 1) * 100 ))
-                if [[ "$run_total_edits" -ge "$edit_count" ]]; then
-                    echo "  REUSE: $alg_name at $edit_count edits (covered by $run_dir with $run_total_edits total edits)"
-                    return 0  # Already covered
-                fi
-            fi
+        if [[ "$case_count" -ge "$edit_count" ]]; then
+            echo "  REUSE: $alg_name at $edit_count edits (covered by $run_dir with $case_count case files)"
+            return 0  # Already covered
         fi
     done
 
