@@ -52,8 +52,10 @@ The YAML `run:` block expects these env vars (passed via `--env`):
 - `TARGET_EDITS` — For checkpointed failure curve: total edits to run to
 - `ALG_NAME` — For checkpointed failure curve: AlphaEdit, MEMIT, or both
 - `SAVE_INTERVAL` — Checkpoint save interval in batches (default 10)
-- `LAMBDA_PREV` — For MEMIT+PrevKeyReg+Ridge: previous-key regularization strength
-- `LAMBDA_DELTA` — For MEMIT+PrevKeyReg+Ridge: ridge regularization strength
+- `FAST_CHECKPOINT` — If "true", evaluate only edited batch (fast mode)
+- `EVAL_AT_CHECKPOINTS_ONLY` — If "true", evaluate all facts only at checkpoint boundaries (milestone mode, RECOMMENDED)
+- `LAMBDA_PREV` — For MEMIT+SeqReg: previous-key regularization strength (λ_prev in Eq. 12)
+- `LAMBDA_DELTA` — For MEMIT+SeqReg: ridge regularization strength (λ_delta in Eq. 12)
 
 ### S3 Mounting
 
@@ -136,12 +138,12 @@ bash scripts/run_mve1_alphaedit_mcf.sh 42
 | Script | Purpose |
 |--------|---------|
 | `scripts/run_failure_curve.sh` | Tests at [500, 1000, 1500, 2000, 3000, 5000, 7500, 10000] edits to find where AlphaEdit's null-space advantage disappears |
-| `scripts/run_failure_curve_checkpointed.sh` | Checkpoint-based failure curve: saves model state at intervals, resumes from checkpoints across cluster runs |
+| `scripts/run_failure_curve_checkpointed.sh` | Checkpoint-based failure curve with 3 evaluation modes: normal (full eval every batch), fast (edited batch only), milestone (full eval at checkpoints only - RECOMMENDED) |
 | `scripts/run_nullspace_analysis.sh` | Tracks null-space rank consumption per layer per batch via SVD |
 | `scripts/run_order_sensitivity.sh` | 10 random orderings × 2 algorithms — tests if edit order affects final metrics |
 | `scripts/run_coupling_stress.sh` | Measures "projection loss" under 4 semantic coupling types (synonym, hypernym, co-occurrence, causal) |
 | `scripts/run_capability_probe.sh` | Measures WikiText perplexity + few-shot MMLU at intervals to detect general capability damage |
-| `scripts/run_memit_sequential.sh` | MEMIT+PrevKeyReg+Ridge control baseline: tests if key-direction regularization can match null-space projection |
+| `scripts/run_memit_sequential.sh` | MEMIT+SeqReg: Non-projected analogue of AlphaEdit Eq. 12 — tests if sequential regularization can match null-space projection |
 
 ### Meta-Orchestration
 
@@ -162,27 +164,48 @@ All runners use a **source injection** approach: they read `vendor/AlphaEdit/exp
 
 ### Checkpoint Runner (`src/checkpoint_runner.py`)
 
-Enables failure curve experiments (0→10000 edits) to survive 8-hour cluster limits. Injects three hooks into `evaluate.py`:
+Enables failure curve experiments (0→10000 edits) to survive 8-hour cluster limits. Injects hooks into `evaluate.py`:
+
+**Checkpoint Management:**
 1. **Before loop**: Load model weights + cache_c from checkpoint
 2. **Before each batch**: Skip already-processed batches
 3. **After each batch**: Save checkpoint at interval boundaries
 
+**Evaluation Modes** (mutually exclusive):
+- **Normal** (default): Evaluate all facts after every batch (slow, complete)
+- **Fast** (`--fast_checkpoint`): Evaluate only edited batch facts (fast, partial preservation measurement)
+- **Milestone** (`--eval_at_checkpoints_only`): Evaluate all facts only at checkpoint boundaries (balanced, **RECOMMENDED FOR PAPERS**)
+
 Checkpoints saved to: `/s3-data/.../checkpoints/{alg_name}/seed{seed}/batch_{N}/` (falls back to `~/.cache/alphaedit_checkpoints/`)
 
-### MEMIT+PrevKeyReg+Ridge (`src/memit_sequential_runner.py`)
+Example: With `--save_interval 10` and `--eval_at_checkpoints_only`, saves and evaluates at batches 10, 20, 30, 40, 50 (every 1000 edits).
 
-Control baseline testing whether AlphaEdit's advantage is due to null-space projection or can be matched by key-direction regularization. Modifies MEMIT's normal equation LHS:
+### MEMIT+SeqReg (`src/memit_sequential_runner.py`)
 
+**Scientific Question**: Does MEMIT with AlphaEdit-like sequential regularization (Eq. 12) close the gap, or is null-space projection P necessary?
+
+**Non-projected analogue of AlphaEdit Eq. 12**:
+- AlphaEdit: `minimize ||ΔPK - R||² + λ ||ΔPK_prev||² + λ ||ΔP||²`
+- MEMIT+SeqReg: `minimize ||ΔK - R||² + λ ||ΔK_prev||² + λ ||Δ||²`
+
+Implemented via LHS augmentation:
 ```
 lhs = α·C₀ + K_new@K_new^T + λ_prev·K_prev@K_prev^T + λ_delta·I
 ```
 
-Key implementation details:
+**Key implementation details:**
 - `_K_prev` is computed from cache BEFORE appending current batch keys
-- Logging (`||ΔW||`, `||ΔW@K_prev||`) happens BEFORE cache update
+- Logging (`||ΔW||`, `||ΔW@K_prev||`, `||base_lhs||`, `||K_prev@K_prev^T||`) happens BEFORE cache update
 - Current keys are appended to cache AFTER logging
 - Cache default: `--cache_strategy recent --cache_max 20`
 - `--debug_freeze_batch N`: Runs same-state comparison with multiple λ_prev values at batch N
+- Supports `--fast_checkpoint` for rapid iteration
+
+**Calibration settings:**
+- λ_prev=1, λ_delta=1: Direct Eq. 12 coefficient analogue
+- λ_prev=1, λ_delta=1e-4: Weak ridge
+- λ_prev=10, λ_delta=1: Strong prev-key protection
+- λ_prev=100, λ_delta=1: Very strong prev-key protection
 
 ### Key Files
 
@@ -313,30 +336,40 @@ ls /s3-data/continual-learning/alphaedit/results/
 aws s3 ls s3://<bucket>/continual-learning/alphaedit/results/
 ```
 
-### Run failure curve with checkpoints (8h cluster limit)
+### Run failure curve with checkpoints
+
+**Evaluation Mode Choice:**
+- `EVAL_AT_CHECKPOINTS_ONLY=true`: Milestone evaluation (RECOMMENDED for papers, ~10-12h)
+- `FAST_CHECKPOINT=true`: Fast mode for iteration (~2-3h, partial preservation data)
+- Neither: Full evaluation every batch (~16-17h, complete data)
+
 ```bash
-# First run: 0→3000 edits, saves checkpoints at 1000/2000/3000
-TARGET_EDITS=3000 ALG_NAME=AlphaEdit bash sky/sky_launch.sh failure_curve_ckpt 42
+# RECOMMENDED: Milestone evaluation on persistent cluster (5000 edits)
+tmux new-session -d -s fc_42_5k "cd ~/Projects/alphaedit-analysis && \
+  EVAL_AT_CHECKPOINTS_ONLY=true bash scripts/run_failure_curve_checkpointed.sh 42 both 5000 \
+  2>&1 | tee logs/fc_42_5k.log"
 
-# Second run: resumes from 3000, runs to 5000
-TARGET_EDITS=5000 ALG_NAME=AlphaEdit bash sky/sky_launch.sh failure_curve_ckpt 42
+# On SkyPilot with 8h limit (run incrementally)
+EVAL_AT_CHECKPOINTS_ONLY=true TARGET_EDITS=3000 ALG_NAME=AlphaEdit bash sky/sky_launch.sh failure_curve_ckpt 42
+EVAL_AT_CHECKPOINTS_ONLY=true TARGET_EDITS=5000 ALG_NAME=AlphaEdit bash sky/sky_launch.sh failure_curve_ckpt 42  # resumes from 3000
 
-# On persistent cluster (no time limit): runs all the way, saves checkpoints as insurance
-TARGET_EDITS=10000 bash scripts/run_failure_curve_checkpointed.sh 42 both
+# Fast mode for testing
+FAST_CHECKPOINT=true TARGET_EDITS=2000 ALG_NAME=AlphaEdit bash sky/sky_launch.sh failure_curve_ckpt 42
 ```
 
-### Run MEMIT+PrevKeyReg+Ridge
+### Run MEMIT+SeqReg (Non-Projected Eq. 12 Analogue)
 ```bash
-# Screening (seed 42)
-bash scripts/run_memit_sequential.sh 42 1.0 1e-4    # PrevKeyReg+Ridge
-bash scripts/run_memit_sequential.sh 42 0.1 1e-5    # Weak reg
-bash scripts/run_memit_sequential.sh 42 10.0 1e-4   # Strong reg
+# Calibration (seed 42 with fast checkpoint for speed)
+FAST_CHECKPOINT=true bash scripts/run_memit_sequential.sh 42 1 1      # Direct Eq. 12 analogue
+FAST_CHECKPOINT=true bash scripts/run_memit_sequential.sh 42 1 1e-4   # Weak ridge
+FAST_CHECKPOINT=true bash scripts/run_memit_sequential.sh 42 10 1     # Strong prev-key
+FAST_CHECKPOINT=true bash scripts/run_memit_sequential.sh 42 100 1    # Very strong prev-key
 
 # Same-state debug verification
-DEBUG_BATCH=5 bash scripts/run_memit_sequential.sh 42 1.0 1e-4
+DEBUG_BATCH=5 bash scripts/run_memit_sequential.sh 42 1 1
 
 # On SkyPilot
-LAMBDA_PREV=1.0 LAMBDA_DELTA=1e-4 bash sky/sky_launch.sh memit_sequential 42
+FAST_CHECKPOINT=true LAMBDA_PREV=1 LAMBDA_DELTA=1 bash sky/sky_launch.sh memit_sequential 42
 ```
 
 ### Tear down all clusters

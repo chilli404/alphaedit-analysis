@@ -179,7 +179,7 @@ assert post_anchor in source, (
 )
 
 mitigation_injection = '''        # === CACHE MITIGATION: apply strategy (injected) ===
-        if alg_name == "AlphaEdit" and '_apply_mitigation' in dir():
+        if alg_name == "AlphaEdit" and '_apply_mitigation' in globals():
             _apply_mitigation(cnt, cache_c)
         # === END cache mitigation ===
 '''

@@ -60,10 +60,12 @@ run_checkpointed() {
 
     echo "--- $alg_name: target $target edits (seed=$seed) ---"
 
-    # Build fast_checkpoint flag
-    FAST_FLAG=""
-    if [[ "${FAST_CHECKPOINT:-false}" == "true" ]]; then
-        FAST_FLAG="--fast_checkpoint"
+    # Build evaluation mode flag (mutually exclusive)
+    EVAL_FLAG=""
+    if [[ "${EVAL_AT_CHECKPOINTS_ONLY:-false}" == "true" ]]; then
+        EVAL_FLAG="--eval_at_checkpoints_only"
+    elif [[ "${FAST_CHECKPOINT:-false}" == "true" ]]; then
+        EVAL_FLAG="--fast_checkpoint"
     fi
 
     uv run python src/checkpoint_runner.py \
@@ -78,7 +80,7 @@ run_checkpointed() {
         --save_interval "$SAVE_INTERVAL" \
         --downstream_eval_steps 10 \
         --conserve_memory \
-        $FAST_FLAG \
+        $EVAL_FLAG \
         $CKPT_ARGS
 
     echo "--- $alg_name at $target edits: DONE ---"

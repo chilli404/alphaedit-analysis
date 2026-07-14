@@ -1,0 +1,304 @@
+#!/usr/bin/env python3
+"""
+Offline Capability Probe: Runs perplexity/MMLU probes on existing failure
+curve checkpoints WITHOUT re-editing the model.
+
+Loads the base model once, then for each checkpoint:
+  1. Applies saved layer weights to the model
+  2. Runs perplexity measurement (WikiText-103)
+  3. Optionally runs MMLU
+  4. Restores base model weights before next checkpoint
+
+Produces output identical in format to capability_probe_runner.py.
+
+Requirements:
+  - Failure curve checkpoints must already exist (from checkpoint_runner.py)
+  - GPU with enough VRAM for the model (~16GB for Llama-3-8B in fp16)
+
+Usage:
+    python src/capability_probe_offline.py \\
+        --seed 42 \\
+        --alg_name AlphaEdit \\
+        --checkpoint_dir ~/.cache/alphaedit_checkpoints/AlphaEdit/seed42
+
+    # Auto-detect checkpoint dir, skip MMLU for speed
+    python src/capability_probe_offline.py --seed 42 --alg_name AlphaEdit --no_mmlu
+"""
+
+import argparse
+import json
+import os
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+import numpy as np
+import torch
+
+from capability_probe import (
+    compute_mmlu_accuracy,
+    compute_perplexity,
+    load_wikitext_samples,
+)
+from model_download import resolve_model_path
+
+
+def get_project_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+def resolve_checkpoint_dir(explicit_dir: str | None, alg_name: str, seed: int) -> Path:
+    """Resolve checkpoint directory using same priority as checkpoint_runner.py."""
+    if explicit_dir:
+        return Path(explicit_dir)
+
+    # Priority 1: S3 mount
+    s3_path = Path("/s3-data/continual-learning/alphaedit/checkpoints") / alg_name / f"seed{seed}"
+    if s3_path.exists():
+        return s3_path
+
+    # Priority 2: Local cache
+    return Path.home() / ".cache" / "alphaedit_checkpoints" / alg_name / f"seed{seed}"
+
+
+def find_all_checkpoints(ckpt_dir: Path) -> list[tuple[int, Path]]:
+    """Find all valid checkpoints sorted by batch index."""
+    if not ckpt_dir.exists():
+        return []
+
+    checkpoints = []
+    for batch_dir in sorted(ckpt_dir.glob("batch_*")):
+        metadata_file = batch_dir / "metadata.json"
+        weights_file = batch_dir / "model_weights.pt"
+
+        if not metadata_file.exists():
+            continue
+        if not weights_file.exists():
+            continue
+
+        try:
+            batch_idx = int(batch_dir.name.split("_")[1])
+            checkpoints.append((batch_idx, batch_dir))
+        except (ValueError, IndexError):
+            continue
+
+    return checkpoints
+
+
+def apply_checkpoint_weights(model, weights_path: Path) -> int:
+    """Apply checkpoint layer weights to model. Returns count of loaded params."""
+    layer_weights = torch.load(
+        str(weights_path),
+        map_location="cuda",
+        weights_only=True,
+    )
+    param_dict = dict(model.named_parameters())
+    loaded = 0
+    for param_name, param_data in layer_weights.items():
+        if param_name in param_dict:
+            param_dict[param_name].data.copy_(param_data)
+            loaded += 1
+    return loaded
+
+
+def run_offline_probes(
+    model,
+    tokenizer,
+    ckpt_dir: Path,
+    output_jsonl: Path,
+    compute_mmlu: bool = True,
+) -> list[dict]:
+    """Run capability probes on all checkpoints."""
+    checkpoints = find_all_checkpoints(ckpt_dir)
+
+    if not checkpoints:
+        print(f"ERROR: No valid checkpoints found in {ckpt_dir}")
+        print("  Checkpoints must contain both metadata.json and model_weights.pt")
+        sys.exit(1)
+
+    print(f"  Found {len(checkpoints)} checkpoints")
+
+    # Pre-load WikiText once
+    print("  Loading WikiText-103 test samples...")
+    texts = load_wikitext_samples(n_samples=200)
+    print(f"  Loaded {len(texts)} text passages")
+
+    # Save base model weights for restoration between checkpoints
+    print("  Saving base model state for restoration...")
+    base_state = {}
+    # Only save params that checkpoints modify (edited layers)
+    # Determine which params are in the first checkpoint
+    first_weights = torch.load(
+        str(checkpoints[0][1] / "model_weights.pt"),
+        map_location="cpu",
+        weights_only=True,
+    )
+    param_dict = dict(model.named_parameters())
+    for param_name in first_weights.keys():
+        if param_name in param_dict:
+            base_state[param_name] = param_dict[param_name].data.clone()
+    del first_weights
+    print(f"  Saved {len(base_state)} base parameter tensors")
+
+    # Ensure output directory exists
+    output_jsonl.parent.mkdir(parents=True, exist_ok=True)
+
+    # Run baseline measurement (0 edits)
+    print("\n  [PROBE] Baseline (0 edits)...")
+    t0 = time.time()
+    ppl_result = compute_perplexity(model, tokenizer, texts)
+    baseline_record = {
+        "edit_count": 0,
+        "timestamp_utc": time.time(),
+        "source": "offline_probe",
+        **ppl_result,
+    }
+    if compute_mmlu:
+        mmlu_result = compute_mmlu_accuracy(model, tokenizer)
+        baseline_record.update(mmlu_result)
+    elapsed = time.time() - t0
+    print(f"         Perplexity: {ppl_result['mean_perplexity']:.2f} ({elapsed:.1f}s)")
+
+    records = [baseline_record]
+    with open(output_jsonl, "a") as f:
+        f.write(json.dumps(baseline_record) + "\n")
+
+    # Process each checkpoint
+    for batch_idx, batch_dir in checkpoints:
+        # Load metadata for edit count
+        with open(batch_dir / "metadata.json", "r") as f:
+            metadata = json.load(f)
+        total_edits = metadata.get("total_edits", (batch_idx + 1) * 100)
+
+        # Restore base weights first (clean slate)
+        for param_name, base_data in base_state.items():
+            param_dict[param_name].data.copy_(base_data)
+
+        # Apply this checkpoint's weights
+        loaded = apply_checkpoint_weights(model, batch_dir / "model_weights.pt")
+
+        # Run probe
+        print(f"\n  [PROBE] Batch {batch_idx} ({total_edits} edits, {loaded} params loaded)...")
+        t0 = time.time()
+        ppl_result = compute_perplexity(model, tokenizer, texts)
+
+        record = {
+            "edit_count": total_edits,
+            "batch_idx": batch_idx,
+            "timestamp_utc": time.time(),
+            "source": "offline_probe",
+            "checkpoint_path": str(batch_dir),
+            **ppl_result,
+        }
+
+        if compute_mmlu:
+            mmlu_result = compute_mmlu_accuracy(model, tokenizer)
+            record.update(mmlu_result)
+
+        elapsed = time.time() - t0
+        ppl_str = f"Perplexity: {ppl_result['mean_perplexity']:.2f}"
+        mmlu_str = ""
+        if "mmlu_accuracy" in record:
+            mmlu_str = f", MMLU: {record['mmlu_accuracy']:.3f}"
+        print(f"         {ppl_str}{mmlu_str} ({elapsed:.1f}s)")
+
+        records.append(record)
+        with open(output_jsonl, "a") as f:
+            f.write(json.dumps(record) + "\n")
+
+    # Restore base weights at the end
+    for param_name, base_data in base_state.items():
+        param_dict[param_name].data.copy_(base_data)
+
+    return records
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Offline capability probing on failure curve checkpoints"
+    )
+    parser.add_argument("--seed", type=int, required=True,
+                        help="Seed used for the failure curve run")
+    parser.add_argument("--alg_name", required=True, choices=["AlphaEdit", "MEMIT"],
+                        help="Algorithm whose checkpoints to probe")
+    parser.add_argument("--checkpoint_dir", type=str, default=None,
+                        help="Explicit checkpoint directory (default: auto-resolve)")
+    parser.add_argument("--model_name",
+                        default=os.environ.get("MODEL_NAME", "meta-llama/Meta-Llama-3-8B-Instruct"),
+                        help="Model to load as base")
+    parser.add_argument("--no_mmlu", action="store_true",
+                        help="Skip MMLU evaluation (perplexity only, faster)")
+    parser.add_argument("--output", type=str, default=None,
+                        help="Output JSONL path (default: results/capability_probe/offline_seed{seed}_{alg}.jsonl)")
+
+    args = parser.parse_args()
+
+    project_root = get_project_root()
+
+    # Resolve checkpoint directory
+    ckpt_dir = resolve_checkpoint_dir(args.checkpoint_dir, args.alg_name, args.seed)
+
+    # Resolve output path
+    if args.output:
+        output_jsonl = Path(args.output)
+    else:
+        output_dir = project_root / "results" / "capability_probe"
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        output_jsonl = output_dir / f"offline_probe_seed{args.seed}_{args.alg_name}_{timestamp}.jsonl"
+
+    print(f"{'=' * 70}")
+    print("Offline Capability Probe")
+    print(f"  Seed:           {args.seed}")
+    print(f"  Algorithm:      {args.alg_name}")
+    print(f"  Checkpoint dir: {ckpt_dir}")
+    print(f"  Model:          {args.model_name}")
+    print(f"  MMLU:           {'yes' if not args.no_mmlu else 'no (perplexity only)'}")
+    print(f"  Output:         {output_jsonl}")
+    print(f"  Started:        {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    print(f"{'=' * 70}")
+
+    if not ckpt_dir.exists():
+        print(f"\nERROR: Checkpoint directory does not exist: {ckpt_dir}")
+        print("  Run the failure curve first:")
+        print(f"    EVAL_AT_CHECKPOINTS_ONLY=true bash scripts/run_failure_curve_checkpointed.sh {args.seed} {args.alg_name} 10000")
+        sys.exit(1)
+
+    # Load model once
+    print("\nLoading model...")
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    model_path = resolve_model_path(args.model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path, torch_dtype=torch.float16, device_map="auto"
+    )
+    print(f"  Model loaded: {model_path}")
+
+    # Run probes
+    records = run_offline_probes(
+        model=model,
+        tokenizer=tokenizer,
+        ckpt_dir=ckpt_dir,
+        output_jsonl=output_jsonl,
+        compute_mmlu=not args.no_mmlu,
+    )
+
+    print(f"\n{'=' * 70}")
+    print("Offline capability probe complete.")
+    print(f"  Checkpoints probed: {len(records) - 1} + baseline")
+    print(f"  Output: {output_jsonl}")
+    if records:
+        baseline_ppl = records[0]["mean_perplexity"]
+        final_ppl = records[-1]["mean_perplexity"]
+        print(f"  Perplexity: {baseline_ppl:.2f} (baseline) → {final_ppl:.2f} (final)")
+        if "mmlu_accuracy" in records[0]:
+            baseline_mmlu = records[0]["mmlu_accuracy"]
+            final_mmlu = records[-1]["mmlu_accuracy"]
+            print(f"  MMLU:       {baseline_mmlu:.3f} (baseline) → {final_mmlu:.3f} (final)")
+    print(f"  Finished: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    print(f"{'=' * 70}")
+
+
+if __name__ == "__main__":
+    main()

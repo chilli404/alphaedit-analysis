@@ -41,7 +41,9 @@ Usage:
 """
 
 import argparse
+import json
 import os
+import platform
 import subprocess
 import sys
 import textwrap
@@ -97,7 +99,10 @@ def find_latest_checkpoint(ckpt_dir: Path) -> tuple[int, Path] | None:
     if not ckpt_dir.exists():
         return None
 
-    batch_dirs = sorted(ckpt_dir.glob("batch_*"))
+    batch_dirs = sorted(
+        [d for d in ckpt_dir.glob("batch_*") if d.is_dir()],
+        key=lambda d: int(d.name.split("_")[1]) if d.name.split("_")[1].isdigit() else -1,
+    )
     if not batch_dirs:
         return None
 
@@ -129,12 +134,18 @@ def build_checkpoint_script(
     save_interval: int,
     checkpoint_dir: str,
     fast_checkpoint: bool = False,
+    eval_at_checkpoints_only: bool = False,
 ) -> str:
     """
     Build an inline Python script that:
     1. Seeds all RNGs
     2. Injects checkpoint save/load/skip into evaluate.py
     3. Executes the patched evaluate.py as __main__
+
+    Evaluation modes:
+      - Normal: Evaluate all facts after every batch (slow, complete)
+      - fast_checkpoint: Evaluate only edited batch after every batch (fast, partial)
+      - eval_at_checkpoints_only: Evaluate all facts only at checkpoint boundaries (balanced)
     """
     argv_parts = [
         "experiments.evaluate",
@@ -178,6 +189,7 @@ _ckpt_alg_name = "{alg_name}"
 _ckpt_seed = {seed}
 _ckpt_num_edits = {num_edits}
 _ckpt_fast_mode = {fast_checkpoint}
+_ckpt_eval_at_checkpoints_only = {eval_at_checkpoints_only}
 
 def _ckpt_save(cnt, model, cache_c, hparams, alg_name):
     \"\"\"Save model weights and cache_c at checkpoint boundary.\"\"\"
@@ -288,7 +300,7 @@ assert loop_anchor in source, (
 
 load_injection = '''    # === CHECKPOINT: load state from previous run (injected) ===
     _ckpt_cache_c_loaded = None
-    if _ckpt_start_batch > 0 and '_ckpt_load' in dir():
+    if _ckpt_start_batch > 0 and '_ckpt_load' in globals():
         _ckpt_cache_c_loaded = _ckpt_load(model, hparams, alg_name)
         if _ckpt_cache_c_loaded is not None and alg_name == "AlphaEdit":
             cache_c = _ckpt_cache_c_loaded
@@ -308,7 +320,8 @@ assert pre_anchor in source, (
 )
 
 skip_injection = '''        # === CHECKPOINT: skip already-processed batches (injected) ===
-        if '_ckpt_should_skip' in dir() and _ckpt_should_skip(cnt):
+        if '_ckpt_should_skip' in globals() and _ckpt_should_skip(cnt):
+            cnt += 1
             continue
         # === END checkpoint skip ===
 '''
@@ -326,7 +339,7 @@ assert post_anchor in source, (
 )
 
 save_injection = '''        # === CHECKPOINT: save at interval boundaries (injected) ===
-        if '_ckpt_should_save' in dir() and _ckpt_should_save(cnt):
+        if '_ckpt_should_save' in globals() and _ckpt_should_save(cnt):
             _ckpt_save(cnt, model, cache_c if alg_name == "AlphaEdit" else None, hparams, alg_name)
         # === END checkpoint save ===
 '''
@@ -336,7 +349,31 @@ source = source.replace(
     1,
 )
 
-# 9. Inject FAST EVAL guard in evaluation loop (skip records not in current batch)
+# 9. Inject CHECKPOINT-ONLY EVAL guard (skip entire evaluation for non-checkpoint batches)
+# The evaluation section in evaluate.py is OUTSIDE the edit loop (runs once after all edits).
+# We inject a flag check that prevents evaluation when the final batch is not a checkpoint boundary.
+eval_start_anchor = '    # torch.save(hs, "post_edit_hs_memit.pt")\\n    start = time()'
+assert eval_start_anchor in source, (
+    "Evaluation start anchor not found in evaluate.py source. "
+    "Upstream code has changed from pinned commit b84624f."
+)
+
+checkpoint_eval_skip = '''    # torch.save(hs, "post_edit_hs_memit.pt")
+    # === CHECKPOINT: skip evaluation if last batch is not a checkpoint boundary (injected) ===
+    _do_final_eval = True
+    if _ckpt_eval_at_checkpoints_only and not _ckpt_should_save(cnt - 1):
+        _do_final_eval = False
+        print(f"  [CHECKPOINT] Skipping final evaluation (batch {{cnt-1}} not at checkpoint boundary)")
+        print(f"  [CHECKPOINT] Evaluation will run when resumed and a checkpoint boundary is reached.")
+    # === END checkpoint eval skip ===
+    start = time()'''
+source = source.replace(
+    eval_start_anchor,
+    checkpoint_eval_skip,
+    1,
+)
+
+# 10. Inject FAST EVAL guard in evaluation loop (skip records not in current batch)
 eval_anchor = '    for record in ds:\\n        out_file = Path(case_result_template.format(num_edits, record["case_id"]))'
 assert eval_anchor in source, (
     "Evaluation loop anchor not found in evaluate.py source. "
@@ -344,6 +381,9 @@ assert eval_anchor in source, (
 )
 
 fast_eval_injection = '''    for record in ds:
+        # === CHECKPOINT: skip entire evaluation if _do_final_eval is False (injected) ===
+        if not _do_final_eval:
+            break
         # === CHECKPOINT: fast mode - skip evaluating non-batch records (injected) ===
         if _ckpt_fast_mode and record["case_id"] not in case_ids:
             continue
@@ -355,13 +395,15 @@ source = source.replace(
     1,
 )
 
-# 10. Verify all injections succeeded
+# 11. Verify all injections succeeded
 assert "CHECKPOINT: load state" in source, "Load injection failed"
 assert "CHECKPOINT: skip already-processed" in source, "Skip injection failed"
 assert "CHECKPOINT: save at interval" in source, "Save injection failed"
+assert "CHECKPOINT: skip evaluation if last batch is not" in source, "Checkpoint-only eval injection failed"
+assert "CHECKPOINT: skip entire evaluation if _do_final_eval" in source, "Final eval guard injection failed"
 assert "CHECKPOINT: fast mode" in source, "Fast eval injection failed"
 
-# 11. Execute
+# 12. Execute
 exec(compile(source, "experiments/evaluate.py", "exec"),
      {{
          "__name__": "__main__",
@@ -373,18 +415,20 @@ exec(compile(source, "experiments/evaluate.py", "exec"),
          "_ckpt_seed": _ckpt_seed,
          "_ckpt_num_edits": _ckpt_num_edits,
          "_ckpt_fast_mode": _ckpt_fast_mode,
+         "_ckpt_eval_at_checkpoints_only": _ckpt_eval_at_checkpoints_only,
          "_ckpt_save": _ckpt_save,
          "_ckpt_load": _ckpt_load,
          "_ckpt_should_skip": _ckpt_should_skip,
          "_ckpt_should_save": _ckpt_should_save,
      }})
 
-# 12. Final summary
+# 13. Final summary
 print(f"\\n=== Checkpoint runner complete ===")
 print(f"  Algorithm: {{_ckpt_alg_name}}")
 print(f"  Resumed from batch: {{_ckpt_start_batch}}")
 print(f"  Save interval: every {{_ckpt_save_interval}} batches")
-print(f"  Fast checkpoint mode: {{_ckpt_fast_mode}}")
+print(f"  Fast checkpoint: {{_ckpt_fast_mode}}")
+print(f"  Eval at checkpoints only: {{_ckpt_eval_at_checkpoints_only}}")
 print(f"  Checkpoint dir: {{_ckpt_dir}}")
 """)
     return script
@@ -448,6 +492,7 @@ def run(args: argparse.Namespace) -> None:
         save_interval=args.save_interval,
         checkpoint_dir=str(ckpt_dir),
         fast_checkpoint=args.fast_checkpoint,
+        eval_at_checkpoints_only=args.eval_at_checkpoints_only,
     )
 
     # Environment
@@ -458,6 +503,15 @@ def run(args: argparse.Namespace) -> None:
     env["TOKENIZERS_PARALLELISM"] = "false"
 
     total_batches = args.dataset_size_limit // args.num_edits
+
+    # Determine evaluation mode description
+    if args.eval_at_checkpoints_only:
+        eval_mode = f"Milestone only (every {args.save_interval} batches)"
+    elif args.fast_checkpoint:
+        eval_mode = "Fast (edited batch only)"
+    else:
+        eval_mode = "Full (all facts every batch)"
+
     print(f"{'=' * 70}")
     print("Checkpoint-Based Failure Curve Runner")
     print(f"  Algorithm:       {args.alg_name}")
@@ -466,7 +520,7 @@ def run(args: argparse.Namespace) -> None:
     print(f"  Total batches:   {total_batches}")
     print(f"  Resume from:     batch {start_from_batch} ({start_from_batch * args.num_edits} edits)")
     print(f"  Save interval:   every {args.save_interval} batches")
-    print(f"  Fast checkpoint: {'YES - only evaluate edited batch' if args.fast_checkpoint else 'NO - full dataset evaluation'}")
+    print(f"  Evaluation:      {eval_mode}")
     print(f"  Seed:            {args.seed}")
     print(f"  CUDA:            device {args.cuda_device}")
     print(f"  Model:           {args.model_name}")
@@ -481,11 +535,61 @@ def run(args: argparse.Namespace) -> None:
         print(f"\nERROR: Checkpoint run failed with return code {result.returncode}")
         sys.exit(result.returncode)
 
+    # Detect run_dir and run_id created by evaluate.py
+    from seeded_runner import find_latest_run_dir
+    project_root = get_project_root()
+    run_dir_rel, run_id = find_latest_run_dir(args.alg_name)
+
+    # Find latest checkpoint to determine where this segment ended
+    latest_ckpt = find_latest_checkpoint(ckpt_dir)
+    ended_at_batch = latest_ckpt[0] if latest_ckpt else total_batches - 1
+
+    # Record metadata as JSONL (append mode — one line per segment/resume)
+    # This way multiple resumes don't overwrite each other.
+    metadata = {
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "seed": args.seed,
+        "python_version": platform.python_version(),
+        "hostname": platform.node(),
+        "alphaedit_commit": "b84624f",
+        "cuda_device": args.cuda_device,
+        "experiment": "failure_curve_ckpt",
+        "algorithm": args.alg_name,
+        "dataset": args.ds_name,
+        "dataset_size_limit": args.dataset_size_limit,
+        "num_edits": args.num_edits,
+        "run_dir": run_dir_rel,
+        "run_id": run_id,
+        "checkpoint_dir": str(ckpt_dir),
+        "resumed_from_batch": start_from_batch if start_from_batch > 0 else None,
+        "ended_at_batch": ended_at_batch,
+        "params": {
+            "model_name": args.model_name,
+            "hparams_fname": args.hparams_fname,
+            "save_interval": args.save_interval,
+            "fast_checkpoint": args.fast_checkpoint,
+            "eval_at_checkpoints_only": args.eval_at_checkpoints_only,
+            "downstream_eval_steps": args.downstream_eval_steps,
+        },
+    }
+
+    results_dir = project_root / "results"
+    metadata_dir = results_dir / "metadata"
+    metadata_dir.mkdir(parents=True, exist_ok=True)
+    # JSONL: append one line per segment so multi-resume runs build a history
+    metadata_file = metadata_dir / f"run_seed{args.seed}_{args.alg_name}_ckpt_{args.dataset_size_limit}.jsonl"
+    with open(metadata_file, "a") as f:
+        f.write(json.dumps(metadata) + "\n")
+    print(f"Metadata appended to: {metadata_file}")
+
     print(f"\n{'=' * 70}")
     print("Checkpoint run completed.")
-    print(f"  Finished:  {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    print(f"  Results:   {alphaedit_root / 'results' / args.alg_name}")
+    print(f"  Finished:    {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    print(f"  Results:     {alphaedit_root / 'results' / args.alg_name}")
+    if run_id:
+        print(f"  Run ID:      {run_id}")
     print(f"  Checkpoints: {ckpt_dir}")
+    print(f"  Segment:     batch {start_from_batch} → {ended_at_batch}")
     print(f"{'=' * 70}")
 
 
@@ -515,8 +619,13 @@ def main():
                         help="Save checkpoint every N batches (default: 10 = every 1000 edits)")
     parser.add_argument("--checkpoint_dir", default=None,
                         help="Override checkpoint directory (default: S3 mount or ~/.cache)")
-    parser.add_argument("--fast_checkpoint", action="store_true",
-                        help="Fast checkpoint mode: only evaluate edited batch, not entire dataset (much faster)")
+
+    # Evaluation mode (mutually exclusive)
+    eval_group = parser.add_mutually_exclusive_group()
+    eval_group.add_argument("--fast_checkpoint", action="store_true",
+                        help="Fast mode: only evaluate edited batch after each edit (partial preservation measurement)")
+    eval_group.add_argument("--eval_at_checkpoints_only", action="store_true",
+                        help="Milestone mode: evaluate full dataset only at checkpoint boundaries (RECOMMENDED for conferences)")
 
     args = parser.parse_args()
     run(args)

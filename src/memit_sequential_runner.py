@@ -180,7 +180,7 @@ def build_sequential_script(
 
     # Injection into evaluate.py: increment batch counter after each edit
     batch_increment_hook = r'''        # === MEMIT+SeqReg: increment batch (injected) ===
-        if '_memit_batch_idx' in dir():
+        if '_memit_batch_idx' in globals():
             _memit_batch_idx += 1
         # === END batch increment ===
 '''
@@ -189,7 +189,7 @@ def build_sequential_script(
     debug_freeze_code = ""
     if debug_freeze_batch is not None:
         debug_freeze_code = f'''        # === MEMIT+SeqReg: debug freeze mode (injected) ===
-        if '_memit_batch_idx' in dir() and _memit_batch_idx == {debug_freeze_batch + 1}:
+        if '_memit_batch_idx' in globals() and _memit_batch_idx == {debug_freeze_batch + 1}:
             import copy as _copy_mod
             print("\\n=== DEBUG FREEZE: same-state comparison at batch {debug_freeze_batch} ===")
             _frozen_cache = _copy_mod.deepcopy(_memit_prev_cache)

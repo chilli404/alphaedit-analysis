@@ -127,12 +127,53 @@ def build_runner_script(
     return script
 
 
+def find_latest_run_dir(alg_name: str) -> tuple[str | None, str | None]:
+    """Find the most recently created run_NNN directory for this algorithm.
+
+    Returns (run_dir_relative, run_id) or (None, None) if not found.
+    run_dir_relative is relative to the project root (e.g. "vendor/AlphaEdit/results/AlphaEdit/run_001").
+    """
+    alphaedit_root = get_alphaedit_root()
+    project_root = get_project_root()
+    alg_results = alphaedit_root / "results" / alg_name
+
+    if not alg_results.exists():
+        return None, None
+
+    run_dirs = sorted(
+        [d for d in alg_results.iterdir() if d.is_dir() and d.name.startswith("run_")],
+        key=lambda d: d.stat().st_mtime,
+    )
+    if not run_dirs:
+        return None, None
+
+    latest = run_dirs[-1]
+    run_id = latest.name
+    run_dir_relative = str(latest.relative_to(project_root))
+    return run_dir_relative, run_id
+
+
 def record_metadata(
     seed: int,
     args: argparse.Namespace,
     results_dir: Path,
-) -> None:
-    """Save run metadata for reproducibility record."""
+    experiment_name: str | None = None,
+    run_dir: str | None = None,
+    run_id: str | None = None,
+) -> Path:
+    """Save run metadata for reproducibility record.
+
+    Args:
+        seed: Random seed used for this run.
+        args: Parsed command-line arguments.
+        results_dir: Project-level results directory.
+        experiment_name: Short experiment identifier (e.g. "mve1", "failure_curve").
+        run_dir: Relative path to the vendor results directory for this run.
+        run_id: The run_NNN identifier (e.g. "run_001").
+
+    Returns:
+        Path to the written metadata file.
+    """
     alphaedit_root = get_alphaedit_root()
 
     try:
@@ -151,13 +192,16 @@ def record_metadata(
         "hostname": platform.node(),
         "alphaedit_commit": commit,
         "cuda_device": args.cuda_device,
-        "experiment": {
-            "alg_name": args.alg_name,
+        "experiment": experiment_name or f"{args.alg_name.lower()}_{args.ds_name}",
+        "algorithm": args.alg_name,
+        "dataset": args.ds_name,
+        "dataset_size_limit": args.dataset_size_limit,
+        "num_edits": args.num_edits,
+        "run_dir": run_dir,
+        "run_id": run_id,
+        "params": {
             "model_name": args.model_name,
             "hparams_fname": args.hparams_fname,
-            "ds_name": args.ds_name,
-            "dataset_size_limit": args.dataset_size_limit,
-            "num_edits": args.num_edits,
             "downstream_eval_steps": args.downstream_eval_steps,
             "skip_generation_tests": args.skip_generation_tests,
             "generation_test_interval": args.generation_test_interval,
@@ -174,6 +218,7 @@ def record_metadata(
         json.dump(metadata, f, indent=2)
 
     print(f"Metadata saved to: {metadata_file}")
+    return metadata_file
 
 
 
@@ -262,9 +307,6 @@ def run(args: argparse.Namespace) -> None:
     print(f"  Started:    {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print(f"{'=' * 70}")
 
-    # Record metadata before run
-    record_metadata(args.seed, args, results_dir)
-
     # Find the uv executable to use the project's venv
     cmd = [
         sys.executable, "-c", script
@@ -280,10 +322,22 @@ def run(args: argparse.Namespace) -> None:
         print(f"\nERROR: Experiment failed with return code {result.returncode}")
         sys.exit(result.returncode)
 
+    # Detect run_dir and run_id created by evaluate.py
+    run_dir_rel, run_id = find_latest_run_dir(args.alg_name)
+
+    # Record metadata with run_dir and run_id
+    record_metadata(
+        args.seed, args, results_dir,
+        run_dir=run_dir_rel,
+        run_id=run_id,
+    )
+
     print(f"\n{'=' * 70}")
     print("Experiment completed successfully.")
     print(f"  Finished:  {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print(f"  Results:   {alphaedit_root / 'results' / args.alg_name}")
+    if run_id:
+        print(f"  Run ID:    {run_id}")
     print(f"{'=' * 70}")
 
 

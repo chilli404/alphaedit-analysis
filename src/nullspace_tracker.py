@@ -233,7 +233,7 @@ assert pre_anchor in source, (
 )
 
 pre_injection = '        # === NULLSPACE TRACKING: pre-edit measurement (injected) ===\\n'
-pre_injection += "        if alg_name == \\"AlphaEdit\\" and '_ns_track_output' in dir():\\n"
+pre_injection += "        if alg_name == \\"AlphaEdit\\" and '_ns_track_output' in globals():\\n"
 pre_injection += '            _ns_track_pre_batch(cnt, cache_c, P, hparams, num_edits, len(record_chunks))\\n'
 pre_injection += '        # === END pre-edit tracking ===\\n'
 source = source.replace(
@@ -250,7 +250,7 @@ assert post_anchor in source, (
 )
 
 post_injection = '        # === NULLSPACE TRACKING: post-edit measurement (injected) ===\\n'
-post_injection += "        if alg_name == \\"AlphaEdit\\" and '_ns_track_output' in dir():\\n"
+post_injection += "        if alg_name == \\"AlphaEdit\\" and '_ns_track_output' in globals():\\n"
 post_injection += '            _ns_track_post_batch(cnt, cache_c, P, hparams, num_edits)\\n'
 post_injection += '        # === END post-edit tracking ===\\n'
 source = source.replace(

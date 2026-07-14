@@ -97,7 +97,7 @@ def build_coupling_script(
     # The measurement code injected into AlphaEdit_main.py AFTER resid computation
     pre_solve_measurement = r'''
         # === COUPLING MEASUREMENT: pre-solve (injected) ===
-        if '_coupling_measure' in dir():
+        if '_coupling_measure' in globals():
             import torch as _torch_m
             _rhs = layer_ks @ resid.T
             _projected_rhs = P[i,:,:].cuda() @ _rhs
@@ -115,7 +115,7 @@ def build_coupling_script(
     # The measurement code injected AFTER upd_matrix_match_shape
     post_solve_measurement = r'''
         # === COUPLING MEASUREMENT: post-solve (injected) ===
-        if '_coupling_measure' in dir():
+        if '_coupling_measure' in globals():
             import torch as _torch_m
             _coupling_layer_data[str(layer)]["upd_matrix_norm"] = _torch_m.linalg.norm(upd_matrix).item()
         # === END coupling post-solve ===
@@ -124,7 +124,7 @@ def build_coupling_script(
     # The per-batch measurement hook injected at PRE_EDIT_ANCHOR in evaluate.py
     pre_batch_hook = r'''
         # === COUPLING: per-batch pre-hook (injected) ===
-        if '_coupling_output' in dir() and alg_name == "AlphaEdit":
+        if '_coupling_output' in globals() and alg_name == "AlphaEdit":
             _coupling_layer_data = {}
             _coupling_measure = True
         # === END coupling pre-hook ===
@@ -133,7 +133,7 @@ def build_coupling_script(
     # The per-batch measurement hook injected at POST_EDIT_ANCHOR in evaluate.py
     post_batch_hook = r'''
         # === COUPLING: per-batch post-hook (injected) ===
-        if '_coupling_output' in dir() and alg_name == "AlphaEdit":
+        if '_coupling_output' in globals() and alg_name == "AlphaEdit":
             _current_record = record_chunks[0] if isinstance(record_chunks, list) else record_chunks
             _case_id = _current_record.get("case_id", cnt)
             _meta = _coupling_metadata.get(_case_id, {})
@@ -356,25 +356,31 @@ def run(args: argparse.Namespace) -> None:
     print("Validating source anchors...")
     validate_anchors()
 
-    # Generate coupling dataset
+    # Generate coupling dataset (or load from cache if already generated)
     results_dir = project_root / "results" / "coupling_stress"
     results_dir.mkdir(parents=True, exist_ok=True)
 
     dataset_path = results_dir / f"coupling_dataset_seed{args.seed}.json"
 
-    print("\nGenerating coupling dataset...")
-    from coupling_dataset import generate_coupling_dataset
+    if dataset_path.exists():
+        print(f"\nLoading cached coupling dataset from {dataset_path}...")
+        with open(dataset_path, "r") as f:
+            sequence = json.load(f)
+        print(f"  Loaded {len(sequence)} records (cached)")
+    else:
+        print("\nGenerating coupling dataset...")
+        from coupling_dataset import generate_coupling_dataset
 
-    data_dir = alphaedit_root / "data"
-    sequence = generate_coupling_dataset(
-        data_dir=data_dir,
-        seed=args.seed,
-        max_pairs_per_type=args.max_pairs_per_type,
-        warmup_count=args.warmup_count,
-    )
-    with open(dataset_path, "w") as f:
-        json.dump(sequence, f)
-    print(f"  Generated {len(sequence)} records → {dataset_path}")
+        data_dir = alphaedit_root / "data"
+        sequence = generate_coupling_dataset(
+            data_dir=data_dir,
+            seed=args.seed,
+            max_pairs_per_type=args.max_pairs_per_type,
+            warmup_count=args.warmup_count,
+        )
+        with open(dataset_path, "w") as f:
+            json.dump(sequence, f)
+        print(f"  Generated {len(sequence)} records → {dataset_path}")
 
     # Output JSONL path
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")

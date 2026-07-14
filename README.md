@@ -146,54 +146,80 @@ AlphaEdit processes edits in source-file order with no shuffling. P is static, s
 
 ---
 
-## Extension C: MEMIT+PrevKeyReg+Ridge Control Baseline
+## Extension C: MEMIT+SeqReg — Non-Projected Sequential Regularization
+
+### Scientific Question
+
+**Does MEMIT with AlphaEdit-like sequential regularization (Eq. 12) close the performance gap to AlphaEdit, or is the null-space projection P still necessary?**
 
 ### Motivation
 
-AlphaEdit's advantage over MEMIT in sequential editing could stem from:
-1. Null-space projection specifically (geometric constraint)
-2. Implicit regularization of update magnitude
-3. Implicit preservation of previous edit directions
-
-To distinguish these, we add a single strengthened MEMIT baseline that penalizes movement in previous key directions and update magnitude — **without** null-space projection.
-
-### Math
-
-MEMIT+PrevKeyReg+Ridge modifies only the LHS of MEMIT's normal equation:
-
+AlphaEdit (Eq. 12) optimizes:
 ```
-lhs = α·C₀ + K_new @ K_new^T
-if λ_prev > 0: lhs += λ_prev * K_prev @ K_prev^T
-if λ_delta > 0: lhs += λ_delta * I
+minimize ||ΔPK - R||² + λ_prev ||ΔPK_prev||² + λ_delta ||ΔP||²
+```
+where P is the null-space projection matrix.
+
+This objective combines three components:
+1. **Edit fit** (||ΔPK - R||²)
+2. **Previous-edit protection** (λ_prev ||ΔPK_prev||²)
+3. **Update size minimization** (λ_delta ||ΔP||²)
+
+**Key insight**: Components 2 and 3 are sequential regularization terms that could help MEMIT even without projection.
+
+MEMIT+SeqReg tests the **non-projected analogue**:
+```
+minimize ||ΔK - R||² + λ_prev ||ΔK_prev||² + λ_delta ||Δ||²
+```
+
+If this closes the gap, AlphaEdit's advantage is regularization strategy, not geometric projection. If the gap remains, projection P is necessary.
+
+### Implementation
+
+LHS-only augmentation (dual source injection):
+
+```python
+lhs = α·C₀ + K_new @ K_new^T + λ_prev · K_prev @ K_prev^T + λ_delta · I
 adj_k = solve(lhs, K_new)
 ΔW = resid @ adj_k^T
 ```
 
-- `λ_prev · K_prev @ K_prev^T` — penalizes ΔW in directions of previous edit keys
-- `λ_delta · I` — ridge regularization on update magnitude
-- Setting both to 0 recovers exact original MEMIT
+- **K_prev**: Concatenation of keys from previous batches (cached)
+- **λ_prev=1, λ_delta=1**: Direct coefficient analogue to AlphaEdit Eq. 12
+- **LHS norm logging**: Captures ||base_lhs||, ||K_prev@K_prev^T||, dimension for scale verification
 
-Named "PrevKeyReg" (not "Prev") because it regularizes in previous key directions without replaying previous target values.
+### Calibration Settings
 
-### Run matrix
-
-1. **Screening (seed 42)**: λ_prev ∈ {0.1, 1.0, 10.0} × λ_delta ∈ {1e-5, 1e-4} → 6 runs
-2. **Validation**: Best setting on seeds 42, 137, 2024, 7, 99
-
-### Usage
+Run on seed 42 (2000 edits, 20 batches):
 
 ```bash
-bash scripts/run_memit_sequential.sh 42 1.0 1e-4   # λ_prev=1.0, λ_delta=1e-4
-bash scripts/run_memit_sequential.sh 42 0 0         # original MEMIT (verification)
-DEBUG_BATCH=5 bash scripts/run_memit_sequential.sh 42 1.0 1e-4  # same-state diagnostic
+# A: Direct Eq. 12 analogue
+FAST_CHECKPOINT=true bash scripts/run_memit_sequential.sh 42 1 1
+
+# B: Weak ridge (sensitivity test)
+FAST_CHECKPOINT=true bash scripts/run_memit_sequential.sh 42 1 1e-4
+
+# C: Strong prev-key protection
+FAST_CHECKPOINT=true bash scripts/run_memit_sequential.sh 42 10 1
+
+# D: Very strong prev-key protection
+FAST_CHECKPOINT=true bash scripts/run_memit_sequential.sh 42 100 1
 ```
 
-### Key metrics
+After observing LHS term norms, may add norm-calibrated setting.
 
-- Standard: efficacy, generalization, specificity
-- `||ΔW||_F` per layer (should decrease with λ_delta)
-- `||ΔW @ K_prev||` per layer (should decrease with λ_prev)
-- Cache size (batches and keys per layer)
+### Key Metrics
+
+- **Standard preservation**: efficacy, paraphrase, neighborhood, GLUE
+- **Per-batch norms**: ||ΔW||, ||ΔW @ K_prev||, ||base_lhs||, ||K_prev@K_prev^T||
+- **Cache statistics**: batches stored, total keys per layer
+- **Comparison**: AlphaEdit vs MEMIT vs MEMIT+SeqReg degradation curves
+
+### Expected Outcomes
+
+1. **Gap closes**: Sequential regularization is sufficient → projection unnecessary
+2. **Gap remains**: Null-space constraint is critical → validates AlphaEdit's design
+3. **Partial closure**: Regularization helps but projection still provides advantage
 
 ---
 
@@ -214,22 +240,54 @@ bash scripts/smoke_test.sh  # requires GPU
 
 ## Running Experiments
 
+### Core Experiments
+
 ```bash
-# Core reproduction
+# Core reproduction (MVE1: 2000 edits, 20 batches)
 bash scripts/run_mve1_alphaedit_mcf.sh 42
 bash scripts/run_rome_baseline.sh 42
 
 # Mechanistic analysis
 bash scripts/run_nullspace_analysis.sh 42
 bash scripts/run_failure_curve.sh 42
+```
 
-# Novel extensions
+### Checkpoint-Based Experiments (Long-Running)
+
+**Evaluation Modes:**
+
+1. **Normal** (default): Evaluate all facts after every batch (~16h for 5000 edits)
+2. **Fast** (`FAST_CHECKPOINT=true`): Evaluate only edited batch (~2-3h, partial data)
+3. **Milestone** (`EVAL_AT_CHECKPOINTS_ONLY=true`): Evaluate all facts only at checkpoints (~10-12h) **← RECOMMENDED FOR PAPERS**
+
+```bash
+# Failure curve with milestone evaluation (AlphaEdit + MEMIT to 5000 edits)
+tmux new-session -d -s fc_42_5k "cd ~/Projects/alphaedit-analysis && \
+  EVAL_AT_CHECKPOINTS_ONLY=true bash scripts/run_failure_curve_checkpointed.sh 42 both 5000 \
+  2>&1 | tee logs/fc_42_5k.log"
+
+# Fast mode (testing/iteration)
+FAST_CHECKPOINT=true bash scripts/run_failure_curve_checkpointed.sh 42 AlphaEdit 2000
+```
+
+### MEMIT+SeqReg Control Baseline
+
+```bash
+# Calibration (seed 42, with fast checkpoint for speed)
+FAST_CHECKPOINT=true bash scripts/run_memit_sequential.sh 42 1 1      # Direct Eq. 12 analogue
+FAST_CHECKPOINT=true bash scripts/run_memit_sequential.sh 42 1 1e-4   # Weak ridge
+FAST_CHECKPOINT=true bash scripts/run_memit_sequential.sh 42 10 1     # Strong prev-key
+FAST_CHECKPOINT=true bash scripts/run_memit_sequential.sh 42 100 1    # Very strong prev-key
+
+# Verification: original MEMIT
+FAST_CHECKPOINT=true bash scripts/run_memit_sequential.sh 42 0 0
+```
+
+### Novel Extensions
+
+```bash
 bash scripts/run_coupling_stress.sh 42      # ~2.5h per seed
 bash scripts/run_order_sensitivity.sh 42    # ~3h per ordering
-
-# MEMIT+PrevKeyReg+Ridge control baseline
-bash scripts/run_memit_sequential.sh 42 1.0 1e-4   # PrevKeyReg+Ridge
-bash scripts/run_memit_sequential.sh 42 0 0         # original MEMIT (verification)
 
 # Failure curve (checkpointed for long runs)
 bash scripts/run_failure_curve_checkpointed.sh 42 both 5000
