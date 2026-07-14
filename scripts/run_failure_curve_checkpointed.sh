@@ -60,6 +60,12 @@ run_checkpointed() {
 
     echo "--- $alg_name: target $target edits (seed=$seed) ---"
 
+    # Build fast_checkpoint flag
+    FAST_FLAG=""
+    if [[ "${FAST_CHECKPOINT:-false}" == "true" ]]; then
+        FAST_FLAG="--fast_checkpoint"
+    fi
+
     uv run python src/checkpoint_runner.py \
         --seed "$seed" \
         --cuda_device "$CUDA_DEVICE" \
@@ -72,6 +78,7 @@ run_checkpointed() {
         --save_interval "$SAVE_INTERVAL" \
         --downstream_eval_steps 10 \
         --conserve_memory \
+        $FAST_FLAG \
         $CKPT_ARGS
 
     echo "--- $alg_name at $target edits: DONE ---"

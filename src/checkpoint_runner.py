@@ -128,6 +128,7 @@ def build_checkpoint_script(
     start_from_batch: int,
     save_interval: int,
     checkpoint_dir: str,
+    fast_checkpoint: bool = False,
 ) -> str:
     """
     Build an inline Python script that:
@@ -176,6 +177,7 @@ _ckpt_dir = "{checkpoint_dir}"
 _ckpt_alg_name = "{alg_name}"
 _ckpt_seed = {seed}
 _ckpt_num_edits = {num_edits}
+_ckpt_fast_mode = {fast_checkpoint}
 
 def _ckpt_save(cnt, model, cache_c, hparams, alg_name):
     \"\"\"Save model weights and cache_c at checkpoint boundary.\"\"\"
@@ -334,12 +336,32 @@ source = source.replace(
     1,
 )
 
-# 9. Verify all injections succeeded
+# 9. Inject FAST EVAL guard in evaluation loop (skip records not in current batch)
+eval_anchor = '    for record in ds:\\n        out_file = Path(case_result_template.format(num_edits, record["case_id"]))'
+assert eval_anchor in source, (
+    "Evaluation loop anchor not found in evaluate.py source. "
+    "Upstream code has changed from pinned commit b84624f."
+)
+
+fast_eval_injection = '''    for record in ds:
+        # === CHECKPOINT: fast mode - skip evaluating non-batch records (injected) ===
+        if _ckpt_fast_mode and record["case_id"] not in case_ids:
+            continue
+        # === END fast mode guard ===
+        out_file = Path(case_result_template.format(num_edits, record["case_id"]))'''
+source = source.replace(
+    eval_anchor,
+    fast_eval_injection,
+    1,
+)
+
+# 10. Verify all injections succeeded
 assert "CHECKPOINT: load state" in source, "Load injection failed"
 assert "CHECKPOINT: skip already-processed" in source, "Skip injection failed"
 assert "CHECKPOINT: save at interval" in source, "Save injection failed"
+assert "CHECKPOINT: fast mode" in source, "Fast eval injection failed"
 
-# 10. Execute
+# 11. Execute
 exec(compile(source, "experiments/evaluate.py", "exec"),
      {{
          "__name__": "__main__",
@@ -350,17 +372,19 @@ exec(compile(source, "experiments/evaluate.py", "exec"),
          "_ckpt_alg_name": _ckpt_alg_name,
          "_ckpt_seed": _ckpt_seed,
          "_ckpt_num_edits": _ckpt_num_edits,
+         "_ckpt_fast_mode": _ckpt_fast_mode,
          "_ckpt_save": _ckpt_save,
          "_ckpt_load": _ckpt_load,
          "_ckpt_should_skip": _ckpt_should_skip,
          "_ckpt_should_save": _ckpt_should_save,
      }})
 
-# 11. Final summary
+# 12. Final summary
 print(f"\\n=== Checkpoint runner complete ===")
 print(f"  Algorithm: {{_ckpt_alg_name}}")
 print(f"  Resumed from batch: {{_ckpt_start_batch}}")
 print(f"  Save interval: every {{_ckpt_save_interval}} batches")
+print(f"  Fast checkpoint mode: {{_ckpt_fast_mode}}")
 print(f"  Checkpoint dir: {{_ckpt_dir}}")
 """)
     return script
@@ -423,6 +447,7 @@ def run(args: argparse.Namespace) -> None:
         start_from_batch=start_from_batch,
         save_interval=args.save_interval,
         checkpoint_dir=str(ckpt_dir),
+        fast_checkpoint=args.fast_checkpoint,
     )
 
     # Environment
@@ -441,6 +466,7 @@ def run(args: argparse.Namespace) -> None:
     print(f"  Total batches:   {total_batches}")
     print(f"  Resume from:     batch {start_from_batch} ({start_from_batch * args.num_edits} edits)")
     print(f"  Save interval:   every {args.save_interval} batches")
+    print(f"  Fast checkpoint: {'YES - only evaluate edited batch' if args.fast_checkpoint else 'NO - full dataset evaluation'}")
     print(f"  Seed:            {args.seed}")
     print(f"  CUDA:            device {args.cuda_device}")
     print(f"  Model:           {args.model_name}")
@@ -489,6 +515,8 @@ def main():
                         help="Save checkpoint every N batches (default: 10 = every 1000 edits)")
     parser.add_argument("--checkpoint_dir", default=None,
                         help="Override checkpoint directory (default: S3 mount or ~/.cache)")
+    parser.add_argument("--fast_checkpoint", action="store_true",
+                        help="Fast checkpoint mode: only evaluate edited batch, not entire dataset (much faster)")
 
     args = parser.parse_args()
     run(args)

@@ -49,6 +49,11 @@ The YAML `run:` block expects these env vars (passed via `--env`):
 - `CUDA_DEVICE` — GPU device index (default 0)
 - `TOKENIZERS_PARALLELISM` — HuggingFace tokenizer setting
 - `HF_TOKEN` — HuggingFace access token (from `.env` file)
+- `TARGET_EDITS` — For checkpointed failure curve: total edits to run to
+- `ALG_NAME` — For checkpointed failure curve: AlphaEdit, MEMIT, or both
+- `SAVE_INTERVAL` — Checkpoint save interval in batches (default 10)
+- `LAMBDA_PREV` — For MEMIT+PrevKeyReg+Ridge: previous-key regularization strength
+- `LAMBDA_DELTA` — For MEMIT+PrevKeyReg+Ridge: ridge regularization strength
 
 ### S3 Mounting
 
@@ -66,7 +71,11 @@ Within SkyPilot clusters, **S3 is already FUSE-mounted at `/s3-data`**. This mea
 bash sky/sky_launch.sh              # All experiments × 5 seeds (55+ jobs)
 bash sky/sky_launch.sh mve1         # MVE1 only × 5 seeds
 bash sky/sky_launch.sh mve1 42      # MVE1, seed 42 only
+bash sky/sky_launch.sh failure_curve_ckpt 42   # Checkpointed failure curve
+bash sky/sky_launch.sh memit_sequential 42     # MEMIT+PrevKeyReg+Ridge
 ```
+
+Valid experiment names: `mve1`, `mve2`, `mve3`, `mve4`, `rome`, `failure_curve`, `failure_curve_ckpt`, `second_model`, `nullspace`, `coupling_stress`, `order_sensitivity`, `capability_probe`, `memit_sequential`, `mve`, `all`
 
 Creates clusters named `ae-{experiment}-s{seed}` (e.g., `ae-mve1_alphaedit_mcf-s42`). If the cluster already exists, it uses `sky exec` (reuses existing cluster) instead of `sky launch` (creates new cluster). All jobs use `--detach-run` for asynchronous execution.
 
@@ -127,10 +136,12 @@ bash scripts/run_mve1_alphaedit_mcf.sh 42
 | Script | Purpose |
 |--------|---------|
 | `scripts/run_failure_curve.sh` | Tests at [500, 1000, 1500, 2000, 3000, 5000, 7500, 10000] edits to find where AlphaEdit's null-space advantage disappears |
+| `scripts/run_failure_curve_checkpointed.sh` | Checkpoint-based failure curve: saves model state at intervals, resumes from checkpoints across cluster runs |
 | `scripts/run_nullspace_analysis.sh` | Tracks null-space rank consumption per layer per batch via SVD |
 | `scripts/run_order_sensitivity.sh` | 10 random orderings × 2 algorithms — tests if edit order affects final metrics |
 | `scripts/run_coupling_stress.sh` | Measures "projection loss" under 4 semantic coupling types (synonym, hypernym, co-occurrence, causal) |
 | `scripts/run_capability_probe.sh` | Measures WikiText perplexity + few-shot MMLU at intervals to detect general capability damage |
+| `scripts/run_memit_sequential.sh` | MEMIT+PrevKeyReg+Ridge control baseline: tests if key-direction regularization can match null-space projection |
 
 ### Meta-Orchestration
 
@@ -147,6 +158,32 @@ bash scripts/run_mve1_alphaedit_mcf.sh 42
 
 All runners use a **source injection** approach: they read `vendor/AlphaEdit/experiments/evaluate.py` as text, inject measurement/tracking code at specific anchor points, then `compile()` + `exec()` the modified source. This avoids import path issues with the vendor code and lets measurement code access internal variables (like the projection matrix P).
 
+**Dual source injection** (used by `coupling_stress_runner.py` and `memit_sequential_runner.py`): patches both an algorithm file (`memit_main.py` or `AlphaEdit_main.py`) AND `evaluate.py`. The algorithm file is compiled/exec'd into a separate namespace, the patched function is extracted, and then passed into the `evaluate.py` exec namespace to replace the import.
+
+### Checkpoint Runner (`src/checkpoint_runner.py`)
+
+Enables failure curve experiments (0→10000 edits) to survive 8-hour cluster limits. Injects three hooks into `evaluate.py`:
+1. **Before loop**: Load model weights + cache_c from checkpoint
+2. **Before each batch**: Skip already-processed batches
+3. **After each batch**: Save checkpoint at interval boundaries
+
+Checkpoints saved to: `/s3-data/.../checkpoints/{alg_name}/seed{seed}/batch_{N}/` (falls back to `~/.cache/alphaedit_checkpoints/`)
+
+### MEMIT+PrevKeyReg+Ridge (`src/memit_sequential_runner.py`)
+
+Control baseline testing whether AlphaEdit's advantage is due to null-space projection or can be matched by key-direction regularization. Modifies MEMIT's normal equation LHS:
+
+```
+lhs = α·C₀ + K_new@K_new^T + λ_prev·K_prev@K_prev^T + λ_delta·I
+```
+
+Key implementation details:
+- `_K_prev` is computed from cache BEFORE appending current batch keys
+- Logging (`||ΔW||`, `||ΔW@K_prev||`) happens BEFORE cache update
+- Current keys are appended to cache AFTER logging
+- Cache default: `--cache_strategy recent --cache_max 20`
+- `--debug_freeze_batch N`: Runs same-state comparison with multiple λ_prev values at batch N
+
 ### Key Files
 
 | File | Purpose |
@@ -156,6 +193,8 @@ All runners use a **source injection** approach: they read `vendor/AlphaEdit/exp
 | `src/coupling_stress_runner.py` | Injects projection-loss measurement inside the edit loop |
 | `src/order_sensitivity_runner.py` | Injects dataset shuffling with an independent order seed |
 | `src/capability_probe_runner.py` | Hooks into GLUEEval to run perplexity/MMLU probes at configurable intervals |
+| `src/checkpoint_runner.py` | Injects checkpoint save/load/skip into evaluate.py for resumable long experiments (failure curve) |
+| `src/memit_sequential_runner.py` | MEMIT+PrevKeyReg+Ridge: dual source injection into memit_main.py (LHS augmentation) and evaluate.py (batch tracking) |
 | `src/coupling_dataset.py` | Generates anchor-probe pairs stratified by 4 semantic coupling types |
 | `src/conflict_dataset.py` | Generates conflicting edit pairs (same subject, contradictory targets) |
 | `src/capability_probe.py` | Computes WikiText-2 perplexity and few-shot MMLU accuracy |
@@ -272,6 +311,32 @@ Results auto-sync to S3 at job completion. From any machine with S3 access:
 ls /s3-data/continual-learning/alphaedit/results/
 # or
 aws s3 ls s3://<bucket>/continual-learning/alphaedit/results/
+```
+
+### Run failure curve with checkpoints (8h cluster limit)
+```bash
+# First run: 0→3000 edits, saves checkpoints at 1000/2000/3000
+TARGET_EDITS=3000 ALG_NAME=AlphaEdit bash sky/sky_launch.sh failure_curve_ckpt 42
+
+# Second run: resumes from 3000, runs to 5000
+TARGET_EDITS=5000 ALG_NAME=AlphaEdit bash sky/sky_launch.sh failure_curve_ckpt 42
+
+# On persistent cluster (no time limit): runs all the way, saves checkpoints as insurance
+TARGET_EDITS=10000 bash scripts/run_failure_curve_checkpointed.sh 42 both
+```
+
+### Run MEMIT+PrevKeyReg+Ridge
+```bash
+# Screening (seed 42)
+bash scripts/run_memit_sequential.sh 42 1.0 1e-4    # PrevKeyReg+Ridge
+bash scripts/run_memit_sequential.sh 42 0.1 1e-5    # Weak reg
+bash scripts/run_memit_sequential.sh 42 10.0 1e-4   # Strong reg
+
+# Same-state debug verification
+DEBUG_BATCH=5 bash scripts/run_memit_sequential.sh 42 1.0 1e-4
+
+# On SkyPilot
+LAMBDA_PREV=1.0 LAMBDA_DELTA=1e-4 bash sky/sky_launch.sh memit_sequential 42
 ```
 
 ### Tear down all clusters

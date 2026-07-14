@@ -61,6 +61,7 @@ ROME as a sanity-check baseline — it *should* perform worse. If it doesn't, th
 | **P0** | Edit order sensitivity | Is ordering a hidden hyperparameter for null-space methods? |
 | P1 | Failure curve (500–10K edits) | Where does AlphaEdit's advantage disappear? |
 | P1 | Null-space rank tracking | Which layers saturate first? |
+| P1 | MEMIT+PrevKeyReg+Ridge | Is null-space projection necessary, or does key-direction regularization suffice? |
 | P2 | Capability probe (WikiText-103) | Does editing destroy general language ability? |
 | P2 | Second model (Mistral-7B) | Do findings generalize beyond Llama-3-8B? |
 
@@ -145,6 +146,57 @@ AlphaEdit processes edits in source-file order with no shuffling. P is static, s
 
 ---
 
+## Extension C: MEMIT+PrevKeyReg+Ridge Control Baseline
+
+### Motivation
+
+AlphaEdit's advantage over MEMIT in sequential editing could stem from:
+1. Null-space projection specifically (geometric constraint)
+2. Implicit regularization of update magnitude
+3. Implicit preservation of previous edit directions
+
+To distinguish these, we add a single strengthened MEMIT baseline that penalizes movement in previous key directions and update magnitude — **without** null-space projection.
+
+### Math
+
+MEMIT+PrevKeyReg+Ridge modifies only the LHS of MEMIT's normal equation:
+
+```
+lhs = α·C₀ + K_new @ K_new^T
+if λ_prev > 0: lhs += λ_prev * K_prev @ K_prev^T
+if λ_delta > 0: lhs += λ_delta * I
+adj_k = solve(lhs, K_new)
+ΔW = resid @ adj_k^T
+```
+
+- `λ_prev · K_prev @ K_prev^T` — penalizes ΔW in directions of previous edit keys
+- `λ_delta · I` — ridge regularization on update magnitude
+- Setting both to 0 recovers exact original MEMIT
+
+Named "PrevKeyReg" (not "Prev") because it regularizes in previous key directions without replaying previous target values.
+
+### Run matrix
+
+1. **Screening (seed 42)**: λ_prev ∈ {0.1, 1.0, 10.0} × λ_delta ∈ {1e-5, 1e-4} → 6 runs
+2. **Validation**: Best setting on seeds 42, 137, 2024, 7, 99
+
+### Usage
+
+```bash
+bash scripts/run_memit_sequential.sh 42 1.0 1e-4   # λ_prev=1.0, λ_delta=1e-4
+bash scripts/run_memit_sequential.sh 42 0 0         # original MEMIT (verification)
+DEBUG_BATCH=5 bash scripts/run_memit_sequential.sh 42 1.0 1e-4  # same-state diagnostic
+```
+
+### Key metrics
+
+- Standard: efficacy, generalization, specificity
+- `||ΔW||_F` per layer (should decrease with λ_delta)
+- `||ΔW @ K_prev||` per layer (should decrease with λ_prev)
+- Cache size (batches and keys per layer)
+
+---
+
 ## Setup
 
 ```bash
@@ -174,6 +226,13 @@ bash scripts/run_failure_curve.sh 42
 # Novel extensions
 bash scripts/run_coupling_stress.sh 42      # ~2.5h per seed
 bash scripts/run_order_sensitivity.sh 42    # ~3h per ordering
+
+# MEMIT+PrevKeyReg+Ridge control baseline
+bash scripts/run_memit_sequential.sh 42 1.0 1e-4   # PrevKeyReg+Ridge
+bash scripts/run_memit_sequential.sh 42 0 0         # original MEMIT (verification)
+
+# Failure curve (checkpointed for long runs)
+bash scripts/run_failure_curve_checkpointed.sh 42 both 5000
 
 # Full sweep
 bash scripts/run_all_seeds.sh mve
