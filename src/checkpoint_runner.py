@@ -193,7 +193,7 @@ _ckpt_eval_at_checkpoints_only = {eval_at_checkpoints_only}
 
 def _ckpt_save(cnt, model, cache_c, hparams, alg_name):
     \"\"\"Save model weights and cache_c at checkpoint boundary.\"\"\"
-    import json
+    import json, shutil
     from pathlib import Path
     from datetime import datetime, timezone
 
