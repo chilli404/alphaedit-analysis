@@ -232,13 +232,13 @@ assert pre_anchor in source, (
     "Upstream code has changed from pinned commit b84624f."
 )
 
-pre_injection = '\\n        # === NULLSPACE TRACKING: pre-edit measurement (injected) ===\\n'
+pre_injection = '        # === NULLSPACE TRACKING: pre-edit measurement (injected) ===\\n'
 pre_injection += "        if alg_name == \\"AlphaEdit\\" and '_ns_track_output' in dir():\\n"
 pre_injection += '            _ns_track_pre_batch(cnt, cache_c, P, hparams, num_edits, len(record_chunks))\\n'
 pre_injection += '        # === END pre-edit tracking ===\\n'
 source = source.replace(
     pre_anchor,
-    pre_anchor + pre_injection,
+    pre_injection + pre_anchor,
     1,  # Replace only first occurrence
 )
 

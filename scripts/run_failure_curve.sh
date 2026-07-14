@@ -14,10 +14,12 @@ set -euo pipefail
 #   - Extended range: tests up to 10,000 edits (matching the original paper)
 #
 # Usage:
-#   bash scripts/run_failure_curve.sh [SEED] [ALG_NAME]
-#   bash scripts/run_failure_curve.sh 42 AlphaEdit    # Just AlphaEdit
-#   bash scripts/run_failure_curve.sh 42 MEMIT        # Just MEMIT
-#   bash scripts/run_failure_curve.sh 42 both         # Both (default)
+#   bash scripts/run_failure_curve.sh [SEED] [ALG_NAME] [EDIT_COUNTS]
+#   bash scripts/run_failure_curve.sh 42 AlphaEdit          # All edit counts
+#   bash scripts/run_failure_curve.sh 42 MEMIT              # Just MEMIT
+#   bash scripts/run_failure_curve.sh 42 both               # Both (default)
+#   bash scripts/run_failure_curve.sh 42 AlphaEdit 3000     # Single edit count
+#   bash scripts/run_failure_curve.sh 42 both 3000,5000     # Comma-separated list
 #
 # The edit counts tested: 500, 1000, 1500, 2000, 3000, 5000, 7500, 10000
 
@@ -33,9 +35,15 @@ MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 
 SEED="${1:-42}"
 ALG="${2:-both}"
+EDIT_COUNTS_ARG="${3:-}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
 
-EDIT_COUNTS=(500 1000 1500 2000 3000 5000 7500 10000)
+if [[ -n "$EDIT_COUNTS_ARG" ]]; then
+    # Accept comma-separated list: "3000,5000" or single value: "3000"
+    IFS=',' read -ra EDIT_COUNTS <<< "$EDIT_COUNTS_ARG"
+else
+    EDIT_COUNTS=(500 1000 1500 2000 3000 5000 7500 10000)
+fi
 
 echo "=== Failure Characterization Curve ==="
 echo "  Seed: $SEED"
