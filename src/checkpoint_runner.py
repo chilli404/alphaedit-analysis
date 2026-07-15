@@ -357,6 +357,8 @@ assert loop_anchor in source, (
 )
 
 load_injection = '''    # === CHECKPOINT: load state from previous run (injected) ===
+    exec_time = 0
+    edited_model = model
     _ckpt_cache_c_loaded = None
     if _ckpt_start_batch > 0 and '_ckpt_load' in globals():
         _ckpt_cache_c_loaded = _ckpt_load(model, hparams, alg_name)

@@ -126,8 +126,7 @@ def build_coupling_script(
     pre_batch_hook = r'''
         # === COUPLING: per-batch pre-hook (injected) ===
         if '_coupling_output' in globals() and alg_name == "AlphaEdit":
-            _coupling_layer_data = {}
-            _coupling_measure = True
+            _coupling_layer_data.clear()
         # === END coupling pre-hook ===
 '''
 
@@ -159,7 +158,7 @@ def build_coupling_script(
             }
             with open(_coupling_output, "a") as _f:
                 _f.write(json.dumps(_record) + "\n")
-            _coupling_layer_data = {}
+            _coupling_layer_data.clear()
         # === END coupling post-hook ===
 '''
 
