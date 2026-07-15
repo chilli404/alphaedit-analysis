@@ -72,8 +72,8 @@ LOOP_ANCHOR = '    for record_chunks in chunks(ds, num_edits):'
 # Anchor for per-batch edit timing (inject skip guard BEFORE this)
 PRE_EDIT_ANCHOR = '        start = time()\n        if any(alg in alg_name for alg in ["AlphaEdit", "MEMIT_seq", "NSE"]):'
 
-# Anchor for the boundary after primary algorithms (inject checkpoint save BEFORE this)
-POST_EDIT_ANCHOR = '        elif alg_name == "MEMIT_prune":'
+# Anchor for after the entire if/elif/else edit chain (inject checkpoint save BEFORE this)
+POST_EDIT_ANCHOR = '        exec_time = time() - start'
 
 # CUDA patch target
 CUDA_PATCH_TARGET = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
@@ -291,6 +291,33 @@ source = source.replace(
     '# CUDA_VISIBLE_DEVICES managed by checkpoint_runner',
 )
 
+# 5b. Patch P/cache_c initialization to not depend on hardcoded model name whitelist.
+# The upstream code only initializes P for model names in a fixed list. If hparams.model_name
+# doesn't match, P and cache_c are never created and the edit call crashes with
+# TypeError: 'NoneType' object is not subscriptable.
+# Fix: add an else branch that infers dimensions from W_out generically.
+_p_init_anchor = '''        elif hparams.model_name in ["EleutherAI_gpt-j-6B","Llama3-8B","phi-1.5"]:
+            cache_c = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
+            if alg_name == "AlphaEdit":
+                P = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
+        del W_out'''
+assert _p_init_anchor in source, (
+    "P initialization anchor not found in evaluate.py source. "
+    "Upstream code has changed from pinned commit b84624f."
+)
+_p_init_patched = '''        elif hparams.model_name in ["EleutherAI_gpt-j-6B","Llama3-8B","phi-1.5"]:
+            cache_c = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
+            if alg_name == "AlphaEdit":
+                P = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
+        else:
+            # Fallback: infer dimensions from W_out (handles any model not in whitelist)
+            cache_c = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
+            if alg_name == "AlphaEdit":
+                P = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
+            print(f"  [CHECKPOINT] WARNING: model_name '{{hparams.model_name}}' not in upstream whitelist, using fallback P init (dim={{W_out.shape[1]}})")
+        del W_out'''
+source = source.replace(_p_init_anchor, _p_init_patched, 1)
+
 # 6. Inject checkpoint LOAD before the main edit loop
 loop_anchor = '    for record_chunks in chunks(ds, num_edits):'
 assert loop_anchor in source, (
@@ -331,8 +358,8 @@ source = source.replace(
     1,
 )
 
-# 8. Inject checkpoint SAVE after edit (before MEMIT_prune branch)
-post_anchor = '        elif alg_name == "MEMIT_prune":'
+# 8. Inject checkpoint SAVE after the entire if/elif/else edit chain
+post_anchor = '        exec_time = time() - start'
 assert post_anchor in source, (
     "Post-edit anchor not found in evaluate.py source. "
     "Upstream code has changed from pinned commit b84624f."
