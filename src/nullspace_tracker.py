@@ -46,6 +46,7 @@ from pathlib import Path
 
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
+from source_patches import patch_evaluate_file
 
 
 def get_project_root() -> Path:
@@ -299,6 +300,7 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     link_hparams()
+    patch_evaluate_file(alphaedit_root)
 
     # Resolve model path (falls back to Artifactory mirror if HF access fails)
     model_name = resolve_model_path(args.model_name)

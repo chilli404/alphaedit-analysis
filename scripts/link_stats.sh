@@ -64,4 +64,15 @@ done
 
 echo ""
 echo "Expected files: model.layers.{4,5,6,7,8}.mlp.down_proj_float32_mom2_100000.npz"
+
+# Link cached null-space projection (P) if available (avoids 45-min SVD recomputation)
+P_CACHE_SRC="$STATS_SRC/null_space_project.pt"
+P_CACHE_DST="$PROJECT_DIR/vendor/AlphaEdit/null_space_project.pt"
+if [[ -f "$P_CACHE_SRC" ]]; then
+    ln -sf "$P_CACHE_SRC" "$P_CACHE_DST"
+    echo "  Linked cached null-space projection: $P_CACHE_SRC"
+else
+    echo "  No cached null-space projection found (will compute on first run)"
+fi
+
 echo "=== Done ==="

@@ -64,3 +64,5 @@ Thumbs.db
 
 # uv
 .uv/
+
+results/coupling_stress/

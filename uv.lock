@@ -1,6 +1,10 @@
 version = 1
 revision = 3
 requires-python = "==3.10.*"
+resolution-markers = [
+    "sys_platform == 'linux' or sys_platform == 'win32'",
+    "sys_platform != 'linux' and sys_platform != 'win32'",
+]
 
 [[package]]
 name = "aiohappyeyeballs"
@@ -78,7 +82,8 @@ dependencies = [
     { name = "scipy" },
     { name = "seaborn" },
     { name = "spacy" },
-    { name = "torch" },
+    { name = "torch", version = "2.7.1", source = { registry = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "torch", version = "2.7.1+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "tqdm" },
     { name = "transformers" },
 ]
@@ -105,7 +110,8 @@ requires-dist = [
     { name = "scipy", specifier = "==1.13.1" },
     { name = "seaborn", specifier = ">=0.13.0,<1.0" },
     { name = "spacy", specifier = "==3.4.1" },
-    { name = "torch", specifier = "==2.7.1", index = "https://download.pytorch.org/whl/cu128" },
+    { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32'", specifier = "==2.7.1" },
+    { name = "torch", marker = "sys_platform == 'linux' or sys_platform == 'win32'", specifier = "==2.7.1", index = "https://download.pytorch.org/whl/cu128" },
     { name = "tqdm", specifier = ">=4.65.0" },
     { name = "transformers", specifier = "==4.51.3" },
 ]
@@ -415,7 +421,8 @@ name = "higher"
 version = "0.2.1"
 source = { registry = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/simple" }
 dependencies = [
-    { name = "torch" },
+    { name = "torch", version = "2.7.1", source = { registry = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "torch", version = "2.7.1+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 sdist = { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/fc/07/6b15c672bf1c0e561b695bb54a67eb0c94ffe7f898a1f8927ac37f96de90/higher-0.2.1.tar.gz", hash = "sha256:f5b7baa668be5dc59cca9ae06c4ed14c2bd2fe5ca8283f95db660e8732513c1d" }
 wheels = [
@@ -730,7 +737,7 @@ name = "nvidia-cudnn-cu12"
 version = "9.7.1.26"
 source = { registry = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12" },
+    { name = "nvidia-cublas-cu12", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 wheels = [
     { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/25/dc/dc825c4b1c83b538e207e34f48f86063c88deaa35d46c651c7c181364ba2/nvidia_cudnn_cu12-9.7.1.26-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:6d011159a158f3cfc47bf851aea79e31bcff60d530b70ef70474c84cac484d07" },
@@ -741,7 +748,7 @@ name = "nvidia-cufft-cu12"
 version = "11.3.3.41"
 source = { registry = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 wheels = [
     { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/ac/26/b53c493c38dccb1f1a42e1a21dc12cba2a77fbe36c652f7726d9ec4aba28/nvidia_cufft_cu12-11.3.3.41-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:da650080ab79fcdf7a4b06aa1b460e99860646b176a43f6208099bdc17836b6a" },
@@ -768,9 +775,9 @@ name = "nvidia-cusolver-cu12"
 version = "11.7.2.55"
 source = { registry = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12" },
-    { name = "nvidia-cusparse-cu12" },
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-cublas-cu12", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "nvidia-cusparse-cu12", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 wheels = [
     { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/c2/08/953675873a136d96bb12f93b49ba045d1107bc94d2551c52b12fa6c7dec3/nvidia_cusolver_cu12-11.7.2.55-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:4d1354102f1e922cee9db51920dba9e2559877cf6ff5ad03a00d853adafb191b" },
@@ -781,7 +788,7 @@ name = "nvidia-cusparse-cu12"
 version = "12.5.7.53"
 source = { registry = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 wheels = [
     { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/c2/ab/31e8149c66213b846c082a3b41b1365b831f41191f9f40c6ddbc8a7d550e/nvidia_cusparse_cu12-12.5.7.53-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:3c1b61eb8c85257ea07e9354606b26397612627fdcd327bfd91ccf6155e7c86d" },
@@ -958,17 +965,17 @@ wheels = [
 
 [[package]]
 name = "pyarrow"
-version = "24.0.0"
+version = "25.0.0"
 source = { registry = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/simple" }
-sdist = { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/91/13/13e1069b351bdc3881266e11147ffccf687505dbb0ea74036237f5d454a5/pyarrow-24.0.0.tar.gz", hash = "sha256:85fe721a14dd823aca09127acbb06c3ca723efbd436c004f16bca601b04dcc83" }
+sdist = { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/27/f3/95428098d1fa7d04432fb750eed06b41304c2f6a5d3319985e64db2d9d41/pyarrow-25.0.0.tar.gz", hash = "sha256:d2d697008b5ec06d75952ef260c2e9a8a0f6ccfce24266c04c9c8ade927cb3b4" }
 wheels = [
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/a5/bf/a34fee1d624152124fa8355c42f34195ad5fe5233ce5bb87946432047d52/pyarrow-24.0.0-cp310-cp310-macosx_12_0_arm64.whl", hash = "sha256:7c2b98645d576a0b9616892ead22b64a83a5f043c5e2ca15ebcefcb5b70c80cb" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/1d/41/64180033d7027afce12dc96d0fe1f504c6fa112190582b458acea2399530/pyarrow-24.0.0-cp310-cp310-macosx_12_0_x86_64.whl", hash = "sha256:644a246325b8c69c595ad1dd4b463eba4b0cdb731370e4a86137d433208d6147" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/57/02/9b9320e673dd8a99411fac78690f3df92f6dd6f59754c750110bca66d64e/pyarrow-24.0.0-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:3a577bd840ca83f646f0a625dbc571dba7044c43c2d1503afc378b570954345c" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/67/33/f75e91b9a64c3f33c787e263c93b871ad91b8a4a68c1d5cebddd9840e835/pyarrow-24.0.0-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:e3268e43984d0b1a185c89b4cfff282a7ead12fc93f56cfd7088bdbcbe727041" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/a5/63/097510448e47e4091faa41c43ba92f97cecaab8f4535b56a3d149578f634/pyarrow-24.0.0-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:2392d954fcb920f42d230284b677605e4e2fbb11f2821e823e642abd67fbb491" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/60/6b/c047d6222ab279024a062742d1807e2fbaf27bba88a98637299ff47b9236/pyarrow-24.0.0-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:bec9373df11544592b0ba7ec2af0e35059e5f0e7647c6183a854dedd193298f1" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/3a/ba/464cc70761c2a525d97ebd84e21c31ebd47f3ef4bdcee117009f51c46f24/pyarrow-24.0.0-cp310-cp310-win_amd64.whl", hash = "sha256:c42ab9439498270139cc63e18847a02afe5c8b3ed9c931266533cfe378bd3591" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/4d/2a/eaa70e6d6ed430c2e90c0599e2831a41a50251879e44788ccdbc73115af1/pyarrow-25.0.0-cp310-cp310-macosx_12_0_arm64.whl", hash = "sha256:ce0ca222802087b9a8cb031a6468442cb6b67c290a45a601cac64753d34954d3" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/df/e0/917086af6b246143012cdc8a7c886b018b53204f3d69fc5f9be5857a8b80/pyarrow-25.0.0-cp310-cp310-macosx_12_0_x86_64.whl", hash = "sha256:7d6da02ffc7a3a9bda3b7ded4cc2a27ff73969ab37153f3afd46bbbc1ba4f0f7" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/68/6a/c87829f92503f84993721791c942f3d9aa81044de51a8cfb1da5810e5345/pyarrow-25.0.0-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:dbf9fa5d4bde73b1cc16377dcaaa010f971e6fa7f5083f5d44f34b50bc1d74af" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/cc/ba/2030d454c2747e26cce23e4a0338067ee0830a155b7894da04caa96783a5/pyarrow-25.0.0-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:b72d943ff4e10fec8d48aedb23322d8f6ea8bc2d698b81db37e73730f69e4862" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/78/ce/ba7a5ce7bf0cfc372ec48203a34ece42f73aa2f3231706f61c55e105ecd0/pyarrow-25.0.0-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:5fb2d837960f1df7f679ff9f1a55065e306347d379e0768cebf14781254d6194" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/75/eb/c34a29fb7a70dca2f903c7d85a928928ef55af20cd56e99de6b4c0d897bc/pyarrow-25.0.0-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:add690feafa0953c443cdba9e9e87f5eaa198f1ea2e43a3b146ea83f202262d0" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/36/f9/35b1f83a0727d84951588e4034aca2feb76dfb45b0725918c0037b0a48f7/pyarrow-25.0.0-cp310-cp310-win_amd64.whl", hash = "sha256:d293e9959b29a24c82d936d04ab2b7fd8b8d334030de2e56a99aba94f008ad7a" },
 ]
 
 [[package]]
@@ -1066,27 +1073,27 @@ wheels = [
 
 [[package]]
 name = "regex"
-version = "2026.6.28"
+version = "2026.7.10"
 source = { registry = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/simple" }
-sdist = { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/f1/05/e4f219230e11e774a6c9987d2ab0d0c6b8573e13a17e143d0015bee710ef/regex-2026.6.28.tar.gz", hash = "sha256:3cb4b6c5cb3060cc31efdc1fbb27c25fb9b29044afd87e40601a1c4d9db54342" }
+sdist = { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/7b/37/451aaddbf50922f34d744ad5ca919ae1fcfac112123885d9728f52a484b3/regex-2026.7.10.tar.gz", hash = "sha256:1050fedf0a8a92e843971120c2f57c3a99bea86c0dfa1d63a9fac053fe54b135" }
 wheels = [
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/d8/dc/f7a8c9cf0768f704153d358fae2bc883199bc4ea1e4aa458f1be9d0ef2ce/regex-2026.6.28-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:b83932645630965fd860fdb70ebbf964bf3e8007f08851ea424d01f8d35454a8" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/44/b3/9786a4a2133e2f1cc5897ed3d2da3da29ff54b775ffa38bc5935fc24be82/regex-2026.6.28-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:e81f1952355042e517dc9861ce65c676e4a098f42402993c40461786d1f794d4" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/dd/1f/bfe5b529257f0853aa6b94146e0f6462f4d45aa4f3c05d5a828f415dfd40/regex-2026.6.28-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:2097591101d70bcc108af64c46f6066bb698ee067fec5f75beac0be317639311" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/25/56/f615165e90ac5f3b72b249240643439520bbac0ac60a9de06868528eba4c/regex-2026.6.28-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:31d7538a614b5842bf53ce329d07b43f97754ca7e6db8d69f347e071bce1c953" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/04/94/c9e3ad31b3d5fbe1228fee8319e0c02a5460296624f220d08764547fe6ae/regex-2026.6.28-cp310-cp310-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:f5561e47bbe2b75373b695326507743fcdd4d2cc7f5022312024ccf39fa094e0" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/c0/77/d506a428e446466ee298f5425a774737d0671d070425ed794bb3314d60c6/regex-2026.6.28-cp310-cp310-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:c10f2c5a55ab3dd8318d8ad5f11b530e2691c0edebebde7713066f484902c3fb" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/aa/72/becc00d839f19401f10a20168b44711c7b02f7f62bba875b2d8f98417435/regex-2026.6.28-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:23f7e0cc60c72486b42a685f1ff4eec90d50d4fb05e4f9c7d5363b03aa02600d" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/fa/11/ea2ca423eeaac2e18077a18b058614e9201f130750df2126d444e39acab2/regex-2026.6.28-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:76493755f79a88d5ed2c9e63a41d3c05997e0a7ffbe76ed8c4ded8be35b8b14c" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/6d/9e/f5bf7ecbd14ff2086f015c54dc24fd0d74ba5327fef0de479213f8128615/regex-2026.6.28-cp310-cp310-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:ff0f41a00f23ea5054acb61901380c41813d813eee3f80f800995710bcc52ecd" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/43/04/f9040a5360a06241ba5b7f2e6f1c6184e104a84e6f6522535700e94bf8e2/regex-2026.6.28-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:3c60b297292e7e1ef5d02a4759f9e452ee4c8bb95e168d8fd0b5db01bd806f9f" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/73/97/4e46f7abf2f864319d2bcac609af3c0532968c66a3364337778fd232b83c/regex-2026.6.28-cp310-cp310-musllinux_1_2_ppc64le.whl", hash = "sha256:a7cf03c87f7b9cbc25a8894cf9be83818406677b6b391b003ec7c884923387b5" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/f7/b8/3d1f995727799a1e2e693e397acb7358094606e5591b6b5fd3128d2d1409/regex-2026.6.28-cp310-cp310-musllinux_1_2_riscv64.whl", hash = "sha256:418208ea0af51cfed4f46eb9b1ea7cfc990ca284f0084ecbd951460fb089421e" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/20/10/fd5653b8572910a4fe9055f8959b070d7d9443c94ce986529fcdb5fb2a3c/regex-2026.6.28-cp310-cp310-musllinux_1_2_s390x.whl", hash = "sha256:7635fa2cddb917a6bbfac7890602573d2d8c4e470703b0640e6f86a988817ec3" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/5d/31/da77e3ef7b594a2aacbd03ce3d0050f33ab3e021df50c6901467c9006511/regex-2026.6.28-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:7bb96c13d6cf5880d31bbef84ca701a64d738aa491c2b79975cc33f8ad00a31e" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/cd/4d/c379001448d0f58b6946f168d4af96ad60a16c1553259c27b0df8701b640/regex-2026.6.28-cp310-cp310-win32.whl", hash = "sha256:56f05194c4843957dd8b3af87eb0c52d8cf0509e7f18e172d727f5f8ff840646" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/f3/8f/cb656529efa87d74cce0d69e606c745537016da3bdfae78f342af2242ee3/regex-2026.6.28-cp310-cp310-win_amd64.whl", hash = "sha256:70710927033af3b54369f17aaba1343b97a23d0b1aa994fa1512b08b1b8c136a" },
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/7b/ac/d35ccc309c9409406445ab2ef0b56f6a341a916ccff49ff9ac5cc6bb8e9b/regex-2026.6.28-cp310-cp310-win_arm64.whl", hash = "sha256:ed7b30185ee3f8b9b053b0be567b4d226016e2afbebc17fde1c6a4580937b688" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/b3/69/62bb7d63f26698949c905cb7ebe29c7b0659e2a7f2a50c35cc29640b0852/regex-2026.7.10-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:799a369bdab91dcf0eb424ebd7aa9650897025ce22f729248d8f2c72002c4daa" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/3a/f2/eed2ce38cc38def9c366d060ec739ff5f235a33647ceb73ae6be37306d39/regex-2026.7.10-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:f0192e5f1cfc70e3cb35347135dd02e7497b3e7d83e378aa226d8b3e53a93f19" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/36/57/4d724eeb1c440d71ccd6400d33b62b911bb62ca05385fe1961556e628319/regex-2026.7.10-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:221f2771cb780186b94bbf125a151bbeb242fa1a971da6ad59d7b0370f19de9a" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/c7/9d/76c6779e424c64740d2a564b7ecb389a62c77b6294127d34f52008c91ea7/regex-2026.7.10-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ab2fb1f7a2deb4ca3ddebbae6b93905d21480a3b4e11de28d79d9fb0d316fcf8" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/54/ec/f777841d88f0c9d46699daf16f86a8086e077e506603be212de2c4584f85/regex-2026.7.10-cp310-cp310-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:2f98ef73a13791a387d5c841416ad7f52040ae5caf10bcf46fa12bd2b3d63745" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/d1/de/5ba208a0826117851f6c12af9ae7fae5838ccfde69b999b26c5fdc1cedc3/regex-2026.7.10-cp310-cp310-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:9a094ed44a22f9da497453137c3118b531fd783866ab524b0b0fc146e7395e1d" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/7f/46/602b7b81d26a53113d3cec6dd845fd664d7b854b0ea45245bfdd6b9dc9ef/regex-2026.7.10-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:53bbbd6c610489700f7110db1d85f3623924c3f7c760f987eca033867360788a" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/53/cc/c21ebc520c3e17d93e495eb2de2b1c5ae5f6780ccdb298b2d8ce1e940820/regex-2026.7.10-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:87b776cf2890e356e4ab104b9df846e169da3eb5b0f110975547091f4e51854e" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/65/d8/69ec8c062bbba8d4d153f9eb70ab43564f591035b81fc4ea7eb059fdf71c/regex-2026.7.10-cp310-cp310-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:ab39d2c967aae3b48a412bff9cdbe7cd7559cd1e277599aceaeada7bc82b7200" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/af/82/c56db326ac5f852865bd78d49a275757cc367e8114b13bc1015ed2491db1/regex-2026.7.10-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:b56416091bfd7a429f958f69aaf6823c517be9a49cb5bf1daa3767ce8bf8095e" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/af/2a/1ba62462f679eb598d7325ff20798a264ddb9aa34a3f5d2ac388d54c6e4b/regex-2026.7.10-cp310-cp310-musllinux_1_2_ppc64le.whl", hash = "sha256:617e8f10472e34a8477931f978ff3a88d46ae2ba0e41927e580b933361f60948" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/84/5b/37bf2e2fe810540ca90bbfe457a2f61088721c95d442eee8bb1257165ad7/regex-2026.7.10-cp310-cp310-musllinux_1_2_riscv64.whl", hash = "sha256:31fa17378b29519bfd0a1b8ba4e9c10cf0baf1cf4099b39b0689429e7dc2c795" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/9a/c5/131dd41f73f766af6b08492073b5f28bc4f907b5571230c9f9e895e88302/regex-2026.7.10-cp310-cp310-musllinux_1_2_s390x.whl", hash = "sha256:5c363de7c0339d39341b6181839ed32509820b85ef506deafcf2e7e43baadab4" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/a5/ee/00b9332c3c5d7460639f2c10fdc7197a64de6eaafff69478ec3332815335/regex-2026.7.10-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:ed7c886a2fcbf14493ceaf9579394b33521730c161ebb8dad7db9c3e9fcab1a8" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/e5/a7/31ce26ec6465c12e7136ea9efcc716f5c55cac616f7958c33f0bf171781e/regex-2026.7.10-cp310-cp310-win32.whl", hash = "sha256:b04583e8867136ae66353fa274f45121ab3ec3166dc45aaff3655a5db90d9f0e" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/71/00/22a554bb83203eef88a40ec2fe7cf9a6e5df8765d57f7a96ebe1af5d60c3/regex-2026.7.10-cp310-cp310-win_amd64.whl", hash = "sha256:e21e888a6b471b2bb1cdd4247e8d86632672232f29be583e7eafaa5f4634d34c" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/76/46/596a7084918ddf18cea6fb0cc047af1f00cec8790962e8f2edee9b6ec749/regex-2026.7.10-cp310-cp310-win_arm64.whl", hash = "sha256:081acf191b4d614d573a56cab69f948b6864daa5e3cc69f209ee92e26e454c2f" },
 ]
 
 [[package]]
@@ -1388,13 +1395,35 @@ wheels = [
 
 [[package]]
 name = "torch"
+version = "2.7.1"
+source = { registry = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/simple" }
+resolution-markers = [
+    "sys_platform != 'linux' and sys_platform != 'win32'",
+]
+dependencies = [
+    { name = "filelock", marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "fsspec", marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "jinja2", marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "networkx", marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "sympy", marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "typing-extensions", marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+]
+wheels = [
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/92/f6/5da3918414e07da9866ecb9330fe6ffdebe15cb9a4c5ada7d4b6e0a6654d/torch-2.7.1-cp310-none-macosx_11_0_arm64.whl", hash = "sha256:d72acfdb86cee2a32c0ce0101606f3758f0d8bb5f8f31e7920dc2809e963aa7c" },
+]
+
+[[package]]
+name = "torch"
 version = "2.7.1+cu128"
 source = { registry = "https://download.pytorch.org/whl/cu128" }
+resolution-markers = [
+    "sys_platform == 'linux' or sys_platform == 'win32'",
+]
 dependencies = [
-    { name = "filelock" },
-    { name = "fsspec" },
-    { name = "jinja2" },
-    { name = "networkx" },
+    { name = "filelock", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "fsspec", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "jinja2", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "networkx", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "nvidia-cublas-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nvidia-cuda-cupti-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nvidia-cuda-nvrtc-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -1409,9 +1438,9 @@ dependencies = [
     { name = "nvidia-nccl-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nvidia-nvjitlink-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nvidia-nvtx-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "sympy" },
+    { name = "sympy", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "triton", marker = "sys_platform == 'linux'" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cu128/torch-2.7.1%2Bcu128-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:aca3472608e3c92df5166537595687b53a6c997082478b372427b043dbed98d0", upload-time = "2025-06-03T18:30:30Z" },
@@ -1457,7 +1486,7 @@ name = "triton"
 version = "3.3.1"
 source = { registry = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/simple" }
 dependencies = [
-    { name = "setuptools" },
+    { name = "setuptools", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 wheels = [
     { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/8d/a9/549e51e9b1b2c9b854fd761a1d23df0ba2fbc60bd0c13b489ffa518cfcb7/triton-3.3.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b74db445b1c562844d3cfad6e9679c72e93fdfb1a90a24052b03bb5c49d1242e" },
@@ -1486,11 +1515,11 @@ wheels = [
 
 [[package]]
 name = "tzdata"
-version = "2026.2"
+version = "2026.3"
 source = { registry = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/simple" }
-sdist = { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/ba/19/1b9b0e29f30c6d35cb345486df41110984ea67ae69dddbc0e8a100999493/tzdata-2026.2.tar.gz", hash = "sha256:9173fde7d80d9018e02a662e168e5a2d04f87c41ea174b139fbef642eda62d10" }
+sdist = { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/92/ff/5a28bdfd8c3ebec42564ac7d0e54ca3db65044a9314a97f9564fa7a1e926/tzdata-2026.3.tar.gz", hash = "sha256:4a1518b8993086a7982523e071643f3c0e5f213e75b21318e78bcabfff9d1415" }
 wheels = [
-    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/ce/e4/dccd7f47c4b64213ac01ef921a1337ee6e30e8c6466046018326977efd95/tzdata-2026.2-py2.py3-none-any.whl", hash = "sha256:bbe9af844f658da81a5f95019480da3a89415801f6cc966806612cc7169bffe7" },
+    { url = "https://graingerinc.jfrog.io/artifactory/api/pypi/pypi-shared-virtual/packages/packages/e5/6d/b53b99a9f2766d095985947a5782f1702cabb129a34f7a802d7197af832f/tzdata-2026.3-py2.py3-none-any.whl", hash = "sha256:dc096730c87af6cab1b171c9d532be840741ff5d459015e7f6947bd7d7e54931" },
 ]
 
 [[package]]

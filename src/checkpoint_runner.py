@@ -52,6 +52,7 @@ from pathlib import Path
 
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
+from source_patches import patch_evaluate_file
 
 
 def get_project_root() -> Path:
@@ -318,6 +319,36 @@ _p_init_patched = '''        elif hparams.model_name in ["EleutherAI_gpt-j-6B","
         del W_out'''
 source = source.replace(_p_init_anchor, _p_init_patched, 1)
 
+# 5c. Inject eval results pre-sync: copy partial results from S3/previous run into the new run_dir
+# so that (a) the already_finished check in the edit loop skips fully-evaluated batches and
+# (b) the eval resume guard at the bottom skips individual cases.
+_presync_anchor = '    print(f"Results will be stored at {{run_dir}}")'
+assert _presync_anchor in source, (
+    "Pre-sync anchor (run_dir print) not found in evaluate.py source. "
+    "Upstream code has changed from pinned commit b84624f."
+)
+_presync_injection = '''    print(f"Results will be stored at {{run_dir}}")
+    # === CHECKPOINT: pre-sync partial eval results from previous runs (injected) ===
+    if _ckpt_start_batch > 0:
+        import glob as _glob_mod
+        _s3_results_base = Path("/s3-data/continual-learning/alphaedit/results/failure_curve_checkpointed")
+        _s3_eval_dir = _s3_results_base / f"seed{{_ckpt_seed}}" / "alphaedit_results" / dir_name / "run_000"
+        if _s3_eval_dir.exists():
+            _existing_evals = list(_s3_eval_dir.glob("*_edits-case_*.json"))
+            if _existing_evals:
+                import shutil as _shutil_mod
+                _synced = 0
+                for _ef in _existing_evals:
+                    _dest = run_dir / _ef.name
+                    if not _dest.exists():
+                        _shutil_mod.copy2(str(_ef), str(_dest))
+                        _synced += 1
+                print(f"  [CHECKPOINT] Pre-synced {{_synced}} eval results from S3 ({{len(_existing_evals)}} total in source)")
+        else:
+            print(f"  [CHECKPOINT] No S3 eval results found at {{_s3_eval_dir}}")
+    # === END pre-sync ==='''
+source = source.replace(_presync_anchor, _presync_injection, 1)
+
 # 6. Inject checkpoint LOAD before the main edit loop
 loop_anchor = '    for record_chunks in chunks(ds, num_edits):'
 assert loop_anchor in source, (
@@ -407,15 +438,23 @@ assert eval_anchor in source, (
     "Upstream code has changed from pinned commit b84624f."
 )
 
-fast_eval_injection = '''    for record in ds:
+fast_eval_injection = '''    _eval_skipped = 0
+    for record in ds:
         # === CHECKPOINT: skip entire evaluation if _do_final_eval is False (injected) ===
         if not _do_final_eval:
             break
         # === CHECKPOINT: fast mode - skip evaluating non-batch records (injected) ===
         if _ckpt_fast_mode and record["case_id"] not in case_ids:
             continue
-        # === END fast mode guard ===
-        out_file = Path(case_result_template.format(num_edits, record["case_id"]))'''
+        # === CHECKPOINT: skip cases already evaluated (resume-safe) ===
+        out_file = Path(case_result_template.format(num_edits, record["case_id"]))
+        if out_file.exists():
+            _eval_skipped += 1
+            continue
+        if _eval_skipped > 0:
+            print(f"  [CHECKPOINT] Skipped {{_eval_skipped}} already-evaluated cases, resuming from case {{record['case_id']}}")
+            _eval_skipped = 0
+        # === END eval resume guard ==='''
 source = source.replace(
     eval_anchor,
     fast_eval_injection,
@@ -429,6 +468,7 @@ assert "CHECKPOINT: save at interval" in source, "Save injection failed"
 assert "CHECKPOINT: skip evaluation if last batch is not" in source, "Checkpoint-only eval injection failed"
 assert "CHECKPOINT: skip entire evaluation if _do_final_eval" in source, "Final eval guard injection failed"
 assert "CHECKPOINT: fast mode" in source, "Fast eval injection failed"
+assert "CHECKPOINT: skip cases already evaluated" in source, "Eval resume injection failed"
 
 # 12. Execute
 exec(compile(source, "experiments/evaluate.py", "exec"),
@@ -471,6 +511,7 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     link_hparams()
+    patch_evaluate_file(alphaedit_root)
 
     # Resolve model path
     model_name = resolve_model_path(args.model_name)
