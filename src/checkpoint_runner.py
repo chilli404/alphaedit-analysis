@@ -192,6 +192,7 @@ _ckpt_seed = {seed}
 _ckpt_num_edits = {num_edits}
 _ckpt_fast_mode = {fast_checkpoint}
 _ckpt_eval_at_checkpoints_only = {eval_at_checkpoints_only}
+_ckpt_dataset_size_limit = {dataset_size_limit}
 
 def _ckpt_save(cnt, model, cache_c, hparams, alg_name):
     \"\"\"Save model weights and cache_c at checkpoint boundary.\"\"\"
@@ -333,7 +334,7 @@ _presync_injection = '''    print(f"Results will be stored at {{run_dir}}")
     if _ckpt_start_batch > 0:
         import glob as _glob_mod
         _s3_results_base = Path("/s3-data/continual-learning/alphaedit/results/failure_curve_checkpointed")
-        _s3_eval_dir = _s3_results_base / f"seed{{_ckpt_seed}}" / "alphaedit_results" / dir_name / "run_000"
+        _s3_eval_dir = _s3_results_base / f"seed{{_ckpt_seed}}" / f"{{_ckpt_dataset_size_limit}}edits" / "alphaedit_results" / dir_name / "run_000"
         if _s3_eval_dir.exists():
             _existing_evals = list(_s3_eval_dir.glob("*_edits-case_*.json"))
             if _existing_evals:

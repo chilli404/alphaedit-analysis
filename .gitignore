@@ -66,3 +66,7 @@ Thumbs.db
 .uv/
 
 results/coupling_stress/
+
+results/polykernel_diagnostic/*.json
+
+results/polykernel_diagnostic/
