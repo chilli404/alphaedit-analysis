@@ -25,7 +25,7 @@ A mechanistic reproducibility study of [AlphaEdit](https://github.com/jianghouch
 
 - [ ] ~~Failure curve (500–10K edits)~~ — **in progress**
 - [ ] Null-space rank tracking
-- [ ] Coupling stress test
+- [x] Coupling stress test
 - [ ] Order sensitivity (10 orderings × 2 algorithms)
 - [ ] MEMIT+SeqReg calibration
 - [ ] ROME baseline calibration
