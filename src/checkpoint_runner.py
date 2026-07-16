@@ -158,6 +158,7 @@ def build_checkpoint_script(
         f"--num_edits={num_edits}",
         f"--downstream_eval_steps={downstream_eval_steps}",
         "--generation_test_interval=1",
+        "--skip_generation_tests",
     ]
     if conserve_memory:
         argv_parts.append("--conserve_memory")
@@ -536,13 +537,19 @@ def run(args: argparse.Namespace) -> None:
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     # Determine start_from_batch
+    total_batches = args.dataset_size_limit // args.num_edits
     start_from_batch = args.start_from_batch
     if start_from_batch < 0:
         # Auto-detect from latest checkpoint
         latest = find_latest_checkpoint(ckpt_dir)
         if latest:
             start_from_batch = latest[0] + 1
-            print(f"  Auto-detected: resume from batch {start_from_batch} (checkpoint at batch {latest[0]})")
+            # Cap at total_batches (checkpoint dir may have checkpoints from longer runs)
+            if start_from_batch > total_batches:
+                start_from_batch = total_batches
+                print(f"  Auto-detected: checkpoint at batch {latest[0]} exceeds target ({total_batches} batches). Will run eval only.")
+            else:
+                print(f"  Auto-detected: resume from batch {start_from_batch} (checkpoint at batch {latest[0]})")
         else:
             start_from_batch = 0
             print("  No existing checkpoints found. Starting from batch 0.")
@@ -571,8 +578,6 @@ def run(args: argparse.Namespace) -> None:
     env["CUDA_VISIBLE_DEVICES"] = args.cuda_device
     env["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
     env["TOKENIZERS_PARALLELISM"] = "false"
-
-    total_batches = args.dataset_size_limit // args.num_edits
 
     # Determine evaluation mode description
     if args.eval_at_checkpoints_only:
