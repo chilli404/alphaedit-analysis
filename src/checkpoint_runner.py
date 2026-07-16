@@ -261,7 +261,7 @@ def _ckpt_load(model, hparams, alg_name):
     if alg_name == "AlphaEdit":
         cache_file = batch_dir / "cache_c.pt"
         if cache_file.exists():
-            cache_c_loaded = torch.load(str(cache_file), map_location="cuda")
+            cache_c_loaded = torch.load(str(cache_file), map_location="cpu")
             print(f"  [CHECKPOINT] Loaded cache_c from {{cache_file}} (shape: {{cache_c_loaded.shape}})")
         else:
             print(f"  [CHECKPOINT] WARNING: No cache_c.pt in {{batch_dir}} (AlphaEdit will start with zero cache)")
