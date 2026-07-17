@@ -77,7 +77,7 @@ bash sky/sky_launch.sh failure_curve_ckpt 42   # Checkpointed failure curve
 bash sky/sky_launch.sh memit_sequential 42     # MEMIT+PrevKeyReg+Ridge
 ```
 
-Valid experiment names: `mve1`, `mve2`, `mve3`, `mve4`, `rome`, `failure_curve`, `failure_curve_ckpt`, `second_model`, `nullspace`, `coupling_stress`, `order_sensitivity`, `capability_probe`, `memit_sequential`, `mve`, `all`
+Valid experiment names: `mve1`, `mve2`, `mve3`, `mve4`, `failure_curve_ckpt`, `second_model`, `nullspace`, `coupling_stress`, `order_sensitivity`, `capability_probe`, `memit_sequential`, `mve`, `all`
 
 Creates clusters named `ae-{experiment}-s{seed}` (e.g., `ae-mve1_alphaedit_mcf-s42`). If the cluster already exists, it uses `sky exec` (reuses existing cluster) instead of `sky launch` (creates new cluster). All jobs use `--detach-run` for asynchronous execution.
 
@@ -131,16 +131,15 @@ bash scripts/run_mve1_alphaedit_mcf.sh 42
 | `scripts/run_mve2_memit_mcf.sh` | MEMIT | MultiCounterFact | Fair comparison baseline (same data, same batches, unconstrained editing) |
 | `scripts/run_mve3_alphaedit_zsre.sh` | AlphaEdit | zsRE | Cross-dataset generalization |
 | `scripts/run_mve4_conflict_seq.sh` | AlphaEdit | Conflict (generated) | Sequential single edits with conflicting targets for same subject |
-| `scripts/run_rome_baseline.sh` | ROME | MultiCounterFact | Lower-bound calibration (1 edit at a time) |
 
 ### Extended Analysis Scripts
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/run_failure_curve.sh` | Tests at [500, 1000, 1500, 2000, 3000, 5000, 7500, 10000] edits to find where AlphaEdit's null-space advantage disappears |
+| `scripts/run_failure_curve_checkpointed.sh` | Checkpointed failure curve at [3000, 5000, 7000, 9000, 10000] edits — finds where AlphaEdit's null-space advantage disappears |
 | `scripts/run_failure_curve_checkpointed.sh` | Checkpoint-based failure curve with 3 evaluation modes: normal (full eval every batch), fast (edited batch only), milestone (full eval at checkpoints only - RECOMMENDED) |
 | `scripts/run_nullspace_analysis.sh` | Tracks null-space rank consumption per layer per batch via SVD |
-| `scripts/run_order_sensitivity.sh` | 10 random orderings × 2 algorithms — tests if edit order affects final metrics |
+| `scripts/run_order_sensitivity.sh` | 5 random orderings × 2 algorithms — tests if edit order affects final metrics |
 | `scripts/run_coupling_stress.sh` | Measures "projection loss" under 4 semantic coupling types (synonym, hypernym, co-occurrence, causal) |
 | `scripts/run_capability_probe.sh` | Measures WikiText perplexity + few-shot MMLU at intervals to detect general capability damage |
 | `scripts/run_memit_sequential.sh` | MEMIT+SeqReg: Non-projected analogue of AlphaEdit Eq. 12 — tests if sequential regularization can match null-space projection |

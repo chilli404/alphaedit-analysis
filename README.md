@@ -23,12 +23,11 @@ A mechanistic reproducibility study of [AlphaEdit](https://github.com/jianghouch
 
 ### Extended Experiments (3 seeds: 42, 137, 2024)
 
-- [ ] ~~Failure curve (500–10K edits)~~ — **in progress**
+- [x] Failure curve (500–10K edits)
 - [ ] Null-space rank tracking
 - [x] Coupling stress test
-- [ ] Order sensitivity (10 orderings × 2 algorithms)
+- [ ] Order sensitivity (5 orderings × 2 algorithms)
 - [ ] MEMIT+SeqReg calibration
-- [ ] ROME baseline calibration
 - [ ] Cache mitigation sweep
 - [ ] Capability probe (WikiText perplexity + MMLU)
 - [ ] Second model (Mistral-7B)
@@ -91,7 +90,6 @@ bash scripts/run_mve1_alphaedit_mcf.sh 42
 bash scripts/run_mve2_memit_mcf.sh 42
 bash scripts/run_mve3_alphaedit_zsre.sh 42
 bash scripts/run_mve4_conflict_seq.sh 42
-bash scripts/run_rome_baseline.sh 42
 ```
 
 ### Failure Curve (Checkpointed)

@@ -40,7 +40,7 @@ DEFAULT_THRESHOLD = 2e-2
 
 
 def get_project_root() -> Path:
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def resolve_checkpoint_dir(explicit_dir: str | None, seed: int) -> Path:

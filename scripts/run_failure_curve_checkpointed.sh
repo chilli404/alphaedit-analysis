@@ -68,7 +68,7 @@ run_checkpointed() {
         EVAL_FLAG="--fast_checkpoint"
     fi
 
-    uv run python src/checkpoint_runner.py \
+    uv run python src/runners/checkpoint_runner.py \
         --seed "$seed" \
         --cuda_device "$CUDA_DEVICE" \
         --alg_name "$alg_name" \

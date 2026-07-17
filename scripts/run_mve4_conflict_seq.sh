@@ -29,13 +29,13 @@ cd "$PROJECT_DIR"
 
 # Step 1: Generate the conflict dataset
 echo "[1/2] Generating conflict dataset..."
-uv run python src/conflict_dataset.py \
+uv run python src/datasets/conflict_dataset.py \
     --seed "$SEED" \
     --output_dir vendor/AlphaEdit/data
 
 # Step 2: Run AlphaEdit with sequential single edits on conflict data
 echo "[2/2] Running conflict sequence experiment..."
-uv run python src/seeded_runner.py \
+uv run python src/runners/seeded_runner.py \
     --seed "$SEED" \
     --cuda_device "$CUDA_DEVICE" \
     --alg_name AlphaEdit \

@@ -43,7 +43,7 @@ This failure mode is **more fundamental than saturation**: it can happen on the 
 
 AlphaEdit processes edits in source-file order with no shuffling. P is static, so the first edits claim the best null-space directions.
 
-**Design**: 2000 MCF edits × 10 random orderings × {AlphaEdit, MEMIT}
+**Design**: 2000 MCF edits × 5 random orderings × {AlphaEdit, MEMIT}
 
 **Test**: Levene's test for equality of variances. If AlphaEdit has significantly higher cross-ordering variance, ordering is a hidden hyperparameter the paper doesn't acknowledge.
 

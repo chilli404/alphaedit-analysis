@@ -36,6 +36,9 @@ from pathlib import Path
 import numpy as np
 import torch
 
+_SRC_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_SRC_DIR / "util"))
+
 from capability_probe import (
     compute_mmlu_accuracy,
     compute_perplexity,
@@ -45,7 +48,7 @@ from model_download import resolve_model_path
 
 
 def get_project_root() -> Path:
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def resolve_checkpoint_dir(explicit_dir: str | None, alg_name: str, seed: int) -> Path:

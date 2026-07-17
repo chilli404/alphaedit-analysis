@@ -3,10 +3,10 @@ set -euo pipefail
 
 # Edit Order Sensitivity Experiment
 #
-# Runs the same 2000 MCF edits in 10 different random orderings for both
+# Runs the same 2000 MCF edits in 5 different random orderings for both
 # AlphaEdit and MEMIT. Measures whether edit ordering affects final performance.
 #
-# Total: 10 orderings × 2 algorithms = 20 runs (same model seed throughout).
+# Total: 5 orderings × 2 algorithms = 10 runs (same model seed throughout).
 #
 # Usage:
 #   bash scripts/run_order_sensitivity.sh [SEED] [DATASET_SIZE_LIMIT]
@@ -27,7 +27,7 @@ CUDA_DEVICE="${CUDA_DEVICE:-0}"
 NUM_EDITS="${NUM_EDITS:-100}"
 MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 HPARAMS_FNAME="${HPARAMS_FNAME:-Llama3-8B.json}"
-NUM_ORDERINGS="${NUM_ORDERINGS:-10}"
+NUM_ORDERINGS="${NUM_ORDERINGS:-5}"
 
 echo "=== Edit Order Sensitivity Experiment ==="
 echo "  Model seed: $SEED"
@@ -48,7 +48,7 @@ for order_seed in $(seq 0 $((NUM_ORDERINGS - 1))); do
     for alg in AlphaEdit MEMIT; do
         echo ""
         echo "--- Running: $alg order_seed=$order_seed ---"
-        if uv run python src/order_sensitivity_runner.py \
+        if uv run python src/runners/order_sensitivity_runner.py \
             --seed "$SEED" \
             --order_seed "$order_seed" \
             --cuda_device "$CUDA_DEVICE" \

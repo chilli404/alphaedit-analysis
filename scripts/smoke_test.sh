@@ -47,7 +47,7 @@ echo "  AlphaEdit submodule: OK"
 # Run minimal experiment
 echo ""
 echo "  Running minimal AlphaEdit experiment..."
-uv run python src/seeded_runner.py \
+uv run python src/runners/seeded_runner.py \
     --seed 42 \
     --cuda_device "$CUDA_DEVICE" \
     --alg_name AlphaEdit \

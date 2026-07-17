@@ -12,14 +12,7 @@ data
 logs
 
 # Results (large, tracked separately)
-results/*.csv
-results/*.json
-results/figures/
-results/tables/
-results/metadata/
-results/coupling_stress/*.jsonl
-results/nullspace_tracking/*.jsonl
-results/order_sensitivity/*.jsonl
+results
 
 # Vendor data (downloaded at runtime)
 vendor/AlphaEdit/data/multi_counterfact.json

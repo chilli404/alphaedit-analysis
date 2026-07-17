@@ -26,7 +26,7 @@ echo "Project: $PROJECT_DIR"
 
 cd "$PROJECT_DIR"
 
-uv run python src/seeded_runner.py \
+uv run python src/runners/seeded_runner.py \
     --seed "$SEED" \
     --cuda_device "$CUDA_DEVICE" \
     --alg_name AlphaEdit \

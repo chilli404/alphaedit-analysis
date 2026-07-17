@@ -9,7 +9,7 @@ set -euo pipefail
 #   - Extensions (failure_curve, nullspace, coupling, etc.): 3 seeds (42, 137, 2024)
 #
 # Usage: bash scripts/run_all_seeds.sh [EXPERIMENT]
-#   EXPERIMENT: mve1, mve2, mve3, mve4, mve, rome, failure_curve, second_model,
+#   EXPERIMENT: mve1, mve2, mve3, mve4, mve, failure_curve, second_model,
 #              nullspace, coupling_stress, order_sensitivity, capability, all
 #
 # Examples:
@@ -77,7 +77,7 @@ case "$EXPERIMENT" in
             "run_mve4_conflict_seq.sh"
         ;;
     failure_curve)
-        run_with_seeds "$EXT_SEEDS" "run_failure_curve.sh"
+        run_with_seeds "$EXT_SEEDS" "run_failure_curve_checkpointed.sh"
         ;;
     second_model)
         run_with_seeds "$EXT_SEEDS" "run_second_model.sh"
@@ -91,9 +91,6 @@ case "$EXPERIMENT" in
     order_sensitivity)
         run_with_seeds "$EXT_SEEDS" "run_order_sensitivity.sh"
         ;;
-    rome)
-        run_with_seeds "$EXT_SEEDS" "run_rome_baseline.sh"
-        ;;
     capability)
         run_with_seeds "$EXT_SEEDS" "run_capability_probe.sh"
         ;;
@@ -106,8 +103,7 @@ case "$EXPERIMENT" in
             "run_mve4_conflict_seq.sh"
         # Extensions: 3 seeds
         run_with_seeds "$EXT_SEEDS" \
-            "run_rome_baseline.sh" \
-            "run_failure_curve.sh" \
+            "run_failure_curve_checkpointed.sh" \
             "run_second_model.sh" \
             "run_nullspace_analysis.sh" \
             "run_capability_probe.sh" \
@@ -116,7 +112,7 @@ case "$EXPERIMENT" in
         ;;
     *)
         echo "ERROR: Unknown experiment '$EXPERIMENT'"
-        echo "Valid options: mve1, mve2, mve3, mve4, rome, failure_curve, second_model, nullspace, coupling_stress, order_sensitivity, capability, mve, all"
+        echo "Valid options: mve1, mve2, mve3, mve4, failure_curve, second_model, nullspace, coupling_stress, order_sensitivity, capability, mve, all"
         exit 1
         ;;
 esac

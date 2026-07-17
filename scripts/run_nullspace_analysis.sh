@@ -85,7 +85,7 @@ if [[ -n "$CKPT_DIR" ]]; then
     echo "  Checkpoint dir: $CKPT_DIR"
     echo ""
 
-    uv run python src/nullspace_offline_analyzer.py \
+    uv run python src/mechanism/nullspace_offline_analyzer.py \
         --seed "$SEED" \
         --checkpoint_dir "$CKPT_DIR" \
         --device "cuda:${CUDA_DEVICE}"
@@ -94,7 +94,7 @@ else
     echo "  Mode: ONLINE (no checkpoints found, editing from scratch)"
     echo ""
 
-    uv run python src/nullspace_tracker.py \
+    uv run python src/mechanism/nullspace_tracker.py \
         --seed "$SEED" \
         --cuda_device "$CUDA_DEVICE" \
         --model_name "$MODEL_NAME" \

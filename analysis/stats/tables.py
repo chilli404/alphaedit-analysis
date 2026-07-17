@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from analysis.confidence_intervals import bootstrap_ci, wilson_interval
+from analysis.stats.confidence_intervals import bootstrap_ci, wilson_interval
 
 
 def generate_main_results_table(

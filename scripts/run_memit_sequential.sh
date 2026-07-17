@@ -68,7 +68,7 @@ if [[ "${FAST_CHECKPOINT:-false}" == "true" ]]; then
     echo "  FAST MODE: only evaluate edited batch"
 fi
 
-uv run python src/memit_sequential_runner.py \
+uv run python src/runners/memit_sequential_runner.py \
     --seed "$SEED" \
     --cuda_device "$CUDA_DEVICE" \
     --model_name "$MODEL_NAME" \

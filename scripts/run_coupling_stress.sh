@@ -22,7 +22,7 @@ echo "  Warmup edits: $WARMUP"
 echo ""
 
 # Run the coupling stress runner (generates dataset internally)
-uv run python src/coupling_stress_runner.py \
+uv run python src/runners/coupling_stress_runner.py \
     --seed "$SEED" \
     --cuda_device "$CUDA_DEVICE" \
     --max_pairs_per_type "$MAX_PAIRS" \

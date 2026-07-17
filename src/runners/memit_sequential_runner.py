@@ -52,13 +52,17 @@ import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Add src/util to path for shared utilities
+_SRC_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_SRC_DIR / "util"))
+
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file
 
 
 def get_project_root() -> Path:
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def get_alphaedit_root() -> Path:

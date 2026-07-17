@@ -50,7 +50,7 @@ run_variant() {
     shift
     echo ""
     echo "--- Running: $strategy $* ---"
-    if uv run python src/cache_mitigation_runner.py \
+    if uv run python src/mechanism/cache_mitigation_runner.py \
         --seed "$SEED" \
         --cuda_device "$CUDA_DEVICE" \
         --model_name "$MODEL_NAME" \

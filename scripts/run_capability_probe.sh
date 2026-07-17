@@ -99,7 +99,7 @@ run_probe_offline() {
         mmlu_flag="--no_mmlu"
     fi
 
-    CUDA_VISIBLE_DEVICES="$CUDA_DEVICE" uv run python src/capability_probe_offline.py \
+    CUDA_VISIBLE_DEVICES="$CUDA_DEVICE" uv run python src/mechanism/capability_probe_offline.py \
         --seed "$SEED" \
         --alg_name "$alg_name" \
         --checkpoint_dir "$ckpt_dir" \
@@ -122,7 +122,7 @@ run_probe_online() {
         mmlu_flag="--no_mmlu"
     fi
 
-    uv run python src/capability_probe_runner.py \
+    uv run python src/runners/capability_probe_runner.py \
         --seed "$SEED" \
         --cuda_device "$CUDA_DEVICE" \
         --alg_name "$alg_name" \

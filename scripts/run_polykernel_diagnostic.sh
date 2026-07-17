@@ -76,7 +76,7 @@ if [[ "$COUPLING_MODE" == "true" ]]; then
         echo "  Coupling dataset not found at $COUPLING_DATASET"
         echo "  Generating via coupling_dataset module..."
         uv run python -c "
-import sys; sys.path.insert(0, 'src')
+import sys; sys.path.insert(0, 'src/datasets')
 from coupling_dataset import generate_coupling_dataset
 from pathlib import Path
 import json
@@ -103,7 +103,7 @@ else
     EXTRA_ARGS="--num_edits $NUM_EDITS --dataset_size_limit $DATASET_SIZE_LIMIT"
 fi
 
-uv run python src/polykernel_key_extractor.py \
+uv run python src/polykernel/polykernel_key_extractor.py \
     --seed "$SEED" \
     --alg_name "$ALG_NAME" \
     --cuda_device "$CUDA_DEVICE" \
@@ -121,7 +121,7 @@ if [[ ! -f "$KEYS_FILE" ]]; then
     exit 1
 fi
 
-uv run python src/polykernel_diagnostic.py \
+uv run python src/polykernel/polykernel_diagnostic.py \
     --keys_file "$KEYS_FILE" \
     --rank_threshold "$RANK_THRESHOLD" \
     --window_size "$WINDOW_SIZE"
