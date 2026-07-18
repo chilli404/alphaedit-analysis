@@ -289,7 +289,7 @@ _pk_edit_only = {edit_only}
 _pk_save_interval = {save_interval}
 _pk_checkpoint_dir = "{checkpoint_dir}"
 _pk_eval_only = {eval_only}
-_pk_load_checkpoint = "{load_checkpoint}"
+_pk_checkpoint_load_path = "{load_checkpoint}"
 
 def _pk_save_checkpoint(cnt, model, cache_c, hparams, alg_name):
     \"\"\"Save model weights + cache_c at checkpoint boundary.\"\"\"
@@ -328,11 +328,11 @@ def _pk_save_checkpoint(cnt, model, cache_c, hparams, alg_name):
 
     print(f"  [PK-CKPT] Saved batch {{cnt}} ({{(cnt+1) * {num_edits}}} edits) -> {{batch_dir}}")
 
-def _pk_load_checkpoint(model, hparams, alg_name):
+def _pk_load_from_checkpoint(model, hparams, alg_name):
     \"\"\"Load model weights from checkpoint for eval-only mode.\"\"\"
     from pathlib import Path as _Path
 
-    ckpt_path = _Path(_pk_load_checkpoint)
+    ckpt_path = _Path(_pk_checkpoint_load_path)
     if not ckpt_path.exists():
         print(f"  [PK-CKPT] ERROR: Checkpoint not found at {{ckpt_path}}")
         sys.exit(1)
@@ -461,8 +461,8 @@ if _pk_eval_only:
     _loop_anchor = {repr(LOOP_ANCHOR)}
     assert _loop_anchor in _eval_source, "LOOP_ANCHOR not found in evaluate.py."
     _load_hook = '''    # === PK-CKPT: load checkpoint for eval-only mode (injected) ===
-    if _pk_eval_only and '_pk_load_checkpoint' in dir():
-        _loaded_cache = _pk_load_checkpoint(model, hparams, alg_name)
+    if _pk_eval_only:
+        _loaded_cache = _pk_load_from_checkpoint(model, hparams, alg_name)
         if _loaded_cache is not None and alg_name == "AlphaEdit":
             cache_c = _loaded_cache
         print(f"  [PK-CKPT] Eval-only mode: model loaded from checkpoint, skipping all edits.")
@@ -502,7 +502,8 @@ exec(compile(_eval_source, "experiments/evaluate.py", "exec"), {{
     "_pk_checkpoint_dir": _pk_checkpoint_dir,
     "_pk_eval_only": _pk_eval_only,
     "_pk_save_checkpoint": _pk_save_checkpoint,
-    "_pk_load_checkpoint": _pk_load_checkpoint,
+    "_pk_load_from_checkpoint": _pk_load_from_checkpoint,
+    "_pk_checkpoint_load_path": _pk_checkpoint_load_path,
 }})
 
 # 8. Write log to JSONL
