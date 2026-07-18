@@ -43,8 +43,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 ALPHAEDIT_ROOT = PROJECT_ROOT / "vendor" / "AlphaEdit"
 SRC_DIR = PROJECT_ROOT / "src"
 
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
+# NOTE: Do NOT add SRC_DIR to sys.path — src/datasets/ shadows HuggingFace 'datasets'
 if str(SRC_DIR / "util") not in sys.path:
     sys.path.insert(0, str(SRC_DIR / "util"))
 

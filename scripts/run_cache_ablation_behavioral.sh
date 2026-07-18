@@ -48,6 +48,15 @@ echo "=========================================="
 cd "$PROJECT_DIR"
 export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE}"
 
+# Set HF_ENDPOINT before Python starts so huggingface_hub picks it up at import time.
+# This routes model downloads through Artifactory on corporate clusters.
+if [[ -z "${HF_ENDPOINT:-}" ]]; then
+    if curl -s --head --connect-timeout 5 https://graingerinc.jfrog.io > /dev/null 2>&1; then
+        export HF_ENDPOINT="https://graingerinc.jfrog.io/artifactory/api/huggingfaceml/huggingfaceml-remote"
+        echo "  HF_ENDPOINT set to Artifactory (pre-Python)"
+    fi
+fi
+
 uv run python src/mechanism/cache_ablation_behavioral.py \
     --seed "${SEED}" \
     --checkpoint_batch "${CHECKPOINT_BATCH}" \

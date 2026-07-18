@@ -25,7 +25,7 @@ if [[ -f "$PROJECT_DIR/.env" ]]; then
 fi
 
 SEED="${1:?Usage: $0 <seed> [checkpoint_batch]}"
-CHECKPOINT_BATCH="${2:-69}"
+CHECKPOINT_BATCH="${2:-${CHECKPOINT_BATCH:-69}}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
 MODEL_NAME="${MODEL_NAME:-NousResearch/Meta-Llama-3-8B-Instruct}"
 HPARAMS_FNAME="${HPARAMS_FNAME:-Llama3-8B.json}"

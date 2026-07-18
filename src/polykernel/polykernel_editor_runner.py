@@ -466,6 +466,8 @@ if _pk_eval_only:
         if _loaded_cache is not None and alg_name == "AlphaEdit":
             cache_c = _loaded_cache
         print(f"  [PK-CKPT] Eval-only mode: model loaded from checkpoint, skipping all edits.")
+    exec_time = 0  # Prevent UnboundLocalError in eval loop (no edits performed)
+    edited_model = model  # Model already has edits from checkpoint
     # === END PK-CKPT load ===
 '''
     _eval_source = _eval_source.replace(_loop_anchor, _load_hook + _loop_anchor, 1)

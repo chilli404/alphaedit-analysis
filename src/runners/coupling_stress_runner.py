@@ -32,9 +32,11 @@ import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Add src/util to path for shared utilities
+# Add src/util and src/datasets to path for shared utilities
+# NOTE: Do NOT add full _SRC_DIR — src/datasets/ shadows HuggingFace 'datasets'
 _SRC_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_SRC_DIR / "util"))
+sys.path.insert(0, str(_SRC_DIR / "datasets"))
 
 from model_download import resolve_model_path
 from setup_hparams import link_hparams

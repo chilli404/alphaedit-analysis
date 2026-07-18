@@ -49,7 +49,10 @@ SAMPLE_SIZE = 2000  # Per-checkpoint sample for speed
 
 
 def find_run_dirs(base_dir: Path) -> list[dict]:
-    """Scan checkpoint results and find all (seed, algorithm, edit_count, run_dir) tuples."""
+    """Scan checkpoint results and find all (seed, algorithm, edit_count, run_dir) tuples.
+
+    Supports both flat (AlphaEdit/run_000/) and nested (wrapper/AlphaEdit/run_000/) layouts.
+    """
     entries = []
     for seed_dir in sorted(base_dir.iterdir()):
         if not seed_dir.is_dir() or not seed_dir.name.startswith("seed"):
@@ -61,25 +64,32 @@ def find_run_dirs(base_dir: Path) -> list[dict]:
                 continue
             total_edits = int(edits_dir.name.replace("edits", ""))
 
+            # Collect algorithm dirs from both flat and nested layouts
+            alg_dirs = []
             for subdir in edits_dir.iterdir():
                 if not subdir.is_dir():
                     continue
-                for alg_dir in subdir.iterdir():
-                    if not alg_dir.is_dir() or alg_dir.name not in ("AlphaEdit", "MEMIT"):
+                if subdir.name in ("AlphaEdit", "MEMIT"):
+                    alg_dirs.append(subdir)
+                else:
+                    for alg_dir in subdir.iterdir():
+                        if alg_dir.is_dir() and alg_dir.name in ("AlphaEdit", "MEMIT"):
+                            alg_dirs.append(alg_dir)
+
+            for alg_dir in alg_dirs:
+                for run_dir in sorted(alg_dir.iterdir()):
+                    if not run_dir.is_dir() or not run_dir.name.startswith("run_"):
                         continue
-                    for run_dir in sorted(alg_dir.iterdir()):
-                        if not run_dir.is_dir() or not run_dir.name.startswith("run_"):
-                            continue
-                        case_files = list(run_dir.glob("*_edits-case_*.json"))
-                        if len(case_files) < 100:
-                            continue
-                        entries.append({
-                            "seed": seed,
-                            "algorithm": alg_dir.name,
-                            "total_edits": total_edits,
-                            "run_dir": run_dir,
-                            "n_cases": len(case_files),
-                        })
+                    case_files = list(run_dir.glob("*_edits-case_*.json"))
+                    if len(case_files) < 100:
+                        continue
+                    entries.append({
+                        "seed": seed,
+                        "algorithm": alg_dir.name,
+                        "total_edits": total_edits,
+                        "run_dir": run_dir,
+                        "n_cases": len(case_files),
+                    })
     return entries
 
 
