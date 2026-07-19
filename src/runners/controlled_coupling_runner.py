@@ -61,12 +61,16 @@ PRE_EDIT_ANCHOR = '        start = time()\n        if any(alg in alg_name for al
 POST_EDIT_ANCHOR = '        exec_time = time() - start'
 ALGO_IMPORT_ANCHOR = 'from AlphaEdit.AlphaEdit_main import apply_AlphaEdit_to_model, get_cov'
 
-# Checkpoint loading anchor (injected after P initialization)
-CHECKPOINT_LOAD_ANCHOR = '        torch.save(P, "null_space_project.pt")'
+# Checkpoint loading anchor: inject BEFORE glue_save_location (after P + cache_c init)
+# This anchor is stable regardless of whether P-cache patch has been applied.
+CHECKPOINT_LOAD_ANCHOR = "    glue_save_location = str(run_dir) + '/' + 'glue_eval/'"
 
 # AlphaEdit_main.py anchors
 RESID_ANCHOR = '        resid = targets / (len(hparams.layers) - i)  # Distribute residual across layers'
 UPD_ANCHOR = '        upd_matrix = upd_matrix_match_shape(upd_matrix, weights[weight_name].shape)'
+
+# Functional projection loss anchor: inject BEFORE shape matching (upd_matrix is [d_in, d_out])
+FUNCTIONAL_LOSS_ANCHOR = '        # Adjust update matrix shape'
 
 # Cache update anchor: where cache_c gets updated (after model edit, second layer loop)
 CACHE_UPDATE_ANCHOR = '        cache_c[i,:,:] += layer_ks.cpu() @ layer_ks.cpu().T'
@@ -148,34 +152,78 @@ def build_controlled_coupling_script(
         # === END cache eigenspectrum ===
 '''
 
-    # After upd_matrix_match_shape: measure projection constraint effect.
-    # At this point: upd_matrix is the final update (after shape matching),
-    # layer_ks, resid, P[i,:,:] are in scope.
-    # We measure projection_loss = 1 - ||P @ K @ resid^T|| / ||K @ resid^T||
-    # (same metric as coupling_stress_runner.py — what fraction of the desired
-    # direction is removed by null-space projection P)
-    projection_injection = r'''
-        # === CONTROLLED_COUPLING: projection measurement (injected) ===
+    # Before upd_matrix_match_shape: compute functional projection loss.
+    # At this point: upd_matrix is [d_in, d_out] (pre-match), and all solve
+    # variables are in scope: layer_ks [d_in, n], resid [d_out, n], P[i,:,:],
+    # cache_c[i,:,:], hparams.L2.
+    #
+    # Key metrics:
+    #   q_t = ||ΔW_proj.T @ K_new|| / ||ΔW_raw.T @ K_new||
+    #     - ratio of edit signal preserved after projection
+    #   fit_quality_proj = 1 - ||resid - ΔW_proj.T @ K|| / ||resid||
+    #     - how well projected update achieves edit target
+    #   fit_quality_raw = 1 - ||resid - ΔW_raw.T @ K|| / ||resid||
+    #     - how well unconstrained update achieves edit target
+    #   removed_fraction = 1 - ||P @ K @ resid^T|| / ||K @ resid^T||
+    #     - RHS-level signal removal (fast proxy)
+    functional_projection_injection = r'''
+        # === CONTROLLED_COUPLING: functional projection loss (injected) ===
         if '_cc_projection_metrics' in globals():
-            import torch as _torch_cc2
+            import torch as _torch_fpl
             try:
-                _cc_rhs = layer_ks @ resid.T
-                _cc_proj_rhs = P[i,:,:].cuda() @ _cc_rhs
-                _cc_rhs_norm = _torch_cc2.linalg.norm(_cc_rhs).item()
-                _cc_proj_norm = _torch_cc2.linalg.norm(_cc_proj_rhs).item()
-                _cc_projection_loss = 1.0 - (_cc_proj_norm / max(_cc_rhs_norm, 1e-10))
-                _cc_upd_norm = _torch_cc2.linalg.norm(upd_matrix).item()
+                # --- RHS-level removed fraction (fast, backward compat) ---
+                _fpl_rhs = layer_ks @ resid.T
+                _fpl_proj_rhs = P[i,:,:].cuda() @ _fpl_rhs
+                _fpl_rhs_norm = _torch_fpl.linalg.norm(_fpl_rhs).item()
+                _fpl_proj_rhs_norm = _torch_fpl.linalg.norm(_fpl_proj_rhs).item()
+                _fpl_removed_fraction = max(0.0, 1.0 - (_fpl_proj_rhs_norm / max(_fpl_rhs_norm, 1e-10)))
+
+                # --- Functional q_t: raw vs projected solve ---
+                # upd_matrix is the PROJECTED solve result [d_in, d_out]
+                # Compute raw (unconstrained) solve: (K@K^T + C + λI) X = K @ resid^T
+                _fpl_lhs_raw = (layer_ks @ layer_ks.T + cache_c[i,:,:].cuda() +
+                                hparams.L2 * _torch_fpl.eye(layer_ks.shape[0], device="cuda", dtype=_torch_fpl.float))
+                _fpl_upd_raw = _torch_fpl.linalg.solve(_fpl_lhs_raw, _fpl_rhs)
+
+                # Effect on current edit keys (output-space change)
+                # upd_matrix shape: [d_in, d_out], so .T is [d_out, d_in]
+                # layer_ks shape: [d_in, n]
+                # effect shape: [d_out, n] — matches resid
+                _fpl_effect_proj = upd_matrix.T @ layer_ks   # [d_out, n]
+                _fpl_effect_raw = _fpl_upd_raw.T @ layer_ks  # [d_out, n]
+
+                _fpl_effect_proj_norm = _torch_fpl.linalg.norm(_fpl_effect_proj).item()
+                _fpl_effect_raw_norm = _torch_fpl.linalg.norm(_fpl_effect_raw).item()
+
+                # q_t: functional signal preservation ratio
+                _fpl_q_t = _fpl_effect_proj_norm / max(_fpl_effect_raw_norm, 1e-10)
+
+                # Fit quality: how well each solve achieves the target residual
+                _fpl_resid_norm = _torch_fpl.linalg.norm(resid).item()
+                _fpl_fit_proj = 1.0 - (_torch_fpl.linalg.norm(resid - _fpl_effect_proj).item() /
+                                       max(_fpl_resid_norm, 1e-10))
+                _fpl_fit_raw = 1.0 - (_torch_fpl.linalg.norm(resid - _fpl_effect_raw).item() /
+                                      max(_fpl_resid_norm, 1e-10))
+
                 _cc_projection_metrics.append({
                     "layer": layer,
-                    "rhs_norm": round(_cc_rhs_norm, 6),
-                    "projected_rhs_norm": round(_cc_proj_norm, 6),
-                    "removed_fraction": round(max(0.0, _cc_projection_loss), 6),
-                    "update_norm": round(_cc_upd_norm, 6),
+                    "rhs_norm": round(_fpl_rhs_norm, 6),
+                    "projected_rhs_norm": round(_fpl_proj_rhs_norm, 6),
+                    "removed_fraction": round(_fpl_removed_fraction, 6),
+                    "update_norm": round(_torch_fpl.linalg.norm(upd_matrix).item(), 6),
+                    "q_t": round(_fpl_q_t, 6),
+                    "fit_quality_projected": round(_fpl_fit_proj, 6),
+                    "fit_quality_raw": round(_fpl_fit_raw, 6),
+                    "effect_norm_projected": round(_fpl_effect_proj_norm, 6),
+                    "effect_norm_raw": round(_fpl_effect_raw_norm, 6),
+                    "target_norm": round(_fpl_resid_norm, 6),
                 })
-                del _cc_rhs, _cc_proj_rhs
-            except Exception as _cc_pe:
-                print(f"  [CC] Projection metric error: {_cc_pe}")
-        # === END projection measurement ===
+                del _fpl_rhs, _fpl_proj_rhs, _fpl_lhs_raw, _fpl_upd_raw
+                del _fpl_effect_proj, _fpl_effect_raw
+                _torch_fpl.cuda.empty_cache()
+            except Exception as _fpl_e:
+                print(f"  [CC] Functional projection loss error: {_fpl_e}")
+        # === END functional projection loss ===
 '''
 
     # ─── Injection code for evaluate.py ───────────────────────────────────
@@ -210,8 +258,8 @@ def build_controlled_coupling_script(
         # === END post-batch ===
 '''
 
-    # Use UPD_ANCHOR (after upd_matrix_match_shape) for projection measurement
-    upd_anchor = UPD_ANCHOR
+    # Use FUNCTIONAL_LOSS_ANCHOR (before upd_matrix_match_shape) for projection measurement
+    functional_anchor = FUNCTIONAL_LOSS_ANCHOR
 
     script = textwrap.dedent(f"""\
 import os, sys, random, json, math, time
@@ -271,14 +319,23 @@ def _cc_record_batch(cnt, model, hparams, exec_time, record_chunks, cache_c):
             }},
         }}
 
-    # Aggregate projection metrics
+    # Aggregate projection + functional metrics
     if _cc_projection_metrics:
         fracs = [m["removed_fraction"] for m in _cc_projection_metrics]
         norms = [m["update_norm"] for m in _cc_projection_metrics]
+        q_ts = [m["q_t"] for m in _cc_projection_metrics if "q_t" in m]
+        fits_proj = [m["fit_quality_projected"] for m in _cc_projection_metrics if "fit_quality_projected" in m]
+        fits_raw = [m["fit_quality_raw"] for m in _cc_projection_metrics if "fit_quality_raw" in m]
         record["mechanism"] = record.get("mechanism", {{}})
         record["mechanism"]["aggregate"] = record["mechanism"].get("aggregate", {{}})
         record["mechanism"]["aggregate"]["mean_removed_fraction"] = round(np.mean(fracs), 6)
         record["mechanism"]["aggregate"]["mean_update_norm"] = round(np.mean(norms), 6)
+        if q_ts:
+            record["mechanism"]["aggregate"]["mean_q_t"] = round(np.mean(q_ts), 6)
+            record["mechanism"]["aggregate"]["min_q_t"] = round(min(q_ts), 6)
+        if fits_proj:
+            record["mechanism"]["aggregate"]["mean_fit_quality_projected"] = round(np.mean(fits_proj), 6)
+            record["mechanism"]["aggregate"]["mean_fit_quality_raw"] = round(np.mean(fits_raw), 6)
         record["mechanism"]["projection_layers"] = list(_cc_projection_metrics)
 
     # Evaluation placeholder (filled by milestone eval if applicable)
@@ -301,7 +358,8 @@ def _cc_record_batch(cnt, model, hparams, exec_time, record_chunks, cache_c):
         agg = record.get("mechanism", {{}}).get("aggregate", {{}})
         print(f"  [CC] Batch {{cnt}}: edits={{(cnt+1)*_cc_num_edits}}, "
               f"eff_rank={{agg.get('mean_cache_effective_rank', '?')}}, "
-              f"removed_frac={{agg.get('mean_removed_fraction', '?')}}")
+              f"removed_frac={{agg.get('mean_removed_fraction', '?')}}, "
+              f"q_t={{agg.get('mean_q_t', '?')}}")
 
 def _cc_should_skip(cnt):
     return cnt < _cc_start_batch
@@ -350,13 +408,13 @@ assert cache_anchor in ae_source, (
 cache_injection = {repr(cache_eigenspectrum_injection)}
 ae_source = ae_source.replace(cache_anchor, cache_anchor + "\\n" + cache_injection, 1)
 
-# Inject projection measurement after upd_matrix_match_shape
-_upd_anchor = {repr(upd_anchor)}
-assert _upd_anchor in ae_source, (
-    "UPD_ANCHOR not found in AlphaEdit_main.py."
+# Inject functional projection loss BEFORE shape matching (upd_matrix is pre-match)
+_func_anchor = {repr(functional_anchor)}
+assert _func_anchor in ae_source, (
+    "FUNCTIONAL_LOSS_ANCHOR not found in AlphaEdit_main.py."
 )
-proj_injection = {repr(projection_injection)}
-ae_source = ae_source.replace(_upd_anchor, _upd_anchor + "\\n" + proj_injection, 1)
+func_injection = {repr(functional_projection_injection)}
+ae_source = ae_source.replace(_func_anchor, func_injection + _func_anchor, 1)
 
 # Compile patched AlphaEdit main
 ae_code = compile(ae_source, "AlphaEdit/AlphaEdit_main.py", "exec")
@@ -407,7 +465,7 @@ post_hook = {repr(post_batch_hook)}
 eval_source = eval_source.replace(post_anchor, post_anchor + "\\n" + post_hook, 1)
 
 
-# Inject checkpoint loading after P initialization
+# Inject checkpoint loading BEFORE glue_save_location (after P + cache_c fully initialized)
 ckpt_load_anchor = {repr(CHECKPOINT_LOAD_ANCHOR)}
 if _cc_start_batch > 0:
     assert ckpt_load_anchor in eval_source, "CHECKPOINT_LOAD_ANCHOR not found in evaluate.py."
@@ -436,7 +494,7 @@ if _cc_start_batch > 0:
         print(f"  [CC] WARNING: checkpoint dir {{_ckpt_dir}} not found, starting from scratch")
     # === END checkpoint resumption ===
 '''
-    eval_source = eval_source.replace(ckpt_load_anchor, ckpt_load_anchor + "\\n" + _ckpt_injection, 1)
+    eval_source = eval_source.replace(ckpt_load_anchor, _ckpt_injection + "\\n" + ckpt_load_anchor, 1)
     print(f"[CC] Checkpoint resumption injected (start_from_batch={{_cc_start_batch}})")
 
 print("[CC] evaluate.py patched with dataset override + mechanism hooks")
@@ -499,6 +557,7 @@ def validate_anchors() -> None:
     for name, anchor in [
         ("RESID_ANCHOR", RESID_ANCHOR),
         ("UPD_ANCHOR", UPD_ANCHOR),
+        ("FUNCTIONAL_LOSS_ANCHOR", FUNCTIONAL_LOSS_ANCHOR),
         ("CACHE_UPDATE_ANCHOR", CACHE_UPDATE_ANCHOR),
     ]:
         assert anchor in algo_source, f"{name} not found in AlphaEdit_main.py"
