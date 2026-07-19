@@ -59,6 +59,7 @@ sys.path.insert(0, str(_SRC_DIR / "util"))
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file
+from eval_config import hash_eval_config
 
 
 def get_project_root() -> Path:
@@ -99,6 +100,7 @@ def build_sequential_script(
     output_jsonl: str,
     debug_freeze_batch: int | None,
     fast_checkpoint: bool = False,
+    order_id: int = 0,
 ) -> str:
     """
     Build inline Python script for MEMIT+SeqReg.
@@ -340,6 +342,51 @@ _eval_source = _eval_source.replace(
     "# CUDA_VISIBLE_DEVICES managed by memit_sequential_runner",
 )
 
+# Inject order shuffle + fingerprint before loop
+_loop_anchor = '    for record_chunks in chunks(ds, num_edits):'
+assert _loop_anchor in _eval_source, "Loop anchor not found in evaluate.py."
+
+_seqreg_order_id = {order_id}
+if _seqreg_order_id > 0:
+    _shuffle_code = (
+        f'    # === ORDER SHUFFLE: shuffle dataset with order_id={{_seqreg_order_id}} (injected) ===\\n'
+        f'    import random as _order_rng_module\\n'
+        f'    _order_rng = _order_rng_module.Random({{_seqreg_order_id}})\\n'
+        f'    _shuffled_indices = list(range(len(ds)))\\n'
+        f'    _order_rng.shuffle(_shuffled_indices)\\n'
+        f'    ds.data = [ds.data[i] for i in _shuffled_indices]\\n'
+        f'    print("ORDER SHUFFLE: shuffled " + str(len(ds)) + " records with order_id={{_seqreg_order_id}}")\\n'
+        f'    # === END order shuffle ===\\n'
+    )
+    _eval_source = _eval_source.replace(_loop_anchor, _shuffle_code + _loop_anchor, 1)
+
+# Inject fingerprint
+_fp_code = '''    # === FINGERPRINT: compute dataset fingerprint (injected) ===
+    import hashlib as _fp_hashlib
+    import json as _fp_json
+    _fp_case_ids = [r["case_id"] for r in ds]
+    _fp_id_bytes = _fp_json.dumps(_fp_case_ids, separators=(",", ":")).encode("utf-8")
+    _fp_sha256 = _fp_hashlib.sha256(_fp_id_bytes).hexdigest()
+    print(f"  [FINGERPRINT] Dataset: {{len(ds)}} records, SHA-256: {{_fp_sha256[:16]}}...")
+    print(f"  [FINGERPRINT] Order ID: ''' + str(_seqreg_order_id) + ''', first 5 IDs: {{_fp_case_ids[:5]}}")
+    _fp_ordering_path = run_dir / "edit_ordering.json"
+    _fp_ordering = {{
+        "case_ids_ordered": _fp_case_ids,
+        "n_records": len(ds),
+        "order_id": ''' + str(_seqreg_order_id) + ''',
+        "fingerprint": {{
+            "sha256": _fp_sha256,
+            "n_records": len(ds),
+            "first_5_ids": _fp_case_ids[:5],
+            "last_5_ids": _fp_case_ids[-5:] if len(_fp_case_ids) >= 5 else _fp_case_ids,
+        }},
+    }}
+    with open(str(_fp_ordering_path), "w") as _fp_f:
+        _fp_json.dump(_fp_ordering, _fp_f, indent=2)
+    # === END fingerprint ===
+'''
+_eval_source = _eval_source.replace(_loop_anchor, _fp_code + _loop_anchor, 1)
+
 # Inject batch increment + debug freeze before POST_EDIT_ANCHOR
 _post_anchor = {repr(POST_EDIT_ANCHOR)}
 assert _post_anchor in _eval_source, "POST_EDIT_ANCHOR not found in evaluate.py."
@@ -460,6 +507,7 @@ def run(args: argparse.Namespace) -> None:
         output_jsonl=str(output_jsonl),
         debug_freeze_batch=args.debug_freeze_batch,
         fast_checkpoint=args.fast_checkpoint,
+        order_id=args.order_id,
     )
 
     # Environment
@@ -491,6 +539,7 @@ def run(args: argparse.Namespace) -> None:
     metadata = {
         "experiment": "memit_seqreg_ridge",
         "seed": args.seed,
+        "order_id": args.order_id,
         "lambda_prev": args.lambda_prev,
         "lambda_delta": args.lambda_delta,
         "cache_strategy": args.cache_strategy,
@@ -503,6 +552,7 @@ def run(args: argparse.Namespace) -> None:
         "downstream_eval_steps": args.downstream_eval_steps,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "alphaedit_commit": "b84624f",
+        "eval_config_hash": hash_eval_config(),
         "output_jsonl": str(output_jsonl),
     }
     meta_path = results_dir / f"metadata_seed{args.seed}_lp{args.lambda_prev}_ld{args.lambda_delta}.json"
@@ -561,6 +611,10 @@ def main():
                         help="Run same-state diagnostic at this batch (tests λ_prev effect)")
     parser.add_argument("--fast_checkpoint", action="store_true",
                         help="Fast checkpoint mode: only evaluate edited batch, not entire dataset (much faster)")
+
+    # Order sensitivity
+    parser.add_argument("--order_id", type=int, default=0,
+                        help="Edit ordering ID (0=canonical, >0=shuffle with Random(order_id))")
 
     args = parser.parse_args()
     run(args)

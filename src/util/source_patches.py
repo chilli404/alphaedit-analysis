@@ -5,6 +5,9 @@ All runners that exec evaluate.py can use these patches to apply
 common modifications without editing the submodule directly.
 These are runtime patches (applied on disk before subprocess reads the file),
 following the same pattern as the YAML sed patches.
+
+Also provides shared source injection builders (order shuffle, fingerprint)
+that multiple runners can use without duplicating injection logic.
 """
 
 from pathlib import Path
@@ -70,3 +73,37 @@ def patch_evaluate_file(alphaedit_root: Path) -> None:
     if patched != source:
         eval_path.write_text(patched)
         print("  Applied P-cache patch to evaluate.py")
+
+
+# --- Source anchor used by order shuffle injection ---
+SHUFFLE_ANCHOR = '    for record_chunks in chunks(ds, num_edits):'
+
+
+def build_order_shuffle_injection(order_id: int) -> str:
+    """
+    Build source injection code for dataset shuffling by order_id.
+
+    Injected into evaluate.py BEFORE the main edit loop. If order_id == 0,
+    no shuffle is performed (canonical ordering). If order_id > 0, the
+    dataset is shuffled using Random(order_id).
+
+    Args:
+        order_id: Shuffle seed. 0 = canonical (no shuffle), >0 = shuffle.
+
+    Returns:
+        Python source code string to inject before the loop anchor.
+        Empty string if order_id == 0.
+    """
+    if order_id == 0:
+        return ""
+
+    return (
+        f'    # === ORDER SHUFFLE: shuffle dataset with order_id={order_id} (injected) ===\n'
+        f'    import random as _order_rng_module\n'
+        f'    _order_rng = _order_rng_module.Random({order_id})\n'
+        f'    _shuffled_indices = list(range(len(ds)))\n'
+        f'    _order_rng.shuffle(_shuffled_indices)\n'
+        f'    ds.data = [ds.data[i] for i in _shuffled_indices]\n'
+        f'    print("ORDER SHUFFLE: shuffled " + str(len(ds)) + " records with order_id={order_id}")\n'
+        f'    # === END order shuffle ===\n'
+    )

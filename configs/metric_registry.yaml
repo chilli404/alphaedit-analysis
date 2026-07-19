@@ -1,0 +1,119 @@
+# Canonical metric name registry
+# All analysis scripts must use these names exactly.
+# Adding new metrics requires updating this file and src/util/metric_registry.py.
+
+metrics:
+  # ──────────────────────────────────────────────────────────────────────
+  # Editing metrics (per-case, from evaluate.py)
+  # ──────────────────────────────────────────────────────────────────────
+  efficacy:
+    source_field: "rewrite_prompts_correct"
+    type: binary
+    description: "Fraction of prompts where model outputs new target"
+
+  generalization:
+    source_field: "paraphrase_prompts_correct"
+    type: binary
+    description: "Fraction of paraphrase prompts yielding new target"
+
+  specificity:
+    source_field: "neighborhood_prompts_correct"
+    type: binary
+    description: "Fraction of neighborhood prompts preserving original answer"
+
+  fluency:
+    source_field: "reference_score"
+    type: continuous
+    description: "N-gram overlap fluency score (reference-based)"
+
+  consistency:
+    source_field: "essence_score"
+    type: continuous
+    description: "Semantic consistency score between pre/post edit"
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Probability metrics (continuous analogues of binary metrics)
+  # ──────────────────────────────────────────────────────────────────────
+  efficacy_prob:
+    source_field: "rewrite_prompts_probs"
+    type: continuous
+    description: "Mean P(target_new) across rewrite prompts"
+
+  generalization_prob:
+    source_field: "paraphrase_prompts_probs"
+    type: continuous
+    description: "Mean P(target_new) across paraphrase prompts"
+
+  specificity_prob:
+    source_field: "neighborhood_prompts_probs"
+    type: continuous
+    description: "Mean P(target_new) across neighborhood prompts (lower = better preservation)"
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Capability metrics (from capability_probe)
+  # ──────────────────────────────────────────────────────────────────────
+  wikitext_perplexity:
+    source: capability_probe
+    type: continuous
+    description: "Corpus-level perplexity on WikiText-103 (200 samples, 512 tokens)"
+
+  mmlu_5shot_accuracy:
+    source: capability_probe
+    type: continuous
+    description: "5-shot MMLU accuracy on 4-subject subset"
+
+  # ──────────────────────────────────────────────────────────────────────
+  # GLUE metrics (from glue_eval)
+  # ──────────────────────────────────────────────────────────────────────
+  glue_sst:
+    source: glue_eval
+    type: continuous
+    description: "SST-2 accuracy from GLUE benchmark"
+
+  glue_mrpc:
+    source: glue_eval
+    type: continuous
+    description: "MRPC F1 from GLUE benchmark"
+
+  glue_rte:
+    source: glue_eval
+    type: continuous
+    description: "RTE accuracy from GLUE benchmark"
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Mechanism metrics (internal model diagnostics)
+  # ──────────────────────────────────────────────────────────────────────
+  cache_effective_rank:
+    source: mechanism_analyzer
+    type: continuous
+    description: "Effective rank of covariance cache (exp of entropy of normalized singular values)"
+
+  cache_stable_rank:
+    source: mechanism_analyzer
+    type: continuous
+    description: "Stable rank of covariance cache (||A||_F^2 / ||A||_2^2)"
+
+  cache_numerical_rank:
+    source: nullspace_tracker
+    type: integer
+    description: "Numerical rank of cache_c (count of singular values above threshold)"
+
+  nullspace_consumption_ratio:
+    source: nullspace_tracker
+    type: continuous
+    description: "Fraction of available null-space directions consumed by edits so far"
+
+  projection_loss:
+    source: coupling_stress_runner
+    type: continuous
+    description: "||ΔW_raw - ΔW_proj||_F / ||ΔW_raw||_F — fraction removed by projection"
+
+  projection_removed_fraction:
+    source: plasticity_tracker
+    type: continuous
+    description: "Same as projection_loss but from plasticity tracker context"
+
+  weight_drift_frobenius:
+    source: mechanism_analyzer
+    type: continuous
+    description: "||W_edited - W_base||_F — cumulative weight change from initial"

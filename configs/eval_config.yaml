@@ -1,0 +1,25 @@
+# Frozen evaluation configuration — hash recorded in all metadata
+# All experiments MUST use these settings for reproducibility.
+# Any change to this file invalidates prior results and requires re-running.
+version: 1
+frozen_at: "2025-07-18"
+
+# Context templates passed to evaluate.py's generation
+context_templates:
+  default: ["{}"]  # upstream default from vendor commit b84624f
+
+# Decoding parameters for model.generate()
+decoding:
+  do_sample: false
+  temperature: 1.0
+  top_k: 5          # vendor default in generate.py
+  top_p: 1.0
+  max_new_tokens: 100
+  num_beams: 1
+
+# Evaluation configuration
+evaluation:
+  neighborhood_prompts: true
+  paraphrase_prompts: true
+  generation_test_interval: 1
+  skip_generation_tests: false

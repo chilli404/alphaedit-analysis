@@ -38,7 +38,9 @@ sys.path.insert(0, str(_SRC_DIR / "util"))
 
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
-from source_patches import patch_evaluate_file
+from source_patches import patch_evaluate_file, build_order_shuffle_injection, SHUFFLE_ANCHOR
+from dataset_fingerprint import build_fingerprint_injection
+from eval_config import hash_eval_config
 
 
 def get_project_root() -> Path:
@@ -65,6 +67,7 @@ def build_runner_script(
     generation_test_interval: int,
     conserve_memory: bool,
     use_cache: bool,
+    order_id: int = 0,
 ) -> str:
     """
     Build an inline Python script that:
@@ -125,7 +128,19 @@ def build_runner_script(
                 '# CUDA_VISIBLE_DEVICES managed by seeded_runner',
             )
 
-        # 4. Execute as __main__ (triggers argparse + main() call)
+        # 4. Inject order shuffle (if order_id > 0)
+        shuffle_anchor = '    for record_chunks in chunks(ds, num_edits):'
+        if shuffle_anchor in source:
+            shuffle_code = {repr(build_order_shuffle_injection(order_id))}
+            if shuffle_code:
+                source = source.replace(shuffle_anchor, shuffle_code + shuffle_anchor, 1)
+
+        # 5. Inject dataset fingerprint
+        if shuffle_anchor in source:
+            fingerprint_code = {repr(build_fingerprint_injection(order_id))}
+            source = source.replace(shuffle_anchor, fingerprint_code + shuffle_anchor, 1)
+
+        # 6. Execute as __main__ (triggers argparse + main() call)
         exec(compile(source, "experiments/evaluate.py", "exec"),
              {{"__name__": "__main__", "__file__": "experiments/evaluate.py"}})
     """)
@@ -190,12 +205,17 @@ def record_metadata(
     except subprocess.CalledProcessError:
         commit = "unknown"
 
+    # Order ID (0 = canonical, >0 = shuffled)
+    order_id = getattr(args, "order_id", 0)
+
     metadata = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "seed": seed,
+        "order_id": order_id,
         "python_version": platform.python_version(),
         "hostname": platform.node(),
         "alphaedit_commit": commit,
+        "eval_config_hash": hash_eval_config(),
         "cuda_device": args.cuda_device,
         "experiment": experiment_name or f"{args.alg_name.lower()}_{args.ds_name}",
         "algorithm": args.alg_name,
@@ -290,6 +310,7 @@ def run(args: argparse.Namespace) -> None:
         generation_test_interval=args.generation_test_interval,
         conserve_memory=args.conserve_memory,
         use_cache=args.use_cache,
+        order_id=args.order_id,
     )
 
     # Set up environment for subprocess
@@ -368,6 +389,8 @@ def main():
     parser.add_argument("--generation_test_interval", type=int, default=1)
     parser.add_argument("--conserve_memory", action="store_true", default=True)
     parser.add_argument("--use_cache", action="store_true")
+    parser.add_argument("--order_id", type=int, default=0,
+                        help="Edit ordering ID (0=canonical, >0=shuffle with Random(order_id))")
 
     args = parser.parse_args()
     run(args)

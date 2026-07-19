@@ -5,16 +5,25 @@ Aggregate case-level JSON results into CSV summary tables.
 Reads the per-case JSON outputs from AlphaEdit/MEMIT runs and produces:
 1. A per-case CSV with all metrics extracted
 2. A summary CSV with means and standard deviations across seeds
+3. Optionally: confidence intervals (Wilson for binary, BCa bootstrap for continuous)
+
+Averaging specification:
+  - Within-case (micro): efficacy_case_i = mean(rewrite_prompts_correct[i])
+  - Across-cases (macro): efficacy_overall = mean(efficacy_case_i for all i)
+  This is macro-averaging: each case contributes equally regardless of
+  how many prompts it has.
 
 Usage:
-    python analysis/aggregate.py --results_dir vendor/AlphaEdit/results
-    python analysis/aggregate.py --results_dir vendor/AlphaEdit/results --alg AlphaEdit --ds mcf
+    python analysis/stats/aggregate.py --results_dir vendor/AlphaEdit/results
+    python analysis/stats/aggregate.py --results_dir vendor/AlphaEdit/results --alg AlphaEdit --with_ci
+    python analysis/stats/aggregate.py --report_averaging
 """
 
 import argparse
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 
@@ -28,6 +37,50 @@ METRICS = {
     "rewrite_prompts_probs": "efficacy_prob",
     "paraphrase_prompts_probs": "generalization_prob",
     "neighborhood_prompts_probs": "specificity_prob",
+}
+
+# Averaging specification — documents how each metric is aggregated
+AVERAGING_SPEC = {
+    "efficacy": {
+        "within_case": "micro (per-prompt mean)",
+        "across_cases": "macro (mean of case means)",
+        "type": "binary",
+    },
+    "generalization": {
+        "within_case": "micro (per-prompt mean)",
+        "across_cases": "macro (mean of case means)",
+        "type": "binary",
+    },
+    "specificity": {
+        "within_case": "micro (per-prompt mean)",
+        "across_cases": "macro (mean of case means)",
+        "type": "binary",
+    },
+    "fluency": {
+        "within_case": "n/a (scalar per case)",
+        "across_cases": "macro (mean of case values)",
+        "type": "continuous",
+    },
+    "consistency": {
+        "within_case": "n/a (scalar per case)",
+        "across_cases": "macro (mean of case values)",
+        "type": "continuous",
+    },
+    "efficacy_prob": {
+        "within_case": "micro (per-prompt mean of P(target_new))",
+        "across_cases": "macro (mean of case means)",
+        "type": "continuous",
+    },
+    "generalization_prob": {
+        "within_case": "micro (per-prompt mean of P(target_new))",
+        "across_cases": "macro (mean of case means)",
+        "type": "continuous",
+    },
+    "specificity_prob": {
+        "within_case": "micro (per-prompt mean of P(target_new))",
+        "across_cases": "macro (mean of case means)",
+        "type": "continuous",
+    },
 }
 
 
@@ -84,10 +137,17 @@ def collect_run_results(run_dir: Path) -> pd.DataFrame:
     return df
 
 
+def _compute_ci_row(values: np.ndarray, metric_type: str) -> dict:
+    """Compute CI for a single metric column."""
+    from confidence_intervals import compute_metric_ci
+    return compute_metric_ci(values, metric_type=metric_type)
+
+
 def aggregate_results(
     results_dir: Path,
     alg_name: str | None = None,
     output_dir: Path | None = None,
+    with_ci: bool = False,
 ) -> pd.DataFrame:
     """
     Aggregate results across all runs for a given algorithm.
@@ -151,7 +211,53 @@ def aggregate_results(
     grand_summary.to_csv(grand_path)
     print(f"Grand summary: {grand_path}")
 
+    # Confidence intervals
+    if with_ci:
+        ci_rows = []
+        for alg in combined["algorithm"].unique():
+            alg_data = combined[combined["algorithm"] == alg]
+            for metric in available_metrics:
+                values = alg_data[metric].dropna().values
+                metric_type = AVERAGING_SPEC.get(metric, {}).get("type", "continuous")
+                ci_result = _compute_ci_row(np.array(values), metric_type)
+                ci_method = "wilson" if metric_type == "binary" else "bca_bootstrap"
+                ci_rows.append({
+                    "algorithm": alg,
+                    "metric": metric,
+                    "metric_mean": ci_result["mean"],
+                    "metric_ci_lower": ci_result["ci_lower"],
+                    "metric_ci_upper": ci_result["ci_upper"],
+                    "metric_ci_method": ci_method,
+                    "metric_std": ci_result["std"],
+                    "n": ci_result["n"],
+                    "averaging_mode": AVERAGING_SPEC.get(metric, {}).get("across_cases", "macro"),
+                })
+
+        ci_df = pd.DataFrame(ci_rows)
+        ci_path = output_dir / "summary_with_ci.csv"
+        ci_df.to_csv(ci_path, index=False)
+        print(f"Summary with CIs: {ci_path}")
+
     return combined
+
+
+def report_averaging() -> None:
+    """Print the averaging specification for all metrics."""
+    print("=" * 70)
+    print("Metric Averaging Specification")
+    print("=" * 70)
+    print(f"\n{'Metric':<20} {'Within-Case':<35} {'Across-Cases':<30} {'Type':<12}")
+    print("-" * 97)
+    for metric, spec in AVERAGING_SPEC.items():
+        print(
+            f"{metric:<20} {spec['within_case']:<35} "
+            f"{spec['across_cases']:<30} {spec['type']:<12}"
+        )
+    print("\nKey distinction:")
+    print("  - Micro (within case): efficacy_case_i = mean(rewrite_prompts_correct[i])")
+    print("  - Macro (across cases): efficacy_overall = mean(efficacy_case_i for all i)")
+    print("  Each case contributes equally regardless of prompt count.")
+    print("=" * 70)
 
 
 def main():
@@ -174,9 +280,23 @@ def main():
         default=Path("results"),
         help="Output directory for CSV files",
     )
+    parser.add_argument(
+        "--with_ci",
+        action="store_true",
+        help="Compute confidence intervals (Wilson for binary, BCa bootstrap for continuous)",
+    )
+    parser.add_argument(
+        "--report_averaging",
+        action="store_true",
+        help="Print the averaging specification and exit",
+    )
     args = parser.parse_args()
 
-    aggregate_results(args.results_dir, args.alg, args.output_dir)
+    if args.report_averaging:
+        report_averaging()
+        return
+
+    aggregate_results(args.results_dir, args.alg, args.output_dir, with_ci=args.with_ci)
 
 
 if __name__ == "__main__":

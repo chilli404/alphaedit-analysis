@@ -56,7 +56,9 @@ sys.path.insert(0, str(_SRC_DIR / "util"))
 
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
-from source_patches import patch_evaluate_file
+from source_patches import patch_evaluate_file, build_order_shuffle_injection, SHUFFLE_ANCHOR
+from dataset_fingerprint import build_fingerprint_injection
+from eval_config import hash_eval_config
 
 
 def get_project_root() -> Path:
@@ -84,8 +86,12 @@ POST_EDIT_ANCHOR = '        exec_time = time() - start'
 CUDA_PATCH_TARGET = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
 
 
-def resolve_checkpoint_dir(explicit_dir: str | None, alg_name: str, seed: int) -> Path:
-    """Resolve the checkpoint directory in priority order."""
+def resolve_checkpoint_dir(explicit_dir: str | None, alg_name: str, seed: int, order_id: int = 0) -> Path:
+    """Resolve the checkpoint directory in priority order.
+
+    When order_id > 0, checkpoints are stored in a separate subdirectory
+    to avoid overwriting checkpoints from other orderings.
+    """
     if explicit_dir:
         base = Path(explicit_dir)
     elif Path("/s3-data/continual-learning/alphaedit/checkpoints").exists():
@@ -93,7 +99,10 @@ def resolve_checkpoint_dir(explicit_dir: str | None, alg_name: str, seed: int) -
     else:
         base = Path.home() / ".cache" / "alphaedit_checkpoints"
 
-    return base / alg_name / f"seed{seed}"
+    path = base / alg_name / f"seed{seed}"
+    if order_id > 0:
+        path = path / f"order{order_id}"
+    return path
 
 
 def find_latest_checkpoint(ckpt_dir: Path) -> tuple[int, Path] | None:
@@ -140,6 +149,7 @@ def build_checkpoint_script(
     checkpoint_dir: str,
     fast_checkpoint: bool = False,
     eval_at_checkpoints_only: bool = False,
+    order_id: int = 0,
 ) -> str:
     """
     Build an inline Python script that:
@@ -355,13 +365,55 @@ _presync_injection = '''    print(f"Results will be stored at {{run_dir}}")
     # === END pre-sync ==='''
 source = source.replace(_presync_anchor, _presync_injection, 1)
 
-# 6. Inject checkpoint LOAD before the main edit loop
+# 5d. Inject order shuffle + dataset fingerprint before loop
 loop_anchor = '    for record_chunks in chunks(ds, num_edits):'
 assert loop_anchor in source, (
     "Loop anchor not found in evaluate.py source. "
     "Upstream code has changed from pinned commit b84624f."
 )
 
+_order_id = {order_id}
+if _order_id > 0:
+    _shuffle_code = (
+        f'    # === ORDER SHUFFLE: shuffle dataset with order_id={{_order_id}} (injected) ===\\n'
+        f'    import random as _order_rng_module\\n'
+        f'    _order_rng = _order_rng_module.Random({{_order_id}})\\n'
+        f'    _shuffled_indices = list(range(len(ds)))\\n'
+        f'    _order_rng.shuffle(_shuffled_indices)\\n'
+        f'    ds.data = [ds.data[i] for i in _shuffled_indices]\\n'
+        f'    print("ORDER SHUFFLE: shuffled " + str(len(ds)) + " records with order_id={{_order_id}}")\\n'
+        f'    # === END order shuffle ===\\n'
+    )
+    source = source.replace(loop_anchor, _shuffle_code + loop_anchor, 1)
+
+# Inject fingerprint
+_fp_code = '''    # === FINGERPRINT: compute dataset fingerprint (injected) ===
+    import hashlib as _fp_hashlib
+    import json as _fp_json
+    _fp_case_ids = [r["case_id"] for r in ds]
+    _fp_id_bytes = _fp_json.dumps(_fp_case_ids, separators=(",", ":")).encode("utf-8")
+    _fp_sha256 = _fp_hashlib.sha256(_fp_id_bytes).hexdigest()
+    print(f"  [FINGERPRINT] Dataset: {{len(ds)}} records, SHA-256: {{_fp_sha256[:16]}}...")
+    print(f"  [FINGERPRINT] Order ID: ''' + str(_order_id) + ''', first 5 IDs: {{_fp_case_ids[:5]}}")
+    _fp_ordering_path = run_dir / "edit_ordering.json"
+    _fp_ordering = {{
+        "case_ids_ordered": _fp_case_ids,
+        "n_records": len(ds),
+        "order_id": ''' + str(_order_id) + ''',
+        "fingerprint": {{
+            "sha256": _fp_sha256,
+            "n_records": len(ds),
+            "first_5_ids": _fp_case_ids[:5],
+            "last_5_ids": _fp_case_ids[-5:] if len(_fp_case_ids) >= 5 else _fp_case_ids,
+        }},
+    }}
+    with open(str(_fp_ordering_path), "w") as _fp_f:
+        _fp_json.dump(_fp_ordering, _fp_f, indent=2)
+    # === END fingerprint ===
+'''
+source = source.replace(loop_anchor, _fp_code + loop_anchor, 1)
+
+# 6. Inject checkpoint LOAD before the main edit loop
 load_injection = '''    # === CHECKPOINT: load state from previous run (injected) ===
     exec_time = 0
     edited_model = model
@@ -539,7 +591,7 @@ def run(args: argparse.Namespace) -> None:
             sys.exit(1)
 
     # Resolve checkpoint directory
-    ckpt_dir = resolve_checkpoint_dir(args.checkpoint_dir, args.alg_name, args.seed)
+    ckpt_dir = resolve_checkpoint_dir(args.checkpoint_dir, args.alg_name, args.seed, args.order_id)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     # Determine start_from_batch
@@ -576,6 +628,7 @@ def run(args: argparse.Namespace) -> None:
         checkpoint_dir=str(ckpt_dir),
         fast_checkpoint=args.fast_checkpoint,
         eval_at_checkpoints_only=args.eval_at_checkpoints_only,
+        order_id=args.order_id,
     )
 
     # Environment
@@ -630,9 +683,11 @@ def run(args: argparse.Namespace) -> None:
     metadata = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "seed": args.seed,
+        "order_id": args.order_id,
         "python_version": platform.python_version(),
         "hostname": platform.node(),
         "alphaedit_commit": "b84624f",
+        "eval_config_hash": hash_eval_config(),
         "cuda_device": args.cuda_device,
         "experiment": "failure_curve_ckpt",
         "algorithm": args.alg_name,
@@ -707,6 +762,15 @@ def main():
                         help="Fast mode: only evaluate edited batch after each edit (partial preservation measurement)")
     eval_group.add_argument("--eval_at_checkpoints_only", action="store_true",
                         help="Milestone mode: evaluate full dataset only at checkpoint boundaries (RECOMMENDED for conferences)")
+
+    # Order sensitivity
+    parser.add_argument("--order_id", type=int, default=0,
+                        help="Edit ordering ID (0=canonical, >0=shuffle with Random(order_id))")
+
+    # Retention probes (for mechanism figure)
+    parser.add_argument("--retention_probe_batches", type=str, default=None,
+                        help="Comma-separated list of historical batch indices to re-evaluate at each checkpoint "
+                             "(e.g., '0,5,10,15,20'). Enables retention-by-age metric for mechanism figure.")
 
     args = parser.parse_args()
     run(args)

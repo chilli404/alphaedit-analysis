@@ -1,0 +1,9 @@
+{
+  "frozen_at": "2026-07-18",
+  "main_repo_commit": "6dec9c4c734da1affca97484414d7a5a596fa41f",
+  "vendor_submodule_commit": "b84624f44dfe8fc6cd9e41df916c44124a0c46dc",
+  "python_version": "3.9.6",
+  "uv_lock_hash": "544eff1f41c7c69036072f2ae174eeb88084dc29e7a258ee9876ab8c945f84e8",
+  "eval_config_hash": "0b64870f969da178f29ee855bea66ad25ea2f09000560ec9131574fba5f3cb18",
+  "metric_registry_hash": "0a60c54754f97bcabdf2f8fd2c00a308d1d30b37c4b059fb3cb76ff7d68ac1a7"
+}

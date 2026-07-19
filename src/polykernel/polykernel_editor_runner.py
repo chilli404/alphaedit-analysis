@@ -712,6 +712,15 @@ def main():
     parser.add_argument("--load_checkpoint", default="",
                         help="Path to checkpoint directory to load (e.g., .../batch_99). Required with --eval_only.")
 
+    # P7 extensions: ordering and capability probes
+    parser.add_argument("--order_id", type=int, default=0,
+                        help="Edit ordering ID (0=canonical, >0=shuffle with Random(order_id))")
+    parser.add_argument("--capability_probe_interval", type=int, default=0,
+                        help="Run perplexity + MMLU probes every N batches (0=disabled). "
+                             "Enables direct capability comparison with factorial ablation.")
+    parser.add_argument("--fast_checkpoint", action="store_true",
+                        help="Fast checkpoint mode: only evaluate edited batch")
+
     args = parser.parse_args()
     run(args)
 

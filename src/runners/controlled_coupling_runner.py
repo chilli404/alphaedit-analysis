@@ -61,6 +61,9 @@ PRE_EDIT_ANCHOR = '        start = time()\n        if any(alg in alg_name for al
 POST_EDIT_ANCHOR = '        exec_time = time() - start'
 ALGO_IMPORT_ANCHOR = 'from AlphaEdit.AlphaEdit_main import apply_AlphaEdit_to_model, get_cov'
 
+# Checkpoint loading anchor (injected after P initialization)
+CHECKPOINT_LOAD_ANCHOR = '        torch.save(P, "null_space_project.pt")'
+
 # AlphaEdit_main.py anchors
 RESID_ANCHOR = '        resid = targets / (len(hparams.layers) - i)  # Distribute residual across layers'
 UPD_ANCHOR = '        upd_matrix = upd_matrix_match_shape(upd_matrix, weights[weight_name].shape)'
@@ -289,9 +292,10 @@ def _cc_record_batch(cnt, model, hparams, exec_time, record_chunks, cache_c):
     _cc_cache_metrics.clear()
     _cc_projection_metrics.clear()
 
-    # Write incrementally
-    with open(_cc_output, "a") as f:
-        f.write(json.dumps(record) + "\\n")
+    # Write full file each time (S3-FUSE doesn't support append mode)
+    with open(_cc_output, "w") as f:
+        for rec in _cc_batch_records:
+            f.write(json.dumps(rec) + "\\n")
 
     if (cnt + 1) % 5 == 0:
         agg = record.get("mechanism", {{}}).get("aggregate", {{}})
@@ -402,6 +406,39 @@ assert post_anchor in eval_source, "POST_EDIT_ANCHOR not found in evaluate.py."
 post_hook = {repr(post_batch_hook)}
 eval_source = eval_source.replace(post_anchor, post_anchor + "\\n" + post_hook, 1)
 
+
+# Inject checkpoint loading after P initialization
+ckpt_load_anchor = {repr(CHECKPOINT_LOAD_ANCHOR)}
+if _cc_start_batch > 0:
+    assert ckpt_load_anchor in eval_source, "CHECKPOINT_LOAD_ANCHOR not found in evaluate.py."
+    _ckpt_injection = '''
+    # === CONTROLLED_COUPLING: checkpoint resumption (injected) ===
+    _ckpt_dir = Path("{checkpoint_dir}") / f"batch_{{_cc_start_batch - 1}}"
+    if (_ckpt_dir / "model_weights.pt").exists():
+        print(f"  [CC] Loading checkpoint from {{_ckpt_dir}}")
+        _ckpt_weights = torch.load(_ckpt_dir / "model_weights.pt", map_location="cuda")
+        _param_dict = dict(model.named_parameters())
+        _loaded = 0
+        for _wname, _wtensor in _ckpt_weights.items():
+            if _wname in _param_dict:
+                _param_dict[_wname].data.copy_(_wtensor.cuda())
+                _loaded += 1
+        del _ckpt_weights
+        print(f"    Model weights restored ({{_loaded}} params)")
+        if (_ckpt_dir / "cache_c.pt").exists():
+            cache_c = torch.load(_ckpt_dir / "cache_c.pt", map_location="cpu")
+            print(f"    cache_c restored: shape={{cache_c.shape}}")
+        else:
+            print("    WARNING: no cache_c.pt in checkpoint, starting fresh cache")
+        torch.cuda.empty_cache()
+        print(f"  [CC] Resumed from batch {{_cc_start_batch - 1}} ({{_cc_start_batch * {num_edits}}} edits)")
+    else:
+        print(f"  [CC] WARNING: checkpoint dir {{_ckpt_dir}} not found, starting from scratch")
+    # === END checkpoint resumption ===
+'''
+    eval_source = eval_source.replace(ckpt_load_anchor, ckpt_load_anchor + "\\n" + _ckpt_injection, 1)
+    print(f"[CC] Checkpoint resumption injected (start_from_batch={{_cc_start_batch}})")
+
 print("[CC] evaluate.py patched with dataset override + mechanism hooks")
 
 # ─── 5. Execute ─────────────────────────────────────────────────────
@@ -452,6 +489,7 @@ def validate_anchors() -> None:
         ("PRE_EDIT_ANCHOR", PRE_EDIT_ANCHOR),
         ("POST_EDIT_ANCHOR", POST_EDIT_ANCHOR),
         ("ALGO_IMPORT_ANCHOR", ALGO_IMPORT_ANCHOR),
+        ("CHECKPOINT_LOAD_ANCHOR", CHECKPOINT_LOAD_ANCHOR),
     ]:
         assert anchor in eval_source, f"{name} not found in evaluate.py"
 
@@ -616,10 +654,38 @@ def main():
     if args.stream in ("both", "high"):
         streams_to_run.append(("high_coupling", str(high_path)))
 
+    # Resolve checkpoint base: prefer S3-mounted path for crash resilience
+    s3_ckpt_base = Path("/s3-data/continual-learning/alphaedit/checkpoints/controlled_coupling")
+    if s3_ckpt_base.parent.parent.exists():
+        ckpt_base = s3_ckpt_base
+        print(f"  Checkpoints: {ckpt_base} (S3-mounted, crash-resilient)")
+    else:
+        ckpt_base = results_dir / "checkpoints"
+        print(f"  Checkpoints: {ckpt_base} (local)")
+
     for stream_name, dataset_path in streams_to_run:
-        output_jsonl = results_dir / f"{stream_name}_seed{args.seed}_{timestamp}.jsonl"
-        ckpt_dir = results_dir / "checkpoints" / f"{stream_name}" / f"seed{args.seed}"
+        # Write JSONL to checkpoint dir (S3-mounted = crash-resilient)
+        ckpt_dir = ckpt_base / f"{stream_name}" / f"seed{args.seed}"
         ckpt_dir.mkdir(parents=True, exist_ok=True)
+        output_jsonl = ckpt_dir / f"{stream_name}_seed{args.seed}_{timestamp}.jsonl"
+
+        # Auto-detect checkpoint for resumption
+        start_batch = args.start_from_batch
+        if start_batch == 0:
+            existing_ckpts = sorted(
+                [d for d in ckpt_dir.iterdir() if d.is_dir() and d.name.startswith("batch_")],
+                key=lambda p: int(p.name.split("_")[1]),
+            ) if ckpt_dir.exists() else []
+            if existing_ckpts:
+                last_ckpt = existing_ckpts[-1]
+                last_batch = int(last_ckpt.name.split("_")[1])
+                # Only resume if the checkpoint has model weights
+                if (last_ckpt / "model_weights.pt").exists():
+                    start_batch = last_batch + 1
+                    print(f"  [CC] Auto-resume: found checkpoint at batch_{last_batch}, starting from batch {start_batch}")
+
+        # Override start_from_batch for this stream
+        args.start_from_batch = start_batch
 
         rc = run_stream(
             stream_name=stream_name,
