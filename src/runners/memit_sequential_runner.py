@@ -74,7 +74,9 @@ def get_alphaedit_root() -> Path:
 
 # evaluate.py
 CUDA_PATCH_TARGET = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
-POST_EDIT_ANCHOR = '        elif alg_name == "MEMIT_prune":'
+# Inject batch increment AFTER exec_time (i.e. after the entire if/elif/else edit chain)
+# so we don't break the if/elif/else structure that assigns edited_model.
+POST_EDIT_ANCHOR = '        exec_time = time() - start'
 MEMIT_IMPORT_ANCHOR = 'from memit.memit_main import apply_memit_to_model, get_context_templates'
 
 # memit_main.py
@@ -166,7 +168,7 @@ def build_sequential_script(
 
             # Build log entry with LHS term norms
             _log_entry = {
-                "batch": _memit_batch_idx, "layer": int(layer),
+                "batch": _memit_batch_idx[0], "layer": int(layer),
                 "upd_norm": _upd_norm, "dw_kprev_norm": _dw_kprev_norm,
                 "cache_batches": _cache_batches, "cache_keys": _cache_keys,
             }
@@ -186,9 +188,12 @@ def build_sequential_script(
             # === END log + store keys ==='''
 
     # Injection into evaluate.py: increment batch counter after each edit
+    # NOTE: _memit_batch_idx is a list [int] (mutable container) so that both
+    # the memit_main.py and evaluate.py exec namespaces share the same object,
+    # and [0] += 1 avoids rebinding (which would cause UnboundLocalError in main()).
     batch_increment_hook = r'''        # === MEMIT+SeqReg: increment batch (injected) ===
         if '_memit_batch_idx' in globals():
-            _memit_batch_idx += 1
+            _memit_batch_idx[0] += 1
         # === END batch increment ===
 '''
 
@@ -196,7 +201,7 @@ def build_sequential_script(
     debug_freeze_code = ""
     if debug_freeze_batch is not None:
         debug_freeze_code = f'''        # === MEMIT+SeqReg: debug freeze mode (injected) ===
-        if '_memit_batch_idx' in globals() and _memit_batch_idx == {debug_freeze_batch + 1}:
+        if '_memit_batch_idx' in globals() and _memit_batch_idx[0] == {debug_freeze_batch + 1}:
             import copy as _copy_mod
             print("\\n=== DEBUG FREEZE: same-state comparison at batch {debug_freeze_batch} ===")
             _frozen_cache = _copy_mod.deepcopy(_memit_prev_cache)
@@ -222,7 +227,7 @@ def build_sequential_script(
                     return_orig_weights=False,
                 )
                 # Check last logged entry
-                _last_entries = [e for e in _memit_log if e["batch"] == _memit_batch_idx]
+                _last_entries = [e for e in _memit_log if e["batch"] == _memit_batch_idx[0]]
                 _avg_dw_kprev = sum(e["dw_kprev_norm"] for e in _last_entries) / max(len(_last_entries), 1)
                 _avg_upd = sum(e["upd_norm"] for e in _last_entries) / max(len(_last_entries), 1)
                 print(f"  lambda_prev={{_test_lp:6.2f}} -> avg ||ΔW||={{_avg_upd:.4f}}, avg ||ΔW@K_prev||={{_avg_dw_kprev:.4f}}")
@@ -232,7 +237,7 @@ def build_sequential_script(
                         dict(model.named_parameters())[_pn].data.copy_(_pv)
                 _memit_lambda_prev = _orig_lp
                 # Remove debug log entries
-                _memit_log[:] = [e for e in _memit_log if e["batch"] != _memit_batch_idx]
+                _memit_log[:] = [e for e in _memit_log if e["batch"] != _memit_batch_idx[0]]
             _memit_prev_cache = _copy_mod.deepcopy(_frozen_cache)
             print("=== END DEBUG FREEZE ===\\n")
             del _frozen_cache, _frozen_weights
@@ -263,7 +268,7 @@ _memit_lambda_delta = {lambda_delta}
 _memit_prev_cache = {{}}
 _memit_cache_max = {cache_max_repr}
 _memit_cache_strategy = "{cache_strategy}"
-_memit_batch_idx = 0
+_memit_batch_idx = [0]  # mutable container: shared across exec namespaces, avoids UnboundLocalError
 _memit_log = []
 _memit_output_jsonl = "{output_jsonl}"
 _memit_fast_mode = {fast_checkpoint}
@@ -387,12 +392,13 @@ _fp_code = '''    # === FINGERPRINT: compute dataset fingerprint (injected) ===
 '''
 _eval_source = _eval_source.replace(_loop_anchor, _fp_code + _loop_anchor, 1)
 
-# Inject batch increment + debug freeze before POST_EDIT_ANCHOR
+# Inject batch increment + debug freeze AFTER POST_EDIT_ANCHOR (exec_time line)
+# This preserves the if/elif/else chain that assigns edited_model.
 _post_anchor = {repr(POST_EDIT_ANCHOR)}
 assert _post_anchor in _eval_source, "POST_EDIT_ANCHOR not found in evaluate.py."
 _batch_hook = {repr(batch_increment_hook)}
 _debug_code = {repr(debug_freeze_code)}
-_eval_source = _eval_source.replace(_post_anchor, _batch_hook + _debug_code + _post_anchor, 1)
+_eval_source = _eval_source.replace(_post_anchor, _post_anchor + "\\n" + _batch_hook + _debug_code, 1)
 
 # Inject FAST EVAL guard in evaluation loop (skip records not in current batch)
 _eval_anchor = '    for record in ds:\\n        out_file = Path(case_result_template.format(num_edits, record["case_id"]))'
