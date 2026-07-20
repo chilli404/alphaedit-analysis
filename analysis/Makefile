@@ -1,0 +1,56 @@
+# Paper Figure & Table Generation
+#
+# Usage:
+#   make all          Generate everything
+#   make fig1         Figure 1: Reproduction + long-horizon
+#   make fig2         Figure 2: Anatomy of forgetting
+#   make fig3         Figure 3: Controlled coupling
+#   make fig4         Figure 4: Attribution
+#   make tables       All tables + paper_numbers.json
+#   make appendix     Appendix figures (A1, A3, A8)
+#   make check        Verify data availability
+#   make clean        Remove generated outputs
+#
+# All outputs go to results/figures/paper/ (or appendix/).
+# Run from the repo root: make -C analysis all
+
+PYTHON := uv run python
+OUTPUT := ../results/figures/paper
+APPENDIX := ../results/figures/appendix
+
+.PHONY: all fig1 fig2 fig3 fig4 tables appendix check clean
+
+all: fig1 fig2 fig3 fig4 tables
+
+fig1:
+	@echo "── Figure 1: Reproduction & Long-Horizon ──"
+	$(PYTHON) -m analysis.fig1_reproduction --output-dir $(OUTPUT)
+
+fig2:
+	@echo "── Figure 2: Anatomy of Forgetting ──"
+	$(PYTHON) -m analysis.fig2_forgetting --output-dir $(OUTPUT)
+
+fig3:
+	@echo "── Figure 3: Controlled Coupling ──"
+	$(PYTHON) -m analysis.fig3_coupling --output-dir $(OUTPUT)
+
+fig4:
+	@echo "── Figure 4: Attribution ──"
+	$(PYTHON) -m analysis.fig4_attribution --output-dir $(OUTPUT)
+
+tables:
+	@echo "── Tables & Paper Numbers ──"
+	$(PYTHON) -m analysis.paper_tables --output-dir $(OUTPUT)
+
+appendix:
+	@echo "── Appendix Figures ──"
+	$(PYTHON) -m analysis.appendix_figures --output-dir $(APPENDIX)
+
+check:
+	@echo "── Data Availability Report ──"
+	$(PYTHON) -m analysis.loaders
+
+clean:
+	rm -f $(OUTPUT)/fig*.png $(OUTPUT)/fig*.pdf
+	rm -f $(OUTPUT)/table*.csv $(OUTPUT)/paper_numbers.json
+	rm -f $(APPENDIX)/*.png $(APPENDIX)/*.pdf
