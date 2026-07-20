@@ -44,6 +44,7 @@ CUDA_DEVICE="${CUDA_DEVICE:-0}"
 CACHE_STRATEGY="${CACHE_STRATEGY:-recent}"
 CACHE_MAX="${CACHE_MAX:-20}"
 DATASET_SIZE_LIMIT="${TARGET_EDITS:-2000}"
+SAVE_INTERVAL="${SAVE_INTERVAL:-10}"
 
 echo "=== MEMIT+SeqReg ==="
 echo "  Seed: $SEED"
@@ -83,6 +84,7 @@ uv run python src/runners/memit_sequential_runner.py \
     --lambda_delta "$LAMBDA_DELTA" \
     --cache_strategy "$CACHE_STRATEGY" \
     --cache_max "$CACHE_MAX" \
+    --save_interval "$SAVE_INTERVAL" \
     $DEBUG_ARG \
     $FAST_FLAG
 

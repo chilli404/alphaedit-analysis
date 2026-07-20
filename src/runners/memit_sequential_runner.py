@@ -70,10 +70,44 @@ def get_alphaedit_root() -> Path:
     return get_project_root() / "vendor" / "AlphaEdit"
 
 
+def resolve_checkpoint_dir(explicit_dir: str | None, seed: int, lambda_prev: float, lambda_delta: float) -> Path:
+    """Resolve checkpoint directory for MEMIT+SeqReg."""
+    if explicit_dir:
+        return Path(explicit_dir)
+    base = Path.home() / ".cache" / "memit_seqreg_checkpoints"
+    return base / f"seed{seed}_lp{lambda_prev}_ld{lambda_delta}"
+
+
+def find_latest_checkpoint(ckpt_dir: Path) -> tuple[int, Path] | None:
+    """Find the latest checkpoint batch in the directory."""
+    if not ckpt_dir.exists():
+        return None
+
+    batch_dirs = sorted(
+        [d for d in ckpt_dir.glob("batch_*") if d.is_dir()],
+        key=lambda d: int(d.name.split("_")[1]) if d.name.split("_")[1].isdigit() else -1,
+    )
+    if not batch_dirs:
+        return None
+
+    for batch_dir in reversed(batch_dirs):
+        metadata_file = batch_dir / "metadata.json"
+        if metadata_file.exists():
+            try:
+                batch_idx = int(batch_dir.name.split("_")[1])
+                return (batch_idx, batch_dir)
+            except (ValueError, IndexError):
+                continue
+
+    return None
+
+
 # --- Source anchors (commit b84624f) ---
 
 # evaluate.py
 CUDA_PATCH_TARGET = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
+# Inject skip guard BEFORE the per-batch edit timing
+PRE_EDIT_ANCHOR = '        start = time()\n        if any(alg in alg_name for alg in ["AlphaEdit", "MEMIT_seq", "NSE"]):'
 # Inject batch increment AFTER exec_time (i.e. after the entire if/elif/else edit chain)
 # so we don't break the if/elif/else structure that assigns edited_model.
 POST_EDIT_ANCHOR = '        exec_time = time() - start'
@@ -103,6 +137,9 @@ def build_sequential_script(
     debug_freeze_batch: int | None,
     fast_checkpoint: bool = False,
     order_id: int = 0,
+    save_interval: int = 10,
+    checkpoint_dir: str = "",
+    start_from_batch: int = 0,
 ) -> str:
     """
     Build inline Python script for MEMIT+SeqReg.
@@ -273,6 +310,108 @@ _memit_log = []
 _memit_output_jsonl = "{output_jsonl}"
 _memit_fast_mode = {fast_checkpoint}
 
+# 3b. Checkpoint parameters
+_ckpt_save_interval = {save_interval}
+_ckpt_dir = "{checkpoint_dir}"
+_ckpt_start_batch = {start_from_batch}
+_ckpt_num_edits = {num_edits}
+
+def _ckpt_save(cnt, model, hparams):
+    \"\"\"Save model weights, prev_cache, batch_idx, and log at checkpoint boundary.\"\"\"
+    from pathlib import Path
+    from datetime import datetime, timezone
+
+    batch_dir = Path(_ckpt_dir) / f"batch_{{cnt}}"
+    batch_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save edited layer weights only
+    layer_weights = {{}}
+    for layer_idx in hparams.layers:
+        for key in ["mlp.down_proj.weight", "mlp.up_proj.weight"]:
+            param_name = f"model.layers.{{layer_idx}}.{{key}}"
+            param = dict(model.named_parameters()).get(param_name)
+            if param is not None:
+                layer_weights[param_name] = param.data.cpu()
+    torch.save(layer_weights, str(batch_dir / "model_weights.pt"))
+
+    # Save prev_cache (dict of layer -> list of key tensors)
+    torch.save(_memit_prev_cache, str(batch_dir / "prev_cache.pt"))
+
+    # Save log entries so far
+    with open(str(batch_dir / "mechanism_log.jsonl"), "w") as f:
+        for entry in _memit_log:
+            f.write(json.dumps(entry) + "\\n")
+
+    # Save metadata
+    metadata = {{
+        "batch_idx": cnt,
+        "total_edits": (cnt + 1) * _ckpt_num_edits,
+        "batch_idx_counter": _memit_batch_idx[0],
+        "lambda_prev": _memit_lambda_prev,
+        "lambda_delta": _memit_lambda_delta,
+        "cache_strategy": _memit_cache_strategy,
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+    }}
+    with open(str(batch_dir / "metadata.json"), "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    print(f"  [CHECKPOINT] Saved batch {{cnt}} ({{(cnt+1) * _ckpt_num_edits}} edits) -> {{batch_dir}}")
+
+def _ckpt_load(model, hparams):
+    \"\"\"Load checkpoint state: model weights, prev_cache, log.\"\"\"
+    from pathlib import Path
+
+    if _ckpt_start_batch <= 0:
+        return False
+
+    batch_dir = Path(_ckpt_dir) / f"batch_{{_ckpt_start_batch - 1}}"
+    if not batch_dir.exists():
+        print(f"  [CHECKPOINT] WARNING: Expected checkpoint at {{batch_dir}} not found. Starting from scratch.")
+        return False
+
+    # Load model weights
+    weights_file = batch_dir / "model_weights.pt"
+    if weights_file.exists():
+        layer_weights = torch.load(str(weights_file), map_location="cuda")
+        param_dict = dict(model.named_parameters())
+        loaded_count = 0
+        for param_name, param_data in layer_weights.items():
+            if param_name in param_dict:
+                param_dict[param_name].data.copy_(param_data)
+                loaded_count += 1
+        print(f"  [CHECKPOINT] Loaded {{loaded_count}} parameter tensors")
+
+    # Load prev_cache
+    cache_file = batch_dir / "prev_cache.pt"
+    if cache_file.exists():
+        global _memit_prev_cache
+        _memit_prev_cache = torch.load(str(cache_file), map_location="cpu")
+        total_keys = sum(sum(k.shape[1] for k in v) for v in _memit_prev_cache.values())
+        print(f"  [CHECKPOINT] Loaded prev_cache ({{len(_memit_prev_cache)}} layers, {{total_keys}} total keys)")
+
+    # Load log entries
+    log_file = batch_dir / "mechanism_log.jsonl"
+    if log_file.exists():
+        global _memit_log
+        _memit_log.clear()
+        with open(str(log_file)) as f:
+            for line in f:
+                _memit_log.append(json.loads(line))
+        print(f"  [CHECKPOINT] Loaded {{len(_memit_log)}} log entries")
+
+    # Restore batch counter
+    _memit_batch_idx[0] = _ckpt_start_batch
+    print(f"  [CHECKPOINT] Resuming from batch {{_ckpt_start_batch}} ({{_ckpt_start_batch * _ckpt_num_edits}} edits already applied)")
+    return True
+
+def _ckpt_should_skip(cnt):
+    \"\"\"Return True if this batch was already processed.\"\"\"
+    return cnt < _ckpt_start_batch
+
+def _ckpt_should_save(cnt):
+    \"\"\"Return True if we should save a checkpoint at this batch.\"\"\"
+    return _ckpt_dir and (cnt + 1) % _ckpt_save_interval == 0
+
 # 4. Read and patch memit_main.py
 with open("memit/memit_main.py", "r") as f:
     _memit_source = f.read()
@@ -392,13 +531,37 @@ _fp_code = '''    # === FINGERPRINT: compute dataset fingerprint (injected) ===
 '''
 _eval_source = _eval_source.replace(_loop_anchor, _fp_code + _loop_anchor, 1)
 
-# Inject batch increment + debug freeze AFTER POST_EDIT_ANCHOR (exec_time line)
+# Inject checkpoint LOAD before the loop
+_ckpt_load_injection = '''    # === CHECKPOINT: load state from previous run (injected) ===
+    if _ckpt_start_batch > 0 and '_ckpt_load' in globals():
+        _ckpt_load(model, hparams)
+    # === END checkpoint load ===
+'''
+_eval_source = _eval_source.replace(_loop_anchor, _ckpt_load_injection + _loop_anchor, 1)
+
+# Inject SKIP guard before per-batch edit call
+_pre_anchor = {repr(PRE_EDIT_ANCHOR)}
+assert _pre_anchor in _eval_source, "PRE_EDIT_ANCHOR not found in evaluate.py."
+_skip_injection = '''        # === CHECKPOINT: skip already-processed batches (injected) ===
+        if '_ckpt_should_skip' in globals() and _ckpt_should_skip(cnt):
+            cnt += 1
+            continue
+        # === END checkpoint skip ===
+'''
+_eval_source = _eval_source.replace(_pre_anchor, _skip_injection + _pre_anchor, 1)
+
+# Inject batch increment + checkpoint save + debug freeze AFTER POST_EDIT_ANCHOR (exec_time line)
 # This preserves the if/elif/else chain that assigns edited_model.
 _post_anchor = {repr(POST_EDIT_ANCHOR)}
 assert _post_anchor in _eval_source, "POST_EDIT_ANCHOR not found in evaluate.py."
 _batch_hook = {repr(batch_increment_hook)}
+_ckpt_save_hook = '''        # === CHECKPOINT: save at interval boundaries (injected) ===
+        if '_ckpt_should_save' in globals() and _ckpt_should_save(cnt):
+            _ckpt_save(cnt, model, hparams)
+        # === END checkpoint save ===
+'''
 _debug_code = {repr(debug_freeze_code)}
-_eval_source = _eval_source.replace(_post_anchor, _post_anchor + "\\n" + _batch_hook + _debug_code, 1)
+_eval_source = _eval_source.replace(_post_anchor, _post_anchor + "\\n" + _batch_hook + _ckpt_save_hook + _debug_code, 1)
 
 # Inject FAST EVAL guard in evaluation loop (skip records not in current batch)
 _eval_anchor = '    for record in ds:\\n        out_file = Path(case_result_template.format(num_edits, record["case_id"]))'
@@ -433,6 +596,13 @@ exec(compile(_eval_source, "experiments/evaluate.py", "exec"), {{
     "_memit_batch_idx": _memit_batch_idx,
     "_memit_log": _memit_log,
     "_memit_fast_mode": _memit_fast_mode,
+    "_ckpt_start_batch": _ckpt_start_batch,
+    "_ckpt_save_interval": _ckpt_save_interval,
+    "_ckpt_dir": _ckpt_dir,
+    "_ckpt_save": _ckpt_save,
+    "_ckpt_load": _ckpt_load,
+    "_ckpt_should_skip": _ckpt_should_skip,
+    "_ckpt_should_save": _ckpt_should_save,
 }})
 
 # 8. Write log to JSONL
@@ -452,6 +622,7 @@ def validate_anchors() -> None:
     eval_source = (alphaedit_root / "experiments" / "evaluate.py").read_text()
     for name, anchor in [
         ("CUDA_PATCH_TARGET", CUDA_PATCH_TARGET),
+        ("PRE_EDIT_ANCHOR", PRE_EDIT_ANCHOR),
         ("POST_EDIT_ANCHOR", POST_EDIT_ANCHOR),
         ("MEMIT_IMPORT_ANCHOR", MEMIT_IMPORT_ANCHOR),
     ]:
@@ -495,6 +666,27 @@ def run(args: argparse.Namespace) -> None:
     # Parse cache_max
     cache_max = None if args.cache_max == "none" else int(args.cache_max)
 
+    # Resolve checkpoint directory and auto-detect resume point
+    ckpt_dir = resolve_checkpoint_dir(
+        args.checkpoint_dir, args.seed, args.lambda_prev, args.lambda_delta
+    )
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    total_batches = args.dataset_size_limit // args.num_edits
+    start_from_batch = args.start_from_batch
+    if start_from_batch < 0:
+        # Auto-detect from latest checkpoint
+        latest = find_latest_checkpoint(ckpt_dir)
+        if latest:
+            start_from_batch = latest[0] + 1
+            if start_from_batch >= total_batches:
+                print(f"  Checkpoint at batch {latest[0]} already covers all {total_batches} batches. Nothing to do.")
+                return
+            print(f"  Auto-detected: resume from batch {start_from_batch} (checkpoint at batch {latest[0]})")
+        else:
+            start_from_batch = 0
+            print("  No existing checkpoints found. Starting from batch 0.")
+
     script = build_sequential_script(
         seed=args.seed,
         cuda_device=args.cuda_device,
@@ -514,6 +706,9 @@ def run(args: argparse.Namespace) -> None:
         debug_freeze_batch=args.debug_freeze_batch,
         fast_checkpoint=args.fast_checkpoint,
         order_id=args.order_id,
+        save_interval=args.save_interval,
+        checkpoint_dir=str(ckpt_dir),
+        start_from_batch=start_from_batch,
     )
 
     # Environment
@@ -532,6 +727,10 @@ def run(args: argparse.Namespace) -> None:
     print(f"  Cache max:      {cache_max}")
     print(f"  Dataset:        {args.ds_name} (limit={args.dataset_size_limit})")
     print(f"  Num edits:      {args.num_edits}")
+    print(f"  Total batches:  {total_batches}")
+    print(f"  Resume from:    batch {start_from_batch} ({start_from_batch * args.num_edits} edits)")
+    print(f"  Save interval:  every {args.save_interval} batches")
+    print(f"  Checkpoint dir: {ckpt_dir}")
     print(f"  Fast checkpoint: {'YES - only evaluate edited batch' if args.fast_checkpoint else 'NO - full dataset evaluation'}")
     print(f"  CUDA:           device {args.cuda_device}")
     print(f"  Model:          {args.model_name}")
@@ -611,6 +810,14 @@ def main():
                         help="Cache management strategy (default: recent)")
     parser.add_argument("--cache_max", default="20",
                         help="Max batches in cache (default: 20, use 'none' for unlimited)")
+
+    # Checkpoint and resume
+    parser.add_argument("--save_interval", type=int, default=10,
+                        help="Save checkpoint every N batches (default: 10)")
+    parser.add_argument("--checkpoint_dir", default=None,
+                        help="Explicit checkpoint directory (default: ~/.cache/memit_seqreg_checkpoints/...)")
+    parser.add_argument("--start_from_batch", type=int, default=-1,
+                        help="Resume from this batch (-1 = auto-detect from latest checkpoint)")
 
     # Debug and performance
     parser.add_argument("--debug_freeze_batch", type=int, default=None,
