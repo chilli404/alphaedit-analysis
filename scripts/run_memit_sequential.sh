@@ -43,6 +43,7 @@ LAMBDA_DELTA="${3:-${LAMBDA_DELTA:-1.0}}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
 CACHE_STRATEGY="${CACHE_STRATEGY:-recent}"
 CACHE_MAX="${CACHE_MAX:-20}"
+DATASET_SIZE_LIMIT="${TARGET_EDITS:-2000}"
 
 echo "=== MEMIT+SeqReg ==="
 echo "  Seed: $SEED"
@@ -74,7 +75,7 @@ uv run python src/runners/memit_sequential_runner.py \
     --model_name "$MODEL_NAME" \
     --hparams_fname Llama3-8B.json \
     --ds_name mcf \
-    --dataset_size_limit 2000 \
+    --dataset_size_limit "$DATASET_SIZE_LIMIT" \
     --num_edits 100 \
     --downstream_eval_steps 10 \
     --conserve_memory \
