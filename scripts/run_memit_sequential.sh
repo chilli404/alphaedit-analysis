@@ -45,6 +45,7 @@ CACHE_STRATEGY="${CACHE_STRATEGY:-recent}"
 CACHE_MAX="${CACHE_MAX:-20}"
 DATASET_SIZE_LIMIT="${TARGET_EDITS:-2000}"
 SAVE_INTERVAL="${SAVE_INTERVAL:-10}"
+CHECKPOINT_DIR="${CHECKPOINT_DIR:-}"
 
 echo "=== MEMIT+SeqReg ==="
 echo "  Seed: $SEED"
@@ -70,6 +71,13 @@ if [[ "${FAST_CHECKPOINT:-false}" == "true" ]]; then
     echo "  FAST MODE: only evaluate edited batch"
 fi
 
+# Build checkpoint dir arg if set
+CKPT_ARG=""
+if [[ -n "$CHECKPOINT_DIR" ]]; then
+    CKPT_ARG="--checkpoint_dir $CHECKPOINT_DIR"
+    echo "  CHECKPOINT DIR: $CHECKPOINT_DIR"
+fi
+
 uv run python src/runners/memit_sequential_runner.py \
     --seed "$SEED" \
     --cuda_device "$CUDA_DEVICE" \
@@ -86,7 +94,8 @@ uv run python src/runners/memit_sequential_runner.py \
     --cache_max "$CACHE_MAX" \
     --save_interval "$SAVE_INTERVAL" \
     $DEBUG_ARG \
-    $FAST_FLAG
+    $FAST_FLAG \
+    $CKPT_ARG
 
 echo ""
 echo "=== MEMIT+SeqReg complete ==="
