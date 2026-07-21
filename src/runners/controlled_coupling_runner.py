@@ -627,7 +627,7 @@ def main():
     parser.add_argument("--eval_at_checkpoints_only", action="store_true", default=False)
     parser.add_argument("--conserve_memory", action="store_true", default=True)
     parser.add_argument("--start_from_batch", type=int, default=0)
-    parser.add_argument("--stream", choices=["both", "low", "high", "custom", "clustered", "dispersed"], default="both",
+    parser.add_argument("--stream", choices=["both", "low", "high", "custom", "clustered", "dispersed", "key_clustered", "key_dispersed"], default="both",
                         help="Which stream(s) to run")
     parser.add_argument("--stream_path", type=str, default=None,
                         help="Path to custom stream JSON (use with --stream custom)")
@@ -719,7 +719,7 @@ def main():
 
     # Run streams
     streams_to_run = []
-    if args.stream in ("custom", "clustered", "dispersed"):
+    if args.stream in ("custom", "clustered", "dispersed", "key_clustered", "key_dispersed"):
         # Custom/matched ordering stream path
         if not args.stream_path:
             print(f"ERROR: --stream_path required when --stream={args.stream}")
