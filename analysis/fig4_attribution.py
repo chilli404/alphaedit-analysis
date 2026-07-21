@@ -27,7 +27,6 @@ from analysis.loaders import (
     load_checkpoint_metrics,
     load_controlled_coupling_jsonl,
     load_controlled_coupling_behavioral,
-    load_weight_drift,
     load_seqreg_eval,
     load_seqreg_behavioral,
 )
@@ -90,67 +89,43 @@ def panel_a_projection_signal(ax):
 
 
 def panel_b_weight_drift(ax):
-    """Panel B: Weight drift negative control — more drift ≠ more forgetting."""
-    drift_data = load_weight_drift(SEED)
-    if drift_data is None:
-        ax.text(0.5, 0.5, "No weight drift data", transform=ax.transAxes,
-                ha="center", va="center", fontsize=11)
-        ax.set_title("(B) Weight Drift (Negative Control)")
-        return
+    """Panel B: Weight drift negative control — more drift ≠ more forgetting.
 
-    # Aggregate Frobenius drift across layers per checkpoint
+    Uses cumulative mean_update_norm from controlled coupling JSONL as a proxy
+    for Frobenius drift. This is an upper bound (updates could partially cancel),
+    but sufficient for the negative-control argument.
+    """
+    has_data = False
+
     for stream in ("low_coupling", "high_coupling"):
-        stream_data = drift_data.get(stream, [])
-        if not stream_data:
+        records = load_controlled_coupling_jsonl(stream, SEED)
+        if not records:
             continue
 
         edits = []
-        mean_drift = []
-        for checkpoint in stream_data:
-            total_edits = checkpoint.get("total_edits")
-            layers = checkpoint.get("layers", {})
-            if not layers:
-                continue
-            # Mean relative Frobenius drift across all layers
-            drifts = [v["relative_frobenius_drift"] for v in layers.values()
-                      if "relative_frobenius_drift" in v]
-            if drifts:
-                edits.append(total_edits)
-                mean_drift.append(np.mean(drifts))
+        cumulative_norm = []
+        running_sum = 0.0
+        for r in records:
+            agg = r.get("mechanism", {}).get("aggregate", {})
+            upd_norm = agg.get("mean_update_norm")
+            if upd_norm is not None:
+                running_sum += upd_norm
+                edits.append(r["total_edits"])
+                cumulative_norm.append(running_sum)
 
         if edits:
+            has_data = True
             color = STREAM_COLORS[stream]
             label = stream.replace("_", " ").title()
-            ax.plot(edits, mean_drift, color=color, linewidth=2,
+            ax.plot(edits, cumulative_norm, color=color, linewidth=2,
                     marker="o", markersize=3, label=label)
 
-    # If no trajectory data, show single-checkpoint bar comparison
-    if not any(drift_data.get(s, []) for s in ("low_coupling", "high_coupling")):
-        # Fall back to single-checkpoint comparison
-        streams = []
-        drifts = []
-        for stream in ("low_coupling", "high_coupling"):
-            layers = drift_data.get(stream, {})
-            if isinstance(layers, list) and layers:
-                layers = layers[-1].get("layers", {})
-            elif isinstance(layers, dict) and "4" in layers:
-                pass  # Already in right format
-            else:
-                continue
-            drift_vals = [v.get("relative_frobenius_drift", 0) for v in layers.values()
-                          if isinstance(v, dict)]
-            if drift_vals:
-                streams.append(stream)
-                drifts.append(np.mean(drift_vals))
-
-        if streams:
-            colors = [STREAM_COLORS[s] for s in streams]
-            labels = [s.replace("_", " ").title() for s in streams]
-            ax.bar(labels, drifts, color=colors, alpha=0.8,
-                   edgecolor="black", linewidth=0.5)
+    if not has_data:
+        ax.text(0.5, 0.5, "No update norm data", transform=ax.transAxes,
+                ha="center", va="center", fontsize=11)
 
     ax.set_xlabel("Total Edits")
-    ax.set_ylabel("Mean Relative Frobenius Drift")
+    ax.set_ylabel("Cumulative Update Norm (∑ ||ΔW||)")
     ax.set_title("(B) Weight Drift (Negative Control)")
     ax.legend(loc="upper left")
 

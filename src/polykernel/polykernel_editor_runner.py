@@ -716,8 +716,7 @@ def main():
     parser.add_argument("--order_id", type=int, default=0,
                         help="Edit ordering ID (0=canonical, >0=shuffle with Random(order_id))")
     parser.add_argument("--capability_probe_interval", type=int, default=0,
-                        help="Run perplexity + MMLU probes every N batches (0=disabled). "
-                             "Enables direct capability comparison with factorial ablation.")
+                        help="Run perplexity + MMLU probes every N batches (0=disabled).")
     parser.add_argument("--fast_checkpoint", action="store_true",
                         help="Fast checkpoint mode: only evaluate edited batch")
 

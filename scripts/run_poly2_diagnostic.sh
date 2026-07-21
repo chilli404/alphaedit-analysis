@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # run_poly2_diagnostic.sh — P7: Polykernel (degree-2) diagnostic comparison
 #
-# Runs polykernel editor with degree-2 kernel as a diagnostic comparison
-# against the factorial ablation cells. Measures locality, capability,
-# and weight damage alongside behavioral gains.
+# Runs polykernel editor with degree-2 kernel as a diagnostic comparison.
+# Measures locality, capability, and weight damage alongside behavioral gains.
 #
 # Usage:
 #   bash scripts/run_poly2_diagnostic.sh SEED [TARGET_EDITS]
@@ -14,7 +13,7 @@
 #
 # Environment variables:
 #   FAST_CHECKPOINT=true           (recommended)
-#   ORDER_ID=0                     (default, matches factorial cell D)
+#   ORDER_ID=0                     (default)
 #   KERNEL_DEGREE=2                (default)
 
 set -euo pipefail

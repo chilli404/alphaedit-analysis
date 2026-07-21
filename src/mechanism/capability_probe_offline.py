@@ -232,6 +232,8 @@ def main():
                         help="Model to load as base")
     parser.add_argument("--no_mmlu", action="store_true",
                         help="Skip MMLU evaluation (perplexity only, faster)")
+    parser.add_argument("--cuda_device", type=int, default=0,
+                        help="CUDA device index (default: 0)")
     parser.add_argument("--output", type=str, default=None,
                         help="Output JSONL path (default: results/capability_probe/offline_seed{seed}_{alg}.jsonl)")
 
@@ -274,8 +276,8 @@ def main():
     model_path = resolve_model_path(args.model_name)
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     model = AutoModelForCausalLM.from_pretrained(
-        model_path, torch_dtype=torch.float16, device_map="auto"
-    )
+        model_path, torch_dtype=torch.float16
+    ).to(f"cuda:{args.cuda_device}")
     print(f"  Model loaded: {model_path}")
 
     # Run probes

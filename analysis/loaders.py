@@ -280,12 +280,23 @@ def load_comparison_ordered(
 
     results = []
 
-    # Order 0 is the base directory itself
-    order_dirs = [("0", base)]
-    for i in range(1, 10):
-        d = base / f"order{i}"
-        if d.exists():
-            order_dirs.append((str(i), d))
+    # Two conventions for order 0:
+    #   - 3K style: AlphaEdit/MEMIT directly under base (base IS order 0)
+    #   - 7K style: explicit order0/ subdirectory
+    order_dirs = []
+    if (base / "order0").exists():
+        # Explicit order directories (order0, order1, ...)
+        for i in range(10):
+            d = base / f"order{i}"
+            if d.exists():
+                order_dirs.append((str(i), d))
+    else:
+        # Base directory is order 0, then order1, order2, ...
+        order_dirs.append(("0", base))
+        for i in range(1, 10):
+            d = base / f"order{i}"
+            if d.exists():
+                order_dirs.append((str(i), d))
 
     for order_id, d in order_dirs:
         for alg in ("AlphaEdit", "MEMIT"):
