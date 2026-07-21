@@ -26,6 +26,7 @@ from analysis.loaders import (
     load_comparison_ordered,
     load_controlled_coupling_behavioral,
     load_controlled_coupling_jsonl,
+    load_mve_metrics,
     load_seqreg_eval,
     load_stream_audit,
 )
@@ -41,19 +42,27 @@ BATCH_SIZE = 100
 
 
 def table1_reproduction(output_dir: Path):
-    """Table 1: Multi-seed reproduction results (mean ± std)."""
+    """Table 1: Multi-seed reproduction results (mean ± std).
+
+    Uses MVE experiment results (all 5 seeds) as the authoritative source.
+    Falls back to failure_curve_checkpointed at 2K if MVE data unavailable.
+    """
     rows = []
 
     configs = [
-        ("AlphaEdit", "mcf", [42, 137, 2024, 7, 99], 2000),
-        ("MEMIT", "mcf", [42, 137, 2024, 7, 99], 2000),
-        ("AlphaEdit", "zsre", [42, 137, 2024, 99], 2000),
+        ("AlphaEdit", "mcf", "mve1_alphaedit_mcf", "AlphaEdit", SEEDS),
+        ("MEMIT", "mcf", "mve2_memit_mcf", "MEMIT", SEEDS),
+        ("AlphaEdit", "zsre", "mve3_alphaedit_zsre", "AlphaEdit", [42, 137, 2024, 7, 99]),
     ]
 
-    for alg, dataset, seeds, edits in configs:
+    for method_name, dataset, experiment, alg, seeds in configs:
         metrics_by_seed = []
         for seed in seeds:
-            m = load_checkpoint_metrics(seed, edits, alg)
+            # Primary: MVE experiment results
+            m = load_mve_metrics(experiment, seed, alg)
+            # Fallback: failure curve at 2K
+            if m is None:
+                m = load_checkpoint_metrics(seed, 2000, alg)
             if m:
                 metrics_by_seed.append(m)
 
@@ -61,9 +70,9 @@ def table1_reproduction(output_dir: Path):
             continue
 
         row = {
-            "method": alg,
+            "method": method_name,
             "dataset": dataset,
-            "n_edits": edits,
+            "n_edits": 2000,
             "n_seeds": len(metrics_by_seed),
         }
 
@@ -307,13 +316,17 @@ def generate_paper_numbers(output_dir: Path):
     # SeqReg comparison
     seqreg = load_seqreg_eval(42)
     if seqreg:
-        for key, edits in [("2000_edits", 2000), ("5000_edits", 5000)]:
+        for key, edits in [("2000_edits", 2000), ("3000_edits", 3000),
+                           ("4000_edits", 4000), ("5000_edits", 5000)]:
             if key in seqreg:
                 sr = seqreg[key]
                 numbers[f"seqreg_efficacy_{edits}"] = sr.get("all_facts", {}).get("efficacy")
+                numbers[f"seqreg_paraphrase_{edits}"] = sr.get("all_facts", {}).get("paraphrase")
+                numbers[f"seqreg_neighborhood_{edits}"] = sr.get("all_facts", {}).get("neighborhood")
                 numbers[f"seqreg_auc_{edits}"] = sr.get("retention_auc")
                 numbers[f"seqreg_first_1k_{edits}"] = sr.get("first_1k", {}).get("efficacy")
                 numbers[f"seqreg_latest_1k_{edits}"] = sr.get("latest_1k", {}).get("efficacy")
+                numbers[f"seqreg_latest_100_{edits}"] = sr.get("latest_100", {}).get("efficacy")
 
     # Write JSON
     json_path = output_dir / "paper_numbers.json"

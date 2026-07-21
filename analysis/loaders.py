@@ -28,9 +28,15 @@ results/
 │   ├── log_seed{N}_lp{X}_ld{Y}_*.jsonl
 │   └── behavioral_run_*/
 │       └── *_edits-case_*.json
+├── mechanism_analysis/
+│   └── seed{N}/
+│       └── mechanism_seed{N}_*.jsonl      # per-layer cache spectrum data
+├── mve1_alphaedit_mcf/
+│   └── seed{N}/alphaedit_results/AlphaEdit/run_000/*_edits-case_*.json
+├── mve2_memit_mcf/
+│   └── seed{N}/alphaedit_results/MEMIT/run_000/*_edits-case_*.json
 └── figures/paper/
-    ├── stream_matching_audit_seed{N}.json
-    └── weight_drift_controlled_coupling_seed{N}.json
+    └── stream_matching_audit_seed{N}.json
 """
 
 import json
@@ -556,6 +562,32 @@ def discover_available_data() -> Dict[str, Any]:
             "behavioral_dirs": [d.name for d in sr_dir.iterdir()
                                 if d.is_dir() and d.name.startswith("behavioral")],
         }
+
+    # MVE experiments (reproduction at standard scale)
+    for mve_name in ("mve1_alphaedit_mcf", "mve2_memit_mcf", "mve3_alphaedit_zsre"):
+        mve_dir = RESULTS / mve_name
+        if mve_dir.exists():
+            mve = {}
+            for seed_dir in sorted(mve_dir.glob("seed*")):
+                # Count case files under alphaedit_results/{Alg}/run_000/
+                n_cases = 0
+                for run_dir in seed_dir.glob("alphaedit_results/*/run_000"):
+                    n_cases += len(list(run_dir.glob("*_edits-case_*.json")))
+                if n_cases > 0:
+                    mve[seed_dir.name] = n_cases
+            if mve:
+                summary[mve_name] = mve
+
+    # Mechanism analysis
+    mech_dir = RESULTS / "mechanism_analysis"
+    if mech_dir.exists():
+        mech = {}
+        for seed_dir in sorted(mech_dir.glob("seed*")):
+            jsonl_files = list(seed_dir.glob("mechanism_*.jsonl"))
+            if jsonl_files:
+                mech[seed_dir.name] = [f.name for f in sorted(jsonl_files)]
+        if mech:
+            summary["mechanism_analysis"] = mech
 
     return summary
 

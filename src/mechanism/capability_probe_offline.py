@@ -273,12 +273,22 @@ def main():
     print("\nLoading model...")
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    model_path = resolve_model_path(args.model_name)
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path, torch_dtype=torch.float16
-    ).to(f"cuda:{args.cuda_device}")
-    print(f"  Model loaded: {model_path}")
+    # Ensure model is downloaded (uses Artifactory endpoint + HF_TOKEN if available)
+    from huggingface_hub import snapshot_download
+    resolve_model_path(args.model_name)  # sets HF_ENDPOINT if on corporate infra
+    token = os.environ.get("HF_TOKEN")
+    print(f"  Ensuring model is downloaded: {args.model_name}")
+    snapshot_download(
+        repo_id=args.model_name,
+        token=token,
+        endpoint=os.environ.get("HF_ENDPOINT"),
+    )
+    print(f"  Loading tokenizer...")
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name, token=token)
+    tokenizer.pad_token = tokenizer.eos_token
+    print(f"  Loading model weights...")
+    model = AutoModelForCausalLM.from_pretrained(args.model_name, token=token).cuda(args.cuda_device)
+    print(f"  Model loaded: {args.model_name}")
 
     # Run probes
     records = run_offline_probes(

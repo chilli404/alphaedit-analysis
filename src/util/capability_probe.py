@@ -127,15 +127,39 @@ def load_wikitext_samples(n_samples: int = WIKITEXT_N_SAMPLES) -> list[str]:
 
     Uses the test split to avoid any overlap with the Wikipedia-based
     covariance statistics used by AlphaEdit.
-    """
-    from datasets import load_dataset
 
-    ds = load_dataset("wikitext", "wikitext-103-raw-v1", split="test")
+    Loads from pre-downloaded JSON file (linked via scripts/link_dsets.sh).
+    """
+    import json as _json
+
+    # Search for the pre-downloaded wikitext JSON
+    _search_paths = [
+        Path("data/wikitext_103_test.json"),                          # vendor/AlphaEdit/ cwd (linked)
+        Path(__file__).resolve().parent.parent.parent / "vendor" / "AlphaEdit" / "data" / "wikitext_103_test.json",
+        Path(__file__).resolve().parent.parent.parent / "data" / "dsets" / "wikitext_103_test.json",
+        Path("/s3-data/continual-learning/alphaedit/dsets/wikitext_103_test.json"),
+    ]
+
+    wikitext_path = None
+    for p in _search_paths:
+        if p.exists():
+            wikitext_path = p
+            break
+
+    if wikitext_path is None:
+        raise FileNotFoundError(
+            "wikitext_103_test.json not found. Download it with:\n"
+            "  uv run python scripts/download_wikitext.py\n"
+            "Then upload to S3 and re-run link_dsets.sh"
+        )
+
+    with open(wikitext_path) as f:
+        all_texts = _json.load(f)
 
     # Filter out empty lines and very short passages
     texts = []
-    for item in ds:
-        text = item["text"].strip()
+    for text in all_texts:
+        text = text.strip()
         if len(text) > 100:  # At least 100 characters
             texts.append(text)
         if len(texts) >= n_samples:
@@ -157,7 +181,7 @@ def compute_mmlu_accuracy(
     Uses 4 categories spanning different knowledge domains to detect
     broad capability degradation without running the full 57-category MMLU.
     """
-    from datasets import load_dataset
+    import json as _json
 
     if categories is None:
         # Diverse subset: science, humanities, social science, STEM
@@ -175,17 +199,35 @@ def compute_mmlu_accuracy(
     total_correct = 0
     total_questions = 0
 
+    # Load from pre-downloaded JSON (linked via scripts/link_dsets.sh)
+    _search_paths = [
+        Path("data/mmlu_subset.json"),
+        Path(__file__).resolve().parent.parent.parent / "vendor" / "AlphaEdit" / "data" / "mmlu_subset.json",
+        Path(__file__).resolve().parent.parent.parent / "data" / "dsets" / "mmlu_subset.json",
+        Path("/s3-data/continual-learning/alphaedit/dsets/mmlu_subset.json"),
+    ]
+
+    mmlu_path = None
+    for p in _search_paths:
+        if p.exists():
+            mmlu_path = p
+            break
+
+    if mmlu_path is None:
+        raise FileNotFoundError(
+            "mmlu_subset.json not found. Download it with:\n"
+            "  uv run python scripts/download_mmlu.py\n"
+            "Then upload to S3 and re-run link_dsets.sh"
+        )
+
+    with open(mmlu_path) as f:
+        mmlu_data = _json.load(f)
+
     for category in categories:
-        try:
-            ds = load_dataset("cais/mmlu", category, split="test")
-            val_ds = load_dataset("cais/mmlu", category, split="validation")
-        except Exception:
-            # Fall back to older MMLU format
-            try:
-                ds = load_dataset("lukaemon/mmlu", category, split="test")
-                val_ds = load_dataset("lukaemon/mmlu", category, split="train")
-            except Exception:
-                continue
+        if category not in mmlu_data:
+            continue
+        ds = mmlu_data[category]["test"]
+        val_ds = mmlu_data[category]["validation"]
 
         # Use validation set for few-shot examples
         few_shot_examples = list(val_ds)[:n_shots]

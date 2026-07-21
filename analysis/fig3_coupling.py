@@ -184,7 +184,8 @@ def panel_c_retention_auc(ax):
     ax.set_ylabel("Retention AUC")
     ax.set_title("(C) Retention AUC (Higher = Better)")
     ax.legend()
-    ax.set_ylim(0, 1.1)
+    ax.set_ylim(0.65, 1.02)
+    ax.axhline(1.0, color="gray", linestyle=":", alpha=0.3)
 
 
 def panel_d_effective_rank(ax):

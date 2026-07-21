@@ -140,6 +140,7 @@ def build_sequential_script(
     save_interval: int = 10,
     checkpoint_dir: str = "",
     start_from_batch: int = 0,
+    dataset_override: str | None = None,
 ) -> str:
     """
     Build inline Python script for MEMIT+SeqReg.
@@ -531,6 +532,18 @@ _fp_code = '''    # === FINGERPRINT: compute dataset fingerprint (injected) ===
 '''
 _eval_source = _eval_source.replace(_loop_anchor, _fp_code + _loop_anchor, 1)
 
+# Inject dataset override (for coupling streams, etc.)
+_ds_override_path = {repr(dataset_override) if dataset_override else 'None'}
+if _ds_override_path:
+    _ds_override_code = '''    # === DATASET OVERRIDE: replace ds.data with external file (injected) ===
+    import json as _dsov_json
+    with open("{dataset_override}", "r") as _dsov_f:
+        ds.data = _dsov_json.load(_dsov_f)
+    print(f"  [OVERRIDE] Loaded {{len(ds)}} records from {dataset_override}")
+    # === END dataset override ===
+'''
+    _eval_source = _eval_source.replace(_loop_anchor, _ds_override_code + _loop_anchor, 1)
+
 # Inject checkpoint LOAD before the loop
 _ckpt_load_injection = '''    # === CHECKPOINT: load state from previous run (injected) ===
     if _ckpt_start_batch > 0 and '_ckpt_load' in globals():
@@ -709,6 +722,7 @@ def run(args: argparse.Namespace) -> None:
         save_interval=args.save_interval,
         checkpoint_dir=str(ckpt_dir),
         start_from_batch=start_from_batch,
+        dataset_override=args.dataset_override,
     )
 
     # Environment
@@ -734,6 +748,8 @@ def run(args: argparse.Namespace) -> None:
     print(f"  Fast checkpoint: {'YES - only evaluate edited batch' if args.fast_checkpoint else 'NO - full dataset evaluation'}")
     print(f"  CUDA:           device {args.cuda_device}")
     print(f"  Model:          {args.model_name}")
+    if args.dataset_override:
+        print(f"  Dataset override: {args.dataset_override}")
     if args.debug_freeze_batch is not None:
         print(f"  DEBUG FREEZE:   batch {args.debug_freeze_batch}")
     print(f"  Output:         {output_jsonl}")
@@ -824,6 +840,10 @@ def main():
                         help="Run same-state diagnostic at this batch (tests λ_prev effect)")
     parser.add_argument("--fast_checkpoint", action="store_true",
                         help="Fast checkpoint mode: only evaluate edited batch, not entire dataset (much faster)")
+
+    # Dataset override (for coupling streams, etc.)
+    parser.add_argument("--dataset_override", type=str, default=None,
+                        help="Path to JSON file to replace dataset (e.g., coupling stream)")
 
     # Order sensitivity
     parser.add_argument("--order_id", type=int, default=0,

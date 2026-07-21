@@ -22,11 +22,12 @@ import matplotlib.pyplot as plt
 from analysis.style import (
     ALGO_COLORS, SEED_COLORS, setup_style, save_figure, PAPER_OUTPUT,
 )
-from analysis.loaders import load_checkpoint_metrics
+from analysis.loaders import load_checkpoint_metrics, load_mve_metrics
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
 SEEDS = [42, 2024, 137]
+MVE_SEEDS = [42, 2024, 137, 7, 99]
 EDIT_POINTS = [2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000]
 ALGOS = ["AlphaEdit", "MEMIT"]
 
@@ -87,47 +88,42 @@ def _plot_algo_curves(ax, metric: str, alg: str, show_individual=True):
 
 
 def panel_a_reproduction(ax):
-    """Panel A: Standard-scale reproduction through 3K."""
-    short_points = [e for e in EDIT_POINTS if e <= 3000]
+    """Panel A: Standard-scale reproduction at 2K (5 seeds, bar chart)."""
+    metrics_list = ["efficacy", "paraphrase", "neighborhood"]
+    metric_labels = ["Efficacy", "Paraphrase", "Specificity"]
+    x = np.arange(len(metrics_list))
+    width = 0.35
 
-    for alg in ALGOS:
-        seed_curves = {}
-        for seed in SEEDS:
-            curve = []
-            for edits in short_points:
-                m = load_checkpoint_metrics(seed, edits, alg)
-                if m is not None:
-                    curve.append((edits, m["efficacy"]))
-            if curve:
-                seed_curves[seed] = curve
+    for i, (alg, mve_exp) in enumerate([
+        ("AlphaEdit", "mve1_alphaedit_mcf"),
+        ("MEMIT", "mve2_memit_mcf"),
+    ]):
+        seed_values = {m: [] for m in metrics_list}
+        for seed in MVE_SEEDS:
+            m = load_mve_metrics(mve_exp, seed, alg)
+            if m is None:
+                m = load_checkpoint_metrics(seed, 2000, alg)
+            if m:
+                for metric in metrics_list:
+                    if metric in m:
+                        seed_values[metric].append(m[metric])
 
-        if not seed_curves:
-            continue
+        means = [np.mean(seed_values[m]) if seed_values[m] else 0 for m in metrics_list]
+        stds = [np.std(seed_values[m]) if seed_values[m] else 0 for m in metrics_list]
 
+        offset = (i - 0.5) * width
         color = ALGO_COLORS[alg]
+        bars = ax.bar(x + offset, means, width, yerr=stds, label=alg,
+                      color=color, alpha=0.8, edgecolor="black", linewidth=0.5,
+                      capsize=3)
 
-        # Mean + uncertainty band
-        all_edits = sorted(set(e for c in seed_curves.values() for e, _ in c))
-        mean_vals = []
-        for e in all_edits:
-            vals = [v for curve in seed_curves.values() for x, v in curve if x == e]
-            if vals:
-                mean_vals.append((e, np.mean(vals), np.std(vals)))
-
-        if mean_vals:
-            xs, ys, stds = zip(*mean_vals)
-            ax.plot(xs, ys, color=color, linewidth=2.5, label=alg,
-                    marker="o", markersize=5)
-            ax.fill_between(xs, np.array(ys) - np.array(stds),
-                            np.array(ys) + np.array(stds),
-                            color=color, alpha=0.15)
-
-    ax.set_xlabel("Total Edits")
-    ax.set_ylabel("Efficacy")
-    ax.set_title("(A) Standard-Scale Reproduction")
-    ax.legend(loc="lower left")
-    ax.set_ylim(-0.05, 1.05)
-    ax.axhline(0.5, color="gray", linestyle=":", alpha=0.4)
+    ax.set_xticks(x)
+    ax.set_xticklabels(metric_labels)
+    ax.set_ylabel("Score")
+    ax.set_title("(A) Reproduction at 2K Edits (5 seeds)")
+    ax.legend(loc="upper right")
+    ax.set_ylim(0, 1.1)
+    ax.axhline(0.5, color="gray", linestyle=":", alpha=0.3)
 
 
 def panel_b_long_horizon(ax):

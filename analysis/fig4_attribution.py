@@ -25,10 +25,10 @@ from analysis.style import (
 )
 from analysis.loaders import (
     load_checkpoint_metrics,
+    load_checkpoint_cohorts,
     load_controlled_coupling_jsonl,
     load_controlled_coupling_behavioral,
     load_seqreg_eval,
-    load_seqreg_behavioral,
 )
 
 # ─── Configuration ────────────────────────────────────────────────────────────
@@ -40,22 +40,35 @@ SEED = 42
 
 
 def panel_a_projection_signal(ax):
-    """Panel A: Projection preserves editability (removed fraction stays low)."""
+    """Panel A: Projection preserves editability (removed fraction + q_t).
+
+    Uses seed 137 which has inline q_t measurement (mean_q_t field).
+    Falls back to seed 42 (removed fraction only) if seed 137 unavailable.
+    """
     ax2 = ax.twinx()
 
+    # Prefer seed 137 (has q_t); fall back to seed 42
+    panel_seed = 137
+    test_records = load_controlled_coupling_jsonl("low_coupling", panel_seed)
+    if not test_records:
+        panel_seed = SEED
+
     for stream in ("low_coupling", "high_coupling"):
-        records = load_controlled_coupling_jsonl(stream, SEED)
+        records = load_controlled_coupling_jsonl(stream, panel_seed)
         if not records:
             continue
 
         edits = []
         removed_fracs = []
+        q_ts = []
         for r in records:
             agg = r.get("mechanism", {}).get("aggregate", {})
             rf = agg.get("mean_removed_fraction")
+            qt = agg.get("mean_q_t")
             if rf is not None:
                 edits.append(r["total_edits"])
                 removed_fracs.append(rf)
+                q_ts.append(qt)
 
         if edits:
             color = STREAM_COLORS[stream]
@@ -63,29 +76,24 @@ def panel_a_projection_signal(ax):
             ax.plot(edits, removed_fracs, color=color, linewidth=2,
                     label=f"{label} (removed fraction)")
 
-    # Overlay: latest-cohort efficacy as proxy for q_t
-    behav = load_controlled_coupling_behavioral(SEED)
-    if behav:
-        for stream in ("low_coupling", "high_coupling"):
-            data = behav.get(stream, {})
-            last_1k = data.get("last_1k_mean_efficacy")
-            if last_1k is not None:
-                color = STREAM_COLORS[stream]
-                # Plot as horizontal reference line (single endpoint measurement)
-                ax2.axhline(last_1k, color=color, linestyle="--", alpha=0.6)
-                ax2.text(500, last_1k + 0.005,
-                         f"Latest-1K eff: {last_1k:.3f}",
-                         fontsize=7, color=color)
+            # Plot q_t on secondary axis if available
+            valid_qt = [(e, q) for e, q in zip(edits, q_ts) if q is not None]
+            if valid_qt:
+                qt_edits, qt_vals = zip(*valid_qt)
+                ax2.plot(qt_edits, qt_vals, color=color, linewidth=1.5,
+                         linestyle="--", alpha=0.7)
 
     ax.set_xlabel("Total Edits")
     ax.set_ylabel("Removed Fraction (projection loss)")
-    ax.set_title("(A) Projection Signal: Low Removal, High Success")
+    ax.set_title(f"(A) Projection Signal (seed {panel_seed})")
     ax.legend(loc="upper left", fontsize=8)
-    ax.set_ylim(0, 0.2)
 
-    ax2.set_ylabel("Latest-Cohort Efficacy", color="gray")
-    ax2.set_ylim(0.9, 1.01)
+    ax2.set_ylabel("q_t (functional retention)", color="gray")
+    ax2.set_ylim(0.95, 1.005)
     ax2.tick_params(axis="y", labelcolor="gray")
+    # Add legend for q_t line
+    ax2.plot([], [], color="gray", linestyle="--", alpha=0.7, label="q_t (right axis)")
+    ax2.legend(loc="lower right", fontsize=7)
 
 
 def panel_b_weight_drift(ax):
@@ -137,52 +145,67 @@ def panel_b_weight_drift(ax):
 
 
 def panel_c_comparison_3k(ax):
-    """Panel C: Matched method comparison at 3K edits."""
+    """Panel C: First-1K retention at 3K — how well each method preserves old facts."""
     methods = {}
 
-    # AlphaEdit at 3K
+    # AlphaEdit at 3K — use cohort-based first_1k from checkpoint
     ae = load_checkpoint_metrics(SEED, 3000, "AlphaEdit")
     if ae:
-        methods["AlphaEdit"] = ae
+        # Compute first_1k from cohorts if available, otherwise use overall
+        cohorts = load_checkpoint_cohorts(SEED, 3000, "AlphaEdit")
+        if cohorts:
+            first_1k_vals = [cohorts[c]["efficacy"] for c in sorted(cohorts)[:10]
+                            if c in cohorts and "efficacy" in cohorts[c]]
+            methods["AlphaEdit"] = {
+                "first_1k_eff": np.mean(first_1k_vals) if first_1k_vals else ae["efficacy"],
+                "overall_eff": ae["efficacy"],
+            }
+        else:
+            methods["AlphaEdit"] = {"first_1k_eff": ae["efficacy"], "overall_eff": ae["efficacy"]}
 
     # MEMIT at 3K
     memit = load_checkpoint_metrics(SEED, 3000, "MEMIT")
     if memit:
-        methods["MEMIT"] = memit
+        cohorts = load_checkpoint_cohorts(SEED, 3000, "MEMIT")
+        if cohorts:
+            first_1k_vals = [cohorts[c]["efficacy"] for c in sorted(cohorts)[:10]
+                            if c in cohorts and "efficacy" in cohorts[c]]
+            methods["MEMIT"] = {
+                "first_1k_eff": np.mean(first_1k_vals) if first_1k_vals else memit["efficacy"],
+                "overall_eff": memit["efficacy"],
+            }
+        else:
+            methods["MEMIT"] = {"first_1k_eff": memit["efficacy"], "overall_eff": memit["efficacy"]}
 
-    # MEMIT+SeqReg at 3K (from full_eval JSON, "3000_edits" key)
+    # MEMIT+SeqReg at 3K
     seqreg_eval = load_seqreg_eval(SEED)
     if seqreg_eval and "3000_edits" in seqreg_eval:
         sr = seqreg_eval["3000_edits"]
         methods["MEMIT+SeqReg"] = {
-            "efficacy": sr.get("all_facts", {}).get("efficacy"),
-            "paraphrase": sr.get("all_facts", {}).get("paraphrase"),
-            "neighborhood": sr.get("all_facts", {}).get("neighborhood"),
+            "first_1k_eff": sr.get("first_1k", {}).get("efficacy", 0),
+            "overall_eff": sr.get("all_facts", {}).get("efficacy", 0),
         }
-    # If no 3K in full eval, try 2K
     elif seqreg_eval and "2000_edits" in seqreg_eval:
         sr = seqreg_eval["2000_edits"]
-        methods["MEMIT+SeqReg\n(2K)"] = {
-            "efficacy": sr.get("all_facts", {}).get("efficacy"),
-            "paraphrase": sr.get("all_facts", {}).get("paraphrase"),
-            "neighborhood": sr.get("all_facts", {}).get("neighborhood"),
+        methods["MEMIT+SeqReg"] = {
+            "first_1k_eff": sr.get("first_1k", {}).get("efficacy", 0),
+            "overall_eff": sr.get("all_facts", {}).get("efficacy", 0),
         }
 
     if not methods:
         ax.text(0.5, 0.5, "No comparison data at 3K", transform=ax.transAxes,
                 ha="center", va="center", fontsize=11)
-        ax.set_title("(C) Matched Comparison at 3K")
+        ax.set_title("(C) Method Comparison at 3K")
         return
 
-    # Grouped bar chart
-    metrics = ["efficacy", "paraphrase", "neighborhood"]
-    metric_labels = ["Efficacy", "Paraphrase", "Specificity"]
-    x = np.arange(len(metrics))
+    # Grouped bar: first_1k vs overall per method
+    metric_labels = ["First-1K\nRetention", "Overall\nEfficacy"]
+    x = np.arange(len(metric_labels))
     n_methods = len(methods)
     width = 0.8 / n_methods
 
     for i, (method_name, data) in enumerate(methods.items()):
-        vals = [data.get(m, 0) or 0 for m in metrics]
+        vals = [data["first_1k_eff"], data["overall_eff"]]
         offset = (i - n_methods / 2 + 0.5) * width
         color = ALGO_COLORS.get(method_name, f"C{i}")
         ax.bar(x + offset, vals, width, label=method_name,
@@ -190,75 +213,65 @@ def panel_c_comparison_3k(ax):
 
     ax.set_xticks(x)
     ax.set_xticklabels(metric_labels)
-    ax.set_ylabel("Score")
-    ax.set_title("(C) Matched Comparison at 3K Edits")
-    ax.legend(loc="upper right", fontsize=8)
+    ax.set_ylabel("Efficacy")
+    ax.set_title("(C) Retention vs Editability at 3K")
+    ax.legend(loc="lower right", fontsize=8)
     ax.set_ylim(0, 1.1)
+    ax.axhline(0.5, color="gray", linestyle=":", alpha=0.3)
 
 
 def panel_d_comparison_5k(ax):
-    """Panel D: Matched comparison at 5K (AlphaEdit vs MEMIT+SeqReg)."""
-    methods = {}
+    """Panel D: First-1K retention trajectory — how each method decays from 2K to 5K."""
+    checkpoints = [2000, 3000, 4000, 5000]
 
-    # AlphaEdit at 5K
-    ae = load_checkpoint_metrics(SEED, 5000, "AlphaEdit")
-    if ae:
-        methods["AlphaEdit"] = ae
+    # AlphaEdit first_1k trajectory
+    ae_curve = []
+    for edits in checkpoints:
+        cohorts = load_checkpoint_cohorts(SEED, edits, "AlphaEdit")
+        if cohorts:
+            first_1k_vals = [cohorts[c]["efficacy"] for c in sorted(cohorts)[:10]
+                            if c in cohorts and "efficacy" in cohorts[c]]
+            if first_1k_vals:
+                ae_curve.append((edits, np.mean(first_1k_vals)))
 
-    # MEMIT+SeqReg at 5K
+    # MEMIT first_1k trajectory
+    memit_curve = []
+    for edits in checkpoints:
+        cohorts = load_checkpoint_cohorts(SEED, edits, "MEMIT")
+        if cohorts:
+            first_1k_vals = [cohorts[c]["efficacy"] for c in sorted(cohorts)[:10]
+                            if c in cohorts and "efficacy" in cohorts[c]]
+            if first_1k_vals:
+                memit_curve.append((edits, np.mean(first_1k_vals)))
+
+    # MEMIT+SeqReg first_1k trajectory
     seqreg_eval = load_seqreg_eval(SEED)
-    if seqreg_eval and "5000_edits" in seqreg_eval:
-        sr = seqreg_eval["5000_edits"]
-        methods["MEMIT+SeqReg"] = {
-            "efficacy": sr.get("all_facts", {}).get("efficacy"),
-            "paraphrase": sr.get("all_facts", {}).get("paraphrase"),
-            "neighborhood": sr.get("all_facts", {}).get("neighborhood"),
-        }
+    sr_curve = []
+    if seqreg_eval:
+        for edits in checkpoints:
+            key = f"{edits}_edits"
+            if key in seqreg_eval:
+                first_1k_eff = seqreg_eval[key].get("first_1k", {}).get("efficacy")
+                if first_1k_eff is not None:
+                    sr_curve.append((edits, first_1k_eff))
 
-    # Also try behavioral directory
-    if "MEMIT+SeqReg" not in methods:
-        sr_behav = load_seqreg_behavioral(SEED, 5000)
-        if sr_behav:
-            methods["MEMIT+SeqReg"] = sr_behav
+    # Plot
+    for curve, label, color in [
+        (ae_curve, "AlphaEdit", ALGO_COLORS["AlphaEdit"]),
+        (memit_curve, "MEMIT", ALGO_COLORS["MEMIT"]),
+        (sr_curve, "MEMIT+SeqReg", ALGO_COLORS["MEMIT+SeqReg"]),
+    ]:
+        if curve:
+            xs, ys = zip(*curve)
+            ax.plot(xs, ys, color=color, linewidth=2.5, marker="o",
+                    markersize=5, label=label)
 
-    if not methods:
-        ax.text(0.5, 0.5, "No comparison data at 5K", transform=ax.transAxes,
-                ha="center", va="center", fontsize=11)
-        ax.set_title("(D) Matched Comparison at 5K")
-        return
-
-    # Grouped bar chart with more detailed metrics
-    metrics = ["efficacy", "paraphrase", "neighborhood"]
-    metric_labels = ["Efficacy", "Paraphrase", "Specificity"]
-    x = np.arange(len(metrics))
-    n_methods = len(methods)
-    width = 0.8 / n_methods
-
-    for i, (method_name, data) in enumerate(methods.items()):
-        vals = [data.get(m, 0) or 0 for m in metrics]
-        offset = (i - n_methods / 2 + 0.5) * width
-        color = ALGO_COLORS.get(method_name, f"C{i}")
-        ax.bar(x + offset, vals, width, label=method_name,
-               color=color, alpha=0.8, edgecolor="black", linewidth=0.5)
-
-    ax.set_xticks(x)
-    ax.set_xticklabels(metric_labels)
-    ax.set_ylabel("Score")
-    ax.set_title("(D) Matched Comparison at 5K Edits")
-    ax.legend(loc="upper right", fontsize=8)
-    ax.set_ylim(0, 1.1)
-
-    # Annotate key finding
-    if "AlphaEdit" in methods and "MEMIT+SeqReg" in methods:
-        ae_eff = methods["AlphaEdit"].get("efficacy", 0)
-        sr_eff = methods["MEMIT+SeqReg"].get("efficacy", 0)
-        if sr_eff and ae_eff:
-            delta = sr_eff - ae_eff
-            sign = "+" if delta > 0 else ""
-            ax.text(0.02, 0.02, f"SeqReg vs AlphaEdit efficacy: {sign}{delta:.1%}",
-                    transform=ax.transAxes, fontsize=8, ha="left", va="bottom",
-                    weight="bold",
-                    color="#4CAF50" if delta > 0 else "#E91E63")
+    ax.set_xlabel("Total Edits")
+    ax.set_ylabel("First-1K Cohort Efficacy")
+    ax.set_title("(D) Old-Fact Retention Decay (seed 42)")
+    ax.legend(loc="lower left", fontsize=8)
+    ax.set_ylim(0, 1.05)
+    ax.axhline(0.5, color="gray", linestyle=":", alpha=0.3)
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────

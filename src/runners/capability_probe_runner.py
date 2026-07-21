@@ -84,165 +84,165 @@ def build_probe_script(
     argv_str = repr(argv_parts)
 
     script = textwrap.dedent(f"""\
-        import os, sys, random, json, time
-        import numpy as np
-        import torch
-        from torch.nn import functional as F
+import os, sys, random, json, time
+import numpy as np
+import torch
+from torch.nn import functional as F
 
-        # 1. Seed
-        seed = {seed}
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-        torch.use_deterministic_algorithms(True, warn_only=True)
+# 1. Seed
+seed = {seed}
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+torch.use_deterministic_algorithms(True, warn_only=True)
 
-        sys.argv = {argv_str}
+sys.argv = {argv_str}
 
-        # 2. Define the capability probe functions
-        PROBE_OUTPUT = "{output_jsonl}"
-        PROBE_COMPUTE_MMLU = {compute_mmlu}
-        WIKITEXT_TEXTS = None  # Lazy-loaded
-        _probe_records = []
+# 2. Define the capability probe functions
+PROBE_OUTPUT = "{output_jsonl}"
+PROBE_COMPUTE_MMLU = {compute_mmlu}
+WIKITEXT_TEXTS = None  # Lazy-loaded
+_probe_records = []
 
-        def _load_wikitext(n_samples=200):
-            global WIKITEXT_TEXTS
-            if WIKITEXT_TEXTS is not None:
-                return WIKITEXT_TEXTS
-            from datasets import load_dataset
-            ds = load_dataset("wikitext", "wikitext-103-raw-v1", split="test")
-            texts = []
-            for item in ds:
-                text = item["text"].strip()
-                if len(text) > 100:
-                    texts.append(text)
-                if len(texts) >= n_samples:
-                    break
-            WIKITEXT_TEXTS = texts
-            return texts
+def _load_wikitext(n_samples=200):
+    global WIKITEXT_TEXTS
+    if WIKITEXT_TEXTS is not None:
+        return WIKITEXT_TEXTS
+    from datasets import load_dataset
+    ds = load_dataset("wikitext", "wikitext-103-raw-v1", split="test")
+    texts = []
+    for item in ds:
+        text = item["text"].strip()
+        if len(text) > 100:
+            texts.append(text)
+        if len(texts) >= n_samples:
+            break
+    WIKITEXT_TEXTS = texts
+    return texts
 
-        def _compute_perplexity(model, tokenizer, texts, max_length=512, batch_size=4):
-            model.eval()
-            device = next(model.parameters()).device
-            all_nlls = []
-            total_tokens = 0
+def _compute_perplexity(model, tokenizer, texts, max_length=512, batch_size=4):
+    model.eval()
+    device = next(model.parameters()).device
+    all_nlls = []
+    total_tokens = 0
 
-            for i in range(0, len(texts), batch_size):
-                batch_texts = texts[i:i + batch_size]
-                encodings = tokenizer(
-                    batch_texts, return_tensors="pt",
-                    max_length=max_length, truncation=True, padding=True,
-                ).to(device)
-                input_ids = encodings["input_ids"]
-                attention_mask = encodings["attention_mask"]
+    for i in range(0, len(texts), batch_size):
+        batch_texts = texts[i:i + batch_size]
+        encodings = tokenizer(
+            batch_texts, return_tensors="pt",
+            max_length=max_length, truncation=True, padding=True,
+        ).to(device)
+        input_ids = encodings["input_ids"]
+        attention_mask = encodings["attention_mask"]
 
-                with torch.no_grad():
-                    outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-                    logits = outputs.logits
+        with torch.no_grad():
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+            logits = outputs.logits
 
-                for j in range(input_ids.shape[0]):
-                    mask = attention_mask[j] == 1
-                    valid_ids = input_ids[j][mask]
-                    valid_logits = logits[j][mask]
-                    if len(valid_ids) < 2:
-                        continue
-                    shift_logits = valid_logits[:-1]
-                    shift_labels = valid_ids[1:]
-                    nll = F.cross_entropy(shift_logits, shift_labels, reduction="sum").item()
-                    n_tokens = len(shift_labels)
-                    all_nlls.append(nll / n_tokens)
-                    total_tokens += n_tokens
+        for j in range(input_ids.shape[0]):
+            mask = attention_mask[j] == 1
+            valid_ids = input_ids[j][mask]
+            valid_logits = logits[j][mask]
+            if len(valid_ids) < 2:
+                continue
+            shift_logits = valid_logits[:-1]
+            shift_labels = valid_ids[1:]
+            nll = F.cross_entropy(shift_logits, shift_labels, reduction="sum").item()
+            n_tokens = len(shift_labels)
+            all_nlls.append(nll / n_tokens)
+            total_tokens += n_tokens
 
-            if not all_nlls:
-                return {{"mean_perplexity": float("nan"), "n_samples": 0, "n_tokens": 0}}
-            per_sample_ppl = [np.exp(nll) for nll in all_nlls]
-            return {{
-                "mean_perplexity": float(np.mean(per_sample_ppl)),
-                "median_perplexity": float(np.median(per_sample_ppl)),
-                "std_perplexity": float(np.std(per_sample_ppl)),
-                "n_samples": len(all_nlls),
-                "n_tokens": total_tokens,
-            }}
+    if not all_nlls:
+        return {{"mean_perplexity": float("nan"), "n_samples": 0, "n_tokens": 0}}
+    per_sample_ppl = [np.exp(nll) for nll in all_nlls]
+    return {{
+        "mean_perplexity": float(np.mean(per_sample_ppl)),
+        "median_perplexity": float(np.median(per_sample_ppl)),
+        "std_perplexity": float(np.std(per_sample_ppl)),
+        "n_samples": len(all_nlls),
+        "n_tokens": total_tokens,
+    }}
 
-        def _run_probe(model, tokenizer, edit_count):
-            \"\"\"Run capability probe and save results.\"\"\"
-            print(f"  [PROBE] Running capability probe at {{edit_count}} edits...")
-            t0 = time.time()
+def _run_probe(model, tokenizer, edit_count):
+    \"\"\"Run capability probe and save results.\"\"\"
+    print(f"  [PROBE] Running capability probe at {{edit_count}} edits...")
+    t0 = time.time()
 
-            texts = _load_wikitext()
-            ppl_result = _compute_perplexity(model, tokenizer, texts)
+    texts = _load_wikitext()
+    ppl_result = _compute_perplexity(model, tokenizer, texts)
 
-            record = {{
-                "edit_count": edit_count,
-                "timestamp_utc": time.time(),
-                **ppl_result,
-            }}
+    record = {{
+        "edit_count": edit_count,
+        "timestamp_utc": time.time(),
+        **ppl_result,
+    }}
 
-            elapsed = time.time() - t0
-            print(f"  [PROBE] Perplexity: {{ppl_result['mean_perplexity']:.2f}} "
-                  f"({{ppl_result['n_samples']}} samples, {{elapsed:.1f}}s)")
+    elapsed = time.time() - t0
+    print(f"  [PROBE] Perplexity: {{ppl_result['mean_perplexity']:.2f}} "
+          f"({{ppl_result['n_samples']}} samples, {{elapsed:.1f}}s)")
 
-            _probe_records.append(record)
-            with open(PROBE_OUTPUT, "a") as f:
-                f.write(json.dumps(record) + "\\n")
+    _probe_records.append(record)
+    with open(PROBE_OUTPUT, "a") as f:
+        f.write(json.dumps(record) + "\\n")
 
-        # 3. Monkey-patch GLUEEval to also run our probe
-        _original_glue_eval = None
+# 3. Monkey-patch GLUEEval to also run our probe
+_original_glue_eval = None
 
-        def _patched_glue_evaluate(self, glue_results, *args, **kwargs):
-            \"\"\"Wrapper that runs our probe after GLUEEval.\"\"\"
-            result = _original_glue_eval(self, glue_results, *args, **kwargs)
-            # Extract edit count from glue_results
-            edit_count = glue_results.get("edit_num", 0)
-            if edit_count == -1:
-                edit_count = 0  # baseline measurement
-            _run_probe(self.model, self.tokenizer, edit_count)
-            return result
+def _patched_glue_evaluate(self, glue_results, *args, **kwargs):
+    \"\"\"Wrapper that runs our probe after GLUEEval.\"\"\"
+    result = _original_glue_eval(self, glue_results, *args, **kwargs)
+    # Extract edit count from glue_results
+    edit_count = glue_results.get("edit_num", 0)
+    if edit_count == -1:
+        edit_count = 0  # baseline measurement
+    _run_probe(self.model, self.tokenizer, edit_count)
+    return result
 
-        # 4. Read and patch evaluate.py
-        with open("experiments/evaluate.py", "r") as f:
-            source = f.read()
+# 4. Read and patch evaluate.py
+with open("experiments/evaluate.py", "r") as f:
+    source = f.read()
 
-        patch_target = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
-        if patch_target in source:
-            source = source.replace(
-                patch_target,
-                '# CUDA_VISIBLE_DEVICES managed by capability_probe_runner',
-            )
+patch_target = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
+if patch_target in source:
+    source = source.replace(
+        patch_target,
+        '# CUDA_VISIBLE_DEVICES managed by capability_probe_runner',
+    )
 
-        # Inject GLUEEval monkey-patch after imports
-        glue_patch = '''
+# Inject GLUEEval monkey-patch after imports
+glue_patch = '''
 # === Capability probe patch (injected by capability_probe_runner.py) ===
 from glue_eval.glue_eval import GLUEEval as _OrigGLUEEval
 _original_glue_eval = _OrigGLUEEval.evaluate
 _OrigGLUEEval.evaluate = _patched_glue_evaluate
 # === End capability probe patch ===
 '''
-        source = source.replace(
-            'if __name__ == "__main__":',
-            glue_patch + '\\nif __name__ == "__main__":',
-        )
+source = source.replace(
+    'if __name__ == "__main__":',
+    glue_patch + '\\nif __name__ == "__main__":',
+)
 
-        # 5. Execute
-        exec_globals = {{
-            "__name__": "__main__",
-            "__file__": "experiments/evaluate.py",
-            "_patched_glue_evaluate": _patched_glue_evaluate,
-            "_original_glue_eval": None,  # Set by patch
-            "_run_probe": _run_probe,
-            "_load_wikitext": _load_wikitext,
-            "_compute_perplexity": _compute_perplexity,
-            "_probe_records": _probe_records,
-            "PROBE_OUTPUT": PROBE_OUTPUT,
-        }}
+# 5. Execute
+exec_globals = {{
+    "__name__": "__main__",
+    "__file__": "experiments/evaluate.py",
+    "_patched_glue_evaluate": _patched_glue_evaluate,
+    "_original_glue_eval": None,  # Set by patch
+    "_run_probe": _run_probe,
+    "_load_wikitext": _load_wikitext,
+    "_compute_perplexity": _compute_perplexity,
+    "_probe_records": _probe_records,
+    "PROBE_OUTPUT": PROBE_OUTPUT,
+}}
 
-        exec(compile(source, "experiments/evaluate.py", "exec"), exec_globals)
+exec(compile(source, "experiments/evaluate.py", "exec"), exec_globals)
 
-        print(f"\\n=== Capability probe complete ===")
-        print(f"  Recorded {{len(_probe_records)}} measurement points")
-        print(f"  Output: {{PROBE_OUTPUT}}")
+print(f"\\n=== Capability probe complete ===")
+print(f"  Recorded {{len(_probe_records)}} measurement points")
+print(f"  Output: {{PROBE_OUTPUT}}")
     """)
     return script
 
