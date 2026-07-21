@@ -627,8 +627,14 @@ def main():
     parser.add_argument("--eval_at_checkpoints_only", action="store_true", default=False)
     parser.add_argument("--conserve_memory", action="store_true", default=True)
     parser.add_argument("--start_from_batch", type=int, default=0)
-    parser.add_argument("--stream", choices=["both", "low", "high"], default="both",
+    parser.add_argument("--stream", choices=["both", "low", "high", "custom", "clustered", "dispersed"], default="both",
                         help="Which stream(s) to run")
+    parser.add_argument("--stream_path", type=str, default=None,
+                        help="Path to custom stream JSON (use with --stream custom)")
+    parser.add_argument("--stream_name", type=str, default=None,
+                        help="Name for custom stream (used in output paths)")
+    parser.add_argument("--checkpoint_base", type=str, default=None,
+                        help="Override checkpoint base directory")
     parser.add_argument("--data_dir", type=str, default=None)
     args = parser.parse_args()
 
@@ -648,35 +654,40 @@ def main():
     results_dir = PROJECT_ROOT / "results" / "controlled_coupling"
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    # Generate or load streams
-    data_dir = Path(args.data_dir) if args.data_dir else ALPHAEDIT_ROOT / "data"
-    low_path = results_dir / f"low_coupling_seed{args.seed}.json"
-    high_path = results_dir / f"high_coupling_seed{args.seed}.json"
+    # Generate or load streams (only needed for low/high coupling, not custom/matched)
+    low_path = None
+    high_path = None
+    if args.stream in ("both", "low", "high"):
+        data_dir = Path(args.data_dir) if args.data_dir else ALPHAEDIT_ROOT / "data"
+        low_path = results_dir / f"low_coupling_seed{args.seed}.json"
+        high_path = results_dir / f"high_coupling_seed{args.seed}.json"
 
-    if low_path.exists() and high_path.exists():
-        print(f"\nLoading cached streams...")
-        print(f"  Low:  {low_path}")
-        print(f"  High: {high_path}")
+        if low_path.exists() and high_path.exists():
+            print(f"\nLoading cached streams...")
+            print(f"  Low:  {low_path}")
+            print(f"  High: {high_path}")
+        else:
+            print("\nGenerating controlled coupling streams...")
+            from controlled_coupling_dataset import generate_controlled_streams, validate_stream_properties
+
+            low_stream, high_stream = generate_controlled_streams(
+                data_dir=data_dir,
+                seed=args.seed,
+                stream_length=args.stream_length,
+                batch_size=args.num_edits,
+            )
+
+            props = validate_stream_properties(low_stream, high_stream, args.num_edits)
+            print(f"  Coupling differential: {props['coupling_differential']:.2f}")
+
+            with open(low_path, "w") as f:
+                json.dump(low_stream, f)
+            with open(high_path, "w") as f:
+                json.dump(high_stream, f)
+            with open(results_dir / f"stream_properties_seed{args.seed}.json", "w") as f:
+                json.dump(props, f, indent=2)
     else:
-        print("\nGenerating controlled coupling streams...")
-        from controlled_coupling_dataset import generate_controlled_streams, validate_stream_properties
-
-        low_stream, high_stream = generate_controlled_streams(
-            data_dir=data_dir,
-            seed=args.seed,
-            stream_length=args.stream_length,
-            batch_size=args.num_edits,
-        )
-
-        props = validate_stream_properties(low_stream, high_stream, args.num_edits)
-        print(f"  Coupling differential: {props['coupling_differential']:.2f}")
-
-        with open(low_path, "w") as f:
-            json.dump(low_stream, f)
-        with open(high_path, "w") as f:
-            json.dump(high_stream, f)
-        with open(results_dir / f"stream_properties_seed{args.seed}.json", "w") as f:
-            json.dump(props, f, indent=2)
+        print(f"\nUsing external stream: {args.stream_path}")
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
@@ -708,19 +719,31 @@ def main():
 
     # Run streams
     streams_to_run = []
-    if args.stream in ("both", "low"):
-        streams_to_run.append(("low_coupling", str(low_path)))
-    if args.stream in ("both", "high"):
-        streams_to_run.append(("high_coupling", str(high_path)))
-
-    # Resolve checkpoint base: prefer S3-mounted path for crash resilience
-    s3_ckpt_base = Path("/s3-data/continual-learning/alphaedit/checkpoints/controlled_coupling")
-    if s3_ckpt_base.parent.parent.exists():
-        ckpt_base = s3_ckpt_base
-        print(f"  Checkpoints: {ckpt_base} (S3-mounted, crash-resilient)")
+    if args.stream in ("custom", "clustered", "dispersed"):
+        # Custom/matched ordering stream path
+        if not args.stream_path:
+            print(f"ERROR: --stream_path required when --stream={args.stream}")
+            sys.exit(1)
+        stream_name = args.stream_name or args.stream
+        streams_to_run.append((stream_name, args.stream_path))
     else:
-        ckpt_base = results_dir / "checkpoints"
-        print(f"  Checkpoints: {ckpt_base} (local)")
+        if args.stream in ("both", "low"):
+            streams_to_run.append(("low_coupling", str(low_path)))
+        if args.stream in ("both", "high"):
+            streams_to_run.append(("high_coupling", str(high_path)))
+
+    # Resolve checkpoint base
+    if args.checkpoint_base:
+        ckpt_base = Path(args.checkpoint_base)
+        print(f"  Checkpoints: {ckpt_base} (user-specified)")
+    else:
+        s3_ckpt_base = Path("/s3-data/continual-learning/alphaedit/checkpoints/controlled_coupling")
+        if s3_ckpt_base.parent.parent.exists():
+            ckpt_base = s3_ckpt_base
+            print(f"  Checkpoints: {ckpt_base} (S3-mounted, crash-resilient)")
+        else:
+            ckpt_base = results_dir / "checkpoints"
+            print(f"  Checkpoints: {ckpt_base} (local)")
 
     for stream_name, dataset_path in streams_to_run:
         # Write JSONL to checkpoint dir (S3-mounted = crash-resilient)
