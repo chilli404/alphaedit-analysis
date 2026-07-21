@@ -84,16 +84,15 @@ def extract_all_keys(
 # ─── Geometry Computations ──────────────────────────────────────────────────
 
 
-def within_batch_cosine(keys: np.ndarray, ordering: list, batch_size: int) -> list:
+def within_batch_cosine(keys: np.ndarray, ordering: list, batch_size: int, key_index: dict) -> list:
     """Mean pairwise cosine similarity within each batch."""
-    case_id_to_idx = {r["case_id"]: i for i, r in enumerate(ordering)}
     n_batches = len(ordering) // batch_size
     similarities = []
 
     for b in range(n_batches):
         batch_records = ordering[b * batch_size: (b + 1) * batch_size]
-        indices = [case_id_to_idx[r["case_id"]] for r in batch_records
-                   if r["case_id"] in case_id_to_idx]
+        indices = [key_index[r["case_id"]] for r in batch_records
+                   if r["case_id"] in key_index]
         if len(indices) < 2:
             similarities.append(0.0)
             continue
@@ -114,9 +113,8 @@ def within_batch_cosine(keys: np.ndarray, ordering: list, batch_size: int) -> li
     return similarities
 
 
-def adjacent_batch_cosine(keys: np.ndarray, ordering: list, batch_size: int) -> list:
+def adjacent_batch_cosine(keys: np.ndarray, ordering: list, batch_size: int, key_index: dict) -> list:
     """Mean cosine similarity between adjacent batches."""
-    case_id_to_idx = {r["case_id"]: i for i, r in enumerate(ordering)}
     n_batches = len(ordering) // batch_size
     adj_sims = []
 
@@ -124,8 +122,8 @@ def adjacent_batch_cosine(keys: np.ndarray, ordering: list, batch_size: int) -> 
         batch_a = ordering[b * batch_size: (b + 1) * batch_size]
         batch_b = ordering[(b + 1) * batch_size: (b + 2) * batch_size]
 
-        idx_a = [case_id_to_idx[r["case_id"]] for r in batch_a if r["case_id"] in case_id_to_idx]
-        idx_b = [case_id_to_idx[r["case_id"]] for r in batch_b if r["case_id"] in case_id_to_idx]
+        idx_a = [key_index[r["case_id"]] for r in batch_a if r["case_id"] in key_index]
+        idx_b = [key_index[r["case_id"]] for r in batch_b if r["case_id"] in key_index]
 
         if not idx_a or not idx_b:
             adj_sims.append(0.0)
@@ -145,24 +143,24 @@ def adjacent_batch_cosine(keys: np.ndarray, ordering: list, batch_size: int) -> 
     return adj_sims
 
 
-def prefix_cache_spectrum(keys: np.ndarray, ordering: list, checkpoints: list) -> dict:
+def prefix_cache_spectrum(keys: np.ndarray, ordering: list, checkpoints: list, key_index: dict) -> dict:
     """Compute cache spectrum at checkpoints (effective rank, condition, top_sv_share)."""
-    case_id_to_idx = {r["case_id"]: i for i, r in enumerate(ordering)}
     results = {}
 
     for t in checkpoints:
         prefix_records = ordering[:t]
-        indices = [case_id_to_idx[r["case_id"]] for r in prefix_records
-                   if r["case_id"] in case_id_to_idx]
+        indices = [key_index[r["case_id"]] for r in prefix_records
+                   if r["case_id"] in key_index]
         if not indices:
             continue
 
         prefix_keys = keys[indices]  # (t, d)
-        # Cache = K @ K.T (same as AlphaEdit's cache_c accumulation)
-        cache = prefix_keys.T @ prefix_keys  # (d, d)
 
-        # Eigendecomposition
-        eigvals = np.linalg.eigvalsh(cache)
+        # Use Gram matrix (t×t) instead of full cache (d×d) — same nonzero spectrum, much cheaper
+        gram = prefix_keys @ prefix_keys.T  # (t, t) instead of (d, d)
+
+        # Eigendecomposition of Gram matrix
+        eigvals = np.linalg.eigvalsh(gram)
         eigvals = np.sort(eigvals)[::-1]
         eigvals = np.maximum(eigvals, 0)
         svs = np.sqrt(eigvals)
@@ -191,16 +189,15 @@ def prefix_cache_spectrum(keys: np.ndarray, ordering: list, checkpoints: list) -
     return results
 
 
-def batch_effective_rank(keys: np.ndarray, ordering: list, batch_size: int) -> list:
+def batch_effective_rank(keys: np.ndarray, ordering: list, batch_size: int, key_index: dict) -> list:
     """Effective rank of keys within each batch."""
-    case_id_to_idx = {r["case_id"]: i for i, r in enumerate(ordering)}
     n_batches = len(ordering) // batch_size
     ranks = []
 
     for b in range(n_batches):
         batch_records = ordering[b * batch_size: (b + 1) * batch_size]
-        indices = [case_id_to_idx[r["case_id"]] for r in batch_records
-                   if r["case_id"] in case_id_to_idx]
+        indices = [key_index[r["case_id"]] for r in batch_records
+                   if r["case_id"] in key_index]
         if len(indices) < 2:
             ranks.append(0.0)
             continue
@@ -219,15 +216,14 @@ def batch_effective_rank(keys: np.ndarray, ordering: list, batch_size: int) -> l
     return ranks
 
 
-def key_norms_by_cohort(keys: np.ndarray, ordering: list, cohort_size: int = 1000) -> list:
+def key_norms_by_cohort(keys: np.ndarray, ordering: list, cohort_size: int, key_index: dict) -> list:
     """Mean key norm per cohort."""
-    case_id_to_idx = {r["case_id"]: i for i, r in enumerate(ordering)}
     n_cohorts = len(ordering) // cohort_size
     norms = []
 
     for c in range(n_cohorts):
         cohort = ordering[c * cohort_size: (c + 1) * cohort_size]
-        indices = [case_id_to_idx[r["case_id"]] for r in cohort if r["case_id"] in case_id_to_idx]
+        indices = [key_index[r["case_id"]] for r in cohort if r["case_id"] in key_index]
         cohort_keys = keys[indices]
         mean_norm = float(np.linalg.norm(cohort_keys, axis=1).mean())
         norms.append(mean_norm)
@@ -235,9 +231,8 @@ def key_norms_by_cohort(keys: np.ndarray, ordering: list, cohort_size: int = 100
     return norms
 
 
-def future_key_exposure(keys: np.ndarray, ordering: list, batch_size: int, lookahead: int = 10) -> list:
+def future_key_exposure(keys: np.ndarray, ordering: list, batch_size: int, key_index: dict, lookahead: int = 10) -> list:
     """For each batch, max cosine sim to any key in the next `lookahead` batches."""
-    case_id_to_idx = {r["case_id"]: i for i, r in enumerate(ordering)}
     n_batches = len(ordering) // batch_size
     exposures = []
 
@@ -251,8 +246,8 @@ def future_key_exposure(keys: np.ndarray, ordering: list, batch_size: int, looka
             continue
 
         future_records = ordering[future_start:future_end]
-        idx_curr = [case_id_to_idx[r["case_id"]] for r in batch_records if r["case_id"] in case_id_to_idx]
-        idx_future = [case_id_to_idx[r["case_id"]] for r in future_records if r["case_id"] in case_id_to_idx]
+        idx_curr = [key_index[r["case_id"]] for r in batch_records if r["case_id"] in key_index]
+        idx_future = [key_index[r["case_id"]] for r in future_records if r["case_id"] in key_index]
 
         if not idx_curr or not idx_future:
             exposures.append(0.0)
@@ -288,6 +283,8 @@ def main():
     parser.add_argument("--model", type=str,
                         default=os.environ.get("MODEL_NAME", "meta-llama/Meta-Llama-3-8B-Instruct"))
     parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--keys_path", type=str, default=None,
+                        help="Path to precomputed keys .npz (skip model loading/extraction)")
     args = parser.parse_args()
 
     # Resolve paths
@@ -328,33 +325,68 @@ def main():
 
     print(f"  Records: {len(clustered)}")
 
-    # Load model
-    print(f"\n  Loading model: {args.model}")
-    from model_download import resolve_model_path
-    model_id = resolve_model_path(args.model)
+    # Load or extract keys
+    if args.keys_path:
+        # Load precomputed keys (skip model loading entirely)
+        print(f"\n  Loading precomputed keys: {args.keys_path}")
+        npz = np.load(args.keys_path)
+        all_keys = npz["keys"]
+        saved_case_ids = npz["case_ids"].tolist()
+        # Build key_index from saved case_ids
+        key_index = {cid: i for i, cid in enumerate(saved_case_ids)}
+        print(f"  Keys shape: {all_keys.shape}")
+        print(f"  Key index: {len(key_index)} case_ids mapped")
+    else:
+        # Load model and extract keys
+        print(f"\n  Loading model: {args.model}")
+        from model_download import resolve_model_path
+        model_id = resolve_model_path(args.model)
 
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-    token = os.environ.get("HF_TOKEN")
-    tokenizer = AutoTokenizer.from_pretrained(model_id, token=token)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        token = os.environ.get("HF_TOKEN")
+        tokenizer = AutoTokenizer.from_pretrained(model_id, token=token)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id, token=token, torch_dtype=torch.float16, device_map=args.device
-    )
-    model.eval()
-    print(f"  Model loaded on {args.device}")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id, token=token, torch_dtype=torch.float16, device_map=args.device
+        )
+        model.eval()
+        print(f"  Model loaded on {args.device}")
 
-    # Extract keys (only once — same facts in both orderings)
-    # Use dispersed ordering as the canonical ordering for key extraction
-    # (order doesn't matter for individual key computation)
-    print(f"\n  Extracting keys (layer {args.layer})...")
-    all_keys = extract_all_keys(model, tokenizer, dispersed, args.layer, args.device)
-    print(f"  Keys shape: {all_keys.shape}")
+        # Extract keys (only once — same facts in both orderings)
+        # Use dispersed ordering as the canonical ordering for key extraction
+        # (order doesn't matter for individual key computation)
+        print(f"\n  Extracting keys (layer {args.layer})...")
+        all_keys = extract_all_keys(model, tokenizer, dispersed, args.layer, args.device)
+        print(f"  Keys shape: {all_keys.shape}")
 
-    # Free model memory
-    del model
-    torch.cuda.empty_cache()
+        # Build key_index: maps case_id → position in the all_keys array
+        # Keys were extracted in dispersed order, so dispersed[i] → all_keys[i]
+        key_index = {dispersed[i]["case_id"]: i for i in range(len(all_keys))}
+        print(f"  Key index: {len(key_index)} case_ids mapped")
+
+        # Free model memory
+        del model
+        torch.cuda.empty_cache()
+
+    # Verify orderings differ
+    c_ids = [r["case_id"] for r in clustered]
+    d_ids = [r["case_id"] for r in dispersed]
+    print(f"\n  Ordering verification:")
+    print(f"    Same full order: {c_ids == d_ids}")
+    print(f"    Same first 100: {c_ids[:100] == d_ids[:100]}")
+    print(f"    Same first 1000 set: {set(c_ids[:1000]) == set(d_ids[:1000])}")
+    print(f"    Matching positions: {sum(a == b for a, b in zip(c_ids, d_ids))}/{len(c_ids)}")
+    print(f"    Clustered first 5 case_ids: {c_ids[:5]}")
+    print(f"    Dispersed first 5 case_ids: {d_ids[:5]}")
+
+    # Quick sanity: verify key_index maps correctly for both orderings
+    # The first batch of each ordering should pull DIFFERENT key vectors
+    clust_b0_idx = [key_index[r["case_id"]] for r in clustered[:5]]
+    disp_b0_idx = [key_index[r["case_id"]] for r in dispersed[:5]]
+    print(f"    Clustered first 5 key indices: {clust_b0_idx}")
+    print(f"    Dispersed first 5 key indices: {disp_b0_idx}")
 
     # ─── Compute diagnostics ─────────────────────────────────────────────────
 
@@ -364,29 +396,29 @@ def main():
 
     # 1. Within-batch cosine similarity
     print("    Within-batch cosine similarity...")
-    clust_within = within_batch_cosine(all_keys, clustered, batch_size)
-    disp_within = within_batch_cosine(all_keys, dispersed, batch_size)
+    clust_within = within_batch_cosine(all_keys, clustered, batch_size, key_index)
+    disp_within = within_batch_cosine(all_keys, dispersed, batch_size, key_index)
 
     # 2. Adjacent-batch cosine
     print("    Adjacent-batch cosine similarity...")
-    clust_adjacent = adjacent_batch_cosine(all_keys, clustered, batch_size)
-    disp_adjacent = adjacent_batch_cosine(all_keys, dispersed, batch_size)
+    clust_adjacent = adjacent_batch_cosine(all_keys, clustered, batch_size, key_index)
+    disp_adjacent = adjacent_batch_cosine(all_keys, dispersed, batch_size, key_index)
 
     # 3. Batch effective rank
     print("    Per-batch effective rank...")
-    clust_batch_er = batch_effective_rank(all_keys, clustered, batch_size)
-    disp_batch_er = batch_effective_rank(all_keys, dispersed, batch_size)
+    clust_batch_er = batch_effective_rank(all_keys, clustered, batch_size, key_index)
+    disp_batch_er = batch_effective_rank(all_keys, dispersed, batch_size, key_index)
 
     # 4. Prefix cache spectrum at checkpoints
     checkpoints = [t for t in range(1000, n_records + 1, 1000)]
     print(f"    Prefix cache spectrum at {len(checkpoints)} checkpoints...")
-    clust_prefix = prefix_cache_spectrum(all_keys, clustered, checkpoints)
-    disp_prefix = prefix_cache_spectrum(all_keys, dispersed, checkpoints)
+    clust_prefix = prefix_cache_spectrum(all_keys, clustered, checkpoints, key_index)
+    disp_prefix = prefix_cache_spectrum(all_keys, dispersed, checkpoints, key_index)
 
     # 5. Key norms by cohort
     print("    Key norms by cohort...")
-    clust_norms = key_norms_by_cohort(all_keys, clustered)
-    disp_norms = key_norms_by_cohort(all_keys, dispersed)
+    clust_norms = key_norms_by_cohort(all_keys, clustered, 1000, key_index)
+    disp_norms = key_norms_by_cohort(all_keys, dispersed, 1000, key_index)
 
     # 6. Global spectrum (same facts → should be identical)
     print("    Global key-set spectrum...")
@@ -399,8 +431,8 @@ def main():
 
     # 7. Future-key exposure
     print("    Future-key exposure (lookahead=10 batches)...")
-    clust_future = future_key_exposure(all_keys, clustered, batch_size, lookahead=10)
-    disp_future = future_key_exposure(all_keys, dispersed, batch_size, lookahead=10)
+    clust_future = future_key_exposure(all_keys, clustered, batch_size, key_index, lookahead=10)
+    disp_future = future_key_exposure(all_keys, dispersed, batch_size, key_index, lookahead=10)
 
     # ─── Summary ─────────────────────────────────────────────────────────────
 
