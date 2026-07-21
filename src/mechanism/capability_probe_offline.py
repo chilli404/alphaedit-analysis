@@ -71,7 +71,7 @@ def find_all_checkpoints(ckpt_dir: Path) -> list[tuple[int, Path]]:
         return []
 
     checkpoints = []
-    for batch_dir in sorted(ckpt_dir.glob("batch_*")):
+    for batch_dir in sorted(ckpt_dir.glob("batch_*"), key=lambda p: int(p.name.split("_")[1])):
         metadata_file = batch_dir / "metadata.json"
         weights_file = batch_dir / "model_weights.pt"
 

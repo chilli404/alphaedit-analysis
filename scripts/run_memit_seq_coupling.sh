@@ -41,10 +41,13 @@ LAMBDA_DELTA="0.0"
 CACHE_STRATEGY="all"
 CACHE_MAX="none"
 
-# Stream data paths
+# Stream data paths (support both controlled_coupling and matched_ordering)
 RESULTS_DIR="$PROJECT_DIR/results/controlled_coupling"
+MATCHED_DIR="$PROJECT_DIR/results/matched_ordering"
 LOW_STREAM="$RESULTS_DIR/low_coupling_seed${SEED}.json"
 HIGH_STREAM="$RESULTS_DIR/high_coupling_seed${SEED}.json"
+CLUSTERED_STREAM="$MATCHED_DIR/clustered_seed${SEED}.json"
+DISPERSED_STREAM="$MATCHED_DIR/dispersed_seed${SEED}.json"
 
 # Checkpoint base
 CKPT_BASE="${HOME}/.cache/memit_seqreg_checkpoints"
@@ -111,6 +114,14 @@ fi
 
 if [[ "$STREAM" == "both" || "$STREAM" == "high" ]]; then
     run_stream "high" "$HIGH_STREAM"
+fi
+
+if [[ "$STREAM" == "matched" || "$STREAM" == "clustered" ]]; then
+    run_stream "clustered" "$CLUSTERED_STREAM"
+fi
+
+if [[ "$STREAM" == "matched" || "$STREAM" == "dispersed" ]]; then
+    run_stream "dispersed" "$DISPERSED_STREAM"
 fi
 
 echo ""

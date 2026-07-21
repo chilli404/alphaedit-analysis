@@ -6,6 +6,8 @@
 #   make fig2         Figure 2: Anatomy of forgetting
 #   make fig3         Figure 3: Controlled coupling
 #   make fig4         Figure 4: Attribution
+#   make fig5         Figure 5: Per-edit interference (key geometry)
+#   make interference Run interference panel analysis (requires keys)
 #   make tables       All tables + paper_numbers.json
 #   make appendix     Appendix figures (A1, A3, A8)
 #   make check        Verify data availability
@@ -17,10 +19,11 @@
 PYTHON := uv run python
 OUTPUT := ../results/figures/paper
 APPENDIX := ../results/figures/appendix
+KEYS := ../results/keys
 
-.PHONY: all fig1 fig2 fig3 fig4 tables appendix check clean
+.PHONY: all fig1 fig2 fig3 fig4 fig5 interference tables appendix check clean
 
-all: fig1 fig2 fig3 fig4 tables
+all: fig1 fig2 fig3 fig4 interference fig5 tables
 
 fig1:
 	@echo "── Figure 1: Reproduction & Long-Horizon ──"
@@ -37,6 +40,14 @@ fig3:
 fig4:
 	@echo "── Figure 4: Attribution ──"
 	$(PYTHON) -m analysis.fig4_attribution --output-dir $(OUTPUT)
+
+interference:
+	@echo "── Interference Panel Analysis ──"
+	$(PYTHON) -m analysis.interference_panel --output-dir $(OUTPUT) --keys-dir $(KEYS)
+
+fig5: interference
+	@echo "── Figure 5: Per-Edit Interference ──"
+	$(PYTHON) -m analysis.fig5_interference --output-dir $(OUTPUT)
 
 tables:
 	@echo "── Tables & Paper Numbers ──"
