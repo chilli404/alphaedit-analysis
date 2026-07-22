@@ -65,6 +65,7 @@ validate_ordering:
 		--keys_path $(MATCHED)/key_geometry/keys_seed42_layer6.npz \
 		--stream_dir $(MATCHED)
 
+
 check:
 	@echo "── Data Availability Report ──"
 	$(PYTHON) -m analysis.loaders

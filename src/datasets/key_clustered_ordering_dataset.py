@@ -29,15 +29,15 @@ Requires:
   - Precomputed keys from matched_ordering_key_geometry.py:
     results/matched_ordering/key_geometry/keys_seed42_layer6.npz
   - Corresponding stream file (either clustered or dispersed — same facts):
-    results/matched_ordering/clustered_seed42.json
+    results/matched_ordering/orderings/clustered_seed42.json
 
 Usage:
     uv run python src/datasets/key_clustered_ordering_dataset.py \
         --seed 42 \
         --keys_path results/matched_ordering/key_geometry/keys_seed42_layer6.npz \
-        --stream_path results/matched_ordering/clustered_seed42.json \
+        --stream_path results/matched_ordering/orderings/clustered_seed42.json \
         --n_clusters 50 --batch_size 100 \
-        --output_dir results/matched_ordering
+        --output_dir results/matched_ordering/orderings
 """
 
 import argparse
@@ -275,7 +275,7 @@ def main():
     parser.add_argument("--n_clusters", type=int, default=50,
                         help="Number of spherical k-means clusters")
     parser.add_argument("--batch_size", type=int, default=100)
-    parser.add_argument("--output_dir", type=str, default="results/matched_ordering")
+    parser.add_argument("--output_dir", type=str, default="results/matched_ordering/orderings")
     args = parser.parse_args()
 
     project_root = Path(__file__).resolve().parent.parent.parent
@@ -353,7 +353,9 @@ def main():
 
     clust_path = out_dir / f"key_clustered_seed{args.seed}.json"
     disp_path = out_dir / f"key_dispersed_seed{args.seed}.json"
-    props_path = out_dir / f"key_stream_properties_seed{args.seed}.json"
+    diag_dir = out_dir.parent / "diagnostics"
+    diag_dir.mkdir(parents=True, exist_ok=True)
+    props_path = diag_dir / f"key_stream_properties_seed{args.seed}.json"
 
     with open(clust_path, "w") as f:
         json.dump(key_clustered, f)

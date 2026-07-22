@@ -48,17 +48,20 @@ results/
 │   └── seed{N}/
 │       └── mechanism_seed{N}_*.jsonl
 ├── matched_ordering/
-│   ├── key_clustered_seed{N}.json       # stream definitions
-│   ├── key_dispersed_seed{N}.json
-│   ├── key_stream_properties_seed{N}.json
-│   ├── validation_report_seed{N}.json
-│   ├── k_sweep_seed{N}.json
-│   ├── key_geometry/
+│   ├── orderings/                       # stream definitions (input datasets)
+│   │   ├── clustered_seed{N}.json
+│   │   ├── dispersed_seed{N}.json
+│   │   ├── key_clustered_seed{N}.json
+│   │   └── key_dispersed_seed{N}.json
+│   ├── key_geometry/                    # precomputed key vectors
 │   │   └── keys_seed{N}_layer{L}.npz
-│   ├── {ALG}/{ORDERING}/seed{SEED}/     # runtime results
-│   │   └── *.jsonl
-│   └── diagnostics/
-│       └── cohort_balance_seed{N}.json
+│   ├── diagnostics/                     # validation & diagnostics
+│   │   ├── cohort_balance_seed{N}.json
+│   │   ├── k_sweep_seed{N}.json
+│   │   ├── key_stream_properties_seed{N}.json
+│   │   └── validation_report_seed{N}.json
+│   └── {ALG}/{ORDERING}/seed{SEED}/     # runtime results & evals
+│       └── *.jsonl / full_eval_seed{N}.json
 ├── mve1_alphaedit_mcf/
 │   └── seed{N}/alphaedit_results/AlphaEdit/run_000/*_edits-case_*.json
 ├── mve2_memit_mcf/
@@ -767,7 +770,7 @@ def load_matched_ordering_validation(seed: int) -> Optional[Dict]:
     Returns the full validation report with cosine stats, prefix geometry,
     future-key exposure, and cohort balance.
     """
-    path = RESULTS / "matched_ordering" / f"validation_report_seed{seed}.json"
+    path = RESULTS / "matched_ordering" / "diagnostics" / f"validation_report_seed{seed}.json"
     if not path.exists():
         return None
     with open(path) as f:
@@ -776,7 +779,7 @@ def load_matched_ordering_validation(seed: int) -> Optional[Dict]:
 
 def load_matched_ordering_properties(seed: int) -> Optional[Dict]:
     """Load stream properties (cosine ratio, cluster stats, etc.)."""
-    path = RESULTS / "matched_ordering" / f"key_stream_properties_seed{seed}.json"
+    path = RESULTS / "matched_ordering" / "diagnostics" / f"key_stream_properties_seed{seed}.json"
     if not path.exists():
         return None
     with open(path) as f:
@@ -785,7 +788,7 @@ def load_matched_ordering_properties(seed: int) -> Optional[Dict]:
 
 def load_matched_ordering_ksweep(seed: int) -> Optional[List[Dict]]:
     """Load k-means cluster count sweep results."""
-    path = RESULTS / "matched_ordering" / f"k_sweep_seed{seed}.json"
+    path = RESULTS / "matched_ordering" / "diagnostics" / f"k_sweep_seed{seed}.json"
     if not path.exists():
         return None
     with open(path) as f:
@@ -817,7 +820,7 @@ def load_matched_ordering_stream(seed: int, ordering: str) -> Optional[List[Dict
 
     Returns list of MCF records in the stream's order.
     """
-    path = RESULTS / "matched_ordering" / f"{ordering}_seed{seed}.json"
+    path = RESULTS / "matched_ordering" / "orderings" / f"{ordering}_seed{seed}.json"
     if not path.exists():
         return None
     with open(path) as f:
@@ -977,10 +980,14 @@ def discover_available_data() -> Dict[str, Any]:
     mo_dir = RESULTS / "matched_ordering"
     if mo_dir.exists():
         mo = {}
-        for stream_file in sorted(mo_dir.glob("key_*_seed*.json")):
-            mo.setdefault("streams", []).append(stream_file.name)
-        for val_file in sorted(mo_dir.glob("validation_report_*.json")):
-            mo.setdefault("validation", []).append(val_file.name)
+        ord_dir = mo_dir / "orderings"
+        if ord_dir.exists():
+            for stream_file in sorted(ord_dir.glob("*_seed*.json")):
+                mo.setdefault("streams", []).append(stream_file.name)
+        diag_dir = mo_dir / "diagnostics"
+        if diag_dir.exists():
+            for val_file in sorted(diag_dir.glob("*.json")):
+                mo.setdefault("diagnostics", []).append(val_file.name)
         kg_dir = mo_dir / "key_geometry"
         if kg_dir.exists():
             mo["keys"] = [f.name for f in sorted(kg_dir.glob("keys_*.npz"))]
@@ -989,7 +996,7 @@ def discover_available_data() -> Dict[str, Any]:
         for alg_dir in sorted(mo_dir.iterdir()):
             if not alg_dir.is_dir():
                 continue
-            if alg_dir.name in ("key_geometry", "diagnostics"):
+            if alg_dir.name in ("key_geometry", "diagnostics", "orderings"):
                 continue
             for ordering_dir in sorted(alg_dir.iterdir()):
                 if not ordering_dir.is_dir():

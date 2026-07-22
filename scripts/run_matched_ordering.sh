@@ -36,11 +36,14 @@ DATASET_SIZE_LIMIT="${TARGET_EDITS:-5000}"
 SAVE_INTERVAL="${SAVE_INTERVAL:-10}"
 
 # Resolve stream path: prefer S3 mount, fall back to local
-S3_MATCHED="/s3-data/continual-learning/alphaedit/dsets/matched_ordering"
-LOCAL_MATCHED="$PROJECT_DIR/results/matched_ordering"
+S3_MATCHED="/s3-data/continual-learning/alphaedit/dsets/matched_ordering/orderings"
+S3_MATCHED_LEGACY="/s3-data/continual-learning/alphaedit/dsets/matched_ordering"
+LOCAL_MATCHED="$PROJECT_DIR/results/matched_ordering/orderings"
 
 if [[ -f "$S3_MATCHED/${ORDERING}_seed${SEED}.json" ]]; then
     STREAM_PATH="$S3_MATCHED/${ORDERING}_seed${SEED}.json"
+elif [[ -f "$S3_MATCHED_LEGACY/${ORDERING}_seed${SEED}.json" ]]; then
+    STREAM_PATH="$S3_MATCHED_LEGACY/${ORDERING}_seed${SEED}.json"
 elif [[ -f "$LOCAL_MATCHED/${ORDERING}_seed${SEED}.json" ]]; then
     STREAM_PATH="$LOCAL_MATCHED/${ORDERING}_seed${SEED}.json"
 else

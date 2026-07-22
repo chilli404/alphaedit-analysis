@@ -291,8 +291,8 @@ def main():
     if not keys_path.is_absolute():
         keys_path = PROJECT_ROOT / args.keys_path
 
-    kc_path = stream_dir / f"key_clustered_seed{args.seed}.json"
-    kd_path = stream_dir / f"key_dispersed_seed{args.seed}.json"
+    kc_path = stream_dir / "orderings" / f"key_clustered_seed{args.seed}.json"
+    kd_path = stream_dir / "orderings" / f"key_dispersed_seed{args.seed}.json"
 
     if not kc_path.exists() or not kd_path.exists():
         print(f"ERROR: Stream files not found")
@@ -426,7 +426,9 @@ def main():
         print(f"    ⚠ Weak manipulation — unlikely to produce behavioral difference")
 
     # Save
-    out_path = stream_dir / f"validation_report_seed{args.seed}.json"
+    diag_dir = stream_dir / "diagnostics"
+    diag_dir.mkdir(parents=True, exist_ok=True)
+    out_path = diag_dir / f"validation_report_seed{args.seed}.json"
     report = {
         "seed": args.seed,
         "structural": {"n_records": len(key_clustered), "matching_positions": sum(a == b for a, b in zip([r["case_id"] for r in key_clustered], [r["case_id"] for r in key_dispersed]))},

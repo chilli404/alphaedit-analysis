@@ -26,7 +26,7 @@ The causal claim this supports:
 Usage:
     uv run python src/datasets/matched_ordering_dataset.py \
         --seed 42 --stream_length 5000 --batch_size 100 \
-        --output_dir results/matched_ordering
+        --output_dir results/matched_ordering/orderings
 
     # Then run:
     #   AlphaEdit on clustered ordering
@@ -270,7 +270,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=100)
     parser.add_argument("--data_dir", type=str, default=None,
                         help="Directory containing multi_counterfact.json")
-    parser.add_argument("--output_dir", type=str, default="results/matched_ordering")
+    parser.add_argument("--output_dir", type=str, default="results/matched_ordering/orderings")
     args = parser.parse_args()
 
     # Resolve data directory
@@ -350,7 +350,9 @@ def main():
 
     clust_path = out_dir / f"clustered_seed{args.seed}.json"
     disp_path = out_dir / f"dispersed_seed{args.seed}.json"
-    props_path = out_dir / f"stream_properties_seed{args.seed}.json"
+    diag_dir = out_dir.parent / "diagnostics"
+    diag_dir.mkdir(parents=True, exist_ok=True)
+    props_path = diag_dir / f"stream_properties_seed{args.seed}.json"
 
     with open(clust_path, "w") as f:
         json.dump(clustered, f)

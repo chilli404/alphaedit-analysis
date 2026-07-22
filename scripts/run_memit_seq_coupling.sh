@@ -43,7 +43,7 @@ CACHE_MAX="none"
 
 # Stream data paths (support both controlled_coupling and matched_ordering)
 RESULTS_DIR="$PROJECT_DIR/results/controlled_coupling"
-MATCHED_DIR="$PROJECT_DIR/results/matched_ordering"
+MATCHED_DIR="$PROJECT_DIR/results/matched_ordering/orderings"
 LOW_STREAM="$RESULTS_DIR/low_coupling_seed${SEED}.json"
 HIGH_STREAM="$RESULTS_DIR/high_coupling_seed${SEED}.json"
 CLUSTERED_STREAM="$MATCHED_DIR/clustered_seed${SEED}.json"

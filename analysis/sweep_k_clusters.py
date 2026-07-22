@@ -13,7 +13,7 @@ Usage:
     uv run python analysis/sweep_k_clusters.py \
         --seed 42 \
         --keys_path results/matched_ordering/key_geometry/keys_seed42_layer6.npz \
-        --stream_path results/matched_ordering/clustered_seed42.json \
+        --stream_path results/matched_ordering/orderings/clustered_seed42.json \
         --k_values 30 50 75 100
 """
 
@@ -156,7 +156,7 @@ def main():
           f"frac>0.2 ratio={best['ratios']['frac_above_0.2']:.2f}x")
 
     # Save
-    out_dir = PROJECT_ROOT / "results" / "matched_ordering"
+    out_dir = PROJECT_ROOT / "results" / "matched_ordering" / "diagnostics"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"k_sweep_seed{args.seed}.json"
     with open(out_path, "w") as f:

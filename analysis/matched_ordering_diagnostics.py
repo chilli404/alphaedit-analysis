@@ -149,8 +149,8 @@ def main():
         out_dir = stream_dir / "diagnostics"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    clust_path = stream_dir / f"clustered_seed{args.seed}.json"
-    disp_path = stream_dir / f"dispersed_seed{args.seed}.json"
+    clust_path = stream_dir / "orderings" / f"clustered_seed{args.seed}.json"
+    disp_path = stream_dir / "orderings" / f"dispersed_seed{args.seed}.json"
 
     if not clust_path.exists() or not disp_path.exists():
         print(f"ERROR: Stream files not found in {stream_dir}")
