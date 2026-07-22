@@ -39,14 +39,7 @@ sys.path.insert(0, str(_SRC_DIR / "util"))
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file
-
-
-def get_project_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent
-
-
-def get_alphaedit_root() -> Path:
-    return get_project_root() / "vendor" / "AlphaEdit"
+from paths import get_project_root, get_alphaedit_root, get_result_root
 
 
 # --- Source anchors (commit b84624f) ---
@@ -356,7 +349,7 @@ def run(args: argparse.Namespace) -> None:
 
     # Output directory
     results_dir = (
-        project_root / "results" / "polykernel_diagnostic"
+        get_result_root() / "polykernel_diagnostic"
         / f"seed{args.seed}" / f"{args.dataset_size_limit}edits" / args.alg_name
     )
     results_dir.mkdir(parents=True, exist_ok=True)

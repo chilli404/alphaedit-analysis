@@ -29,7 +29,7 @@ import numpy as np
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "datasets"))
 
-from key_clustered_ordering_dataset import (
+from generate_orderings import (
     spherical_kmeans,
     create_key_clustered_ordering,
     create_key_dispersed_ordering,

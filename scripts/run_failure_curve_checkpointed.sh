@@ -47,7 +47,7 @@ echo ""
 
 cd "$PROJECT_DIR"
 
-# Build checkpoint_dir arg if CHECKPOINT_DIR is set
+# Build checkpoint_dir arg if CHECKPOINT_DIR is explicitly set (overrides CHECKPOINT_ROOT)
 CKPT_ARGS=""
 if [[ -n "${CHECKPOINT_DIR:-}" ]]; then
     CKPT_ARGS="--checkpoint_dir $CHECKPOINT_DIR"

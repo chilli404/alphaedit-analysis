@@ -39,14 +39,7 @@ sys.path.insert(0, str(_SRC_DIR / "util"))
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file
-
-
-def get_project_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent
-
-
-def get_alphaedit_root() -> Path:
-    return get_project_root() / "vendor" / "AlphaEdit"
+from paths import get_project_root, get_alphaedit_root, get_result_root
 
 
 def build_probe_script(
@@ -273,13 +266,11 @@ def run(args: argparse.Namespace) -> None:
     model_name = resolve_model_path(args.model_name)
 
     # Output file
-    output_dir = project_root / "results" / "capability_probe" / f"seed{args.seed}" / args.alg_name
+    output_dir = get_result_root() / "capability_probe" / f"seed{args.seed}" / f"{args.dataset_size_limit}edits" / args.alg_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    output_jsonl = output_dir / (
-        f"probe_seed{args.seed}_{args.alg_name}_{args.dataset_size_limit}edits_{timestamp}.jsonl"
-    )
+    output_jsonl = output_dir / f"probe_{timestamp}.jsonl"
 
     script = build_probe_script(
         seed=args.seed,

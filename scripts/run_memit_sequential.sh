@@ -45,6 +45,7 @@ CACHE_STRATEGY="${CACHE_STRATEGY:-recent}"
 CACHE_MAX="${CACHE_MAX:-20}"
 DATASET_SIZE_LIMIT="${TARGET_EDITS:-2000}"
 SAVE_INTERVAL="${SAVE_INTERVAL:-10}"
+# CHECKPOINT_DIR: explicit override for checkpoint path (overrides CHECKPOINT_ROOT env var)
 CHECKPOINT_DIR="${CHECKPOINT_DIR:-}"
 
 echo "=== MEMIT+SeqReg ==="

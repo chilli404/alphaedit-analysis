@@ -46,14 +46,7 @@ sys.path.insert(0, str(_SRC_DIR / "util"))
 
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
-
-
-def get_project_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent
-
-
-def get_alphaedit_root() -> Path:
-    return get_project_root() / "vendor" / "AlphaEdit"
+from paths import get_project_root, get_alphaedit_root, get_result_root
 
 
 # Default calibration settings
@@ -164,7 +157,7 @@ def run(args: argparse.Namespace) -> None:
     print("MEMIT+SeqReg lambda sweep batch completed.")
     print(f"  Completed: {completed} / {len(lambda_pairs)}")
     print(f"  Failed:    {failed} / {len(lambda_pairs)}")
-    print(f"  Results:   {project_root / 'results' / 'memit_seqreg'}")
+    print(f"  Results:   {get_result_root() / 'memit_seqreg'}")
     print(f"  Finished:  {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print(f"{'=' * 70}")
 

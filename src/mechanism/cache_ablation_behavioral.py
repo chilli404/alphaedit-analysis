@@ -33,13 +33,16 @@ import torch
 
 # Project paths
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-ALPHAEDIT_ROOT = PROJECT_ROOT / "vendor" / "AlphaEdit"
 SRC_DIR = PROJECT_ROOT / "src"
 
 # NOTE: Do NOT add SRC_DIR to sys.path — src/datasets/ shadows the
 # HuggingFace 'datasets' package which vendor code needs.
 if str(SRC_DIR / "util") not in sys.path:
     sys.path.insert(0, str(SRC_DIR / "util"))
+
+from paths import get_alphaedit_root, get_result_root, get_checkpoint_root
+
+ALPHAEDIT_ROOT = get_alphaedit_root()
 
 
 def main():
@@ -67,14 +70,14 @@ def main():
     if args.checkpoint_dir:
         ckpt_base = Path(args.checkpoint_dir) / "AlphaEdit" / f"seed{args.seed}"
     else:
-        ckpt_base = Path("/s3-data/continual-learning/alphaedit/checkpoints/AlphaEdit") / f"seed{args.seed}"
+        ckpt_base = get_checkpoint_root() / "failure_curve" / "AlphaEdit" / f"seed{args.seed}"
 
     ckpt_dir = ckpt_base / f"batch_{args.checkpoint_batch}"
 
     if args.output_dir:
         output_dir = Path(args.output_dir)
     else:
-        output_dir = PROJECT_ROOT / "results" / "cache_ablation_behavioral"
+        output_dir = get_result_root() / "cache_ablation_behavioral"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")

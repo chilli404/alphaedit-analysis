@@ -17,7 +17,7 @@ Usage:
     # Analyze all checkpoints for seed 42
     python src/mechanism_analyzer.py \\
         --seed 42 \\
-        --checkpoint_base /s3-data/continual-learning/alphaedit/checkpoints/AlphaEdit/seed42 \\
+        --checkpoint_base /s3-data/continual-learning/alphaedit/checkpoints/failure_curve/AlphaEdit/seed42 \\
         --model_name NousResearch/Meta-Llama-3-8B-Instruct \\
         --hparams_fname Llama3-8B.json
 

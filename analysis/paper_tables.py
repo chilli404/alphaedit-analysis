@@ -27,6 +27,8 @@ from analysis.loaders import (
     load_controlled_coupling_behavioral,
     load_controlled_coupling_jsonl,
     load_mve_metrics,
+    load_polykernel_diagnostic,
+    load_polykernel_metrics,
     load_seqreg_eval,
     load_stream_audit,
 )
@@ -441,6 +443,27 @@ def generate_paper_numbers(output_dir: Path):
                 numbers[f"seqreg_first_1k_{edits}"] = sr.get("first_1k", {}).get("efficacy")
                 numbers[f"seqreg_latest_1k_{edits}"] = sr.get("latest_1k", {}).get("efficacy")
                 numbers[f"seqreg_latest_100_{edits}"] = sr.get("latest_100", {}).get("efficacy")
+
+    # Polykernel behavioral metrics
+    for kernel, edits in [("poly2", 2000), ("rbf", 2000), ("poly2", 10000)]:
+        m = load_polykernel_metrics(42, edits, kernel)
+        if m:
+            for metric in ("efficacy", "paraphrase", "neighborhood"):
+                numbers[f"polykernel_{kernel}_{metric}_{edits}"] = m.get(metric)
+
+    # Polykernel diagnostic (effective rank ratios at first and last batch)
+    diag = load_polykernel_diagnostic(42, "AlphaEdit")
+    if diag and "per_batch" in diag:
+        for batch_entry in diag["per_batch"]:
+            batch_idx = batch_entry["batch_idx"]
+            if batch_idx in (0, len(diag["per_batch"]) - 1):
+                ratios = []
+                for layer_data in batch_entry["layers"].values():
+                    ratio = layer_data.get("ratio", {}).get("eff_rank")
+                    if ratio is not None:
+                        ratios.append(ratio)
+                if ratios:
+                    numbers[f"polykernel_diag_mean_eff_rank_ratio_batch{batch_idx}"] = float(np.mean(ratios))
 
     # Write JSON
     json_path = output_dir / "paper_numbers.json"

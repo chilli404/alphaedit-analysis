@@ -45,16 +45,7 @@ sys.path.insert(0, str(_SRC_DIR / "util"))
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file
-
-
-def get_project_root() -> Path:
-    """Return the alphaedit_replication/ directory."""
-    return Path(__file__).resolve().parent.parent.parent
-
-
-def get_alphaedit_root() -> Path:
-    """Return the vendor/AlphaEdit/ directory."""
-    return get_project_root() / "vendor" / "AlphaEdit"
+from paths import get_project_root, get_alphaedit_root, get_result_root
 
 
 # Source anchor from evaluate.py at commit b84624f.
@@ -230,9 +221,8 @@ def run(args: argparse.Namespace) -> None:
 
     # Output directory
     output_dir = (
-        project_root / "results" / "order_sensitivity"
-        / f"seed{args.seed}" / f"{args.dataset_size_limit}edits"
-        / f"order{args.order_seed}" / args.alg_name
+        get_result_root() / "order_sensitivity"
+        / f"seed{args.seed}" / f"order{args.order_seed}" / args.alg_name
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 

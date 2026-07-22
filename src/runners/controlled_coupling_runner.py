@@ -43,7 +43,6 @@ from pathlib import Path
 
 # Project paths
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-ALPHAEDIT_ROOT = PROJECT_ROOT / "vendor" / "AlphaEdit"
 SRC_DIR = PROJECT_ROOT / "src"
 
 # NOTE: Do NOT add full SRC_DIR — src/datasets/ shadows HuggingFace 'datasets'
@@ -51,6 +50,10 @@ if str(SRC_DIR / "util") not in sys.path:
     sys.path.insert(0, str(SRC_DIR / "util"))
 if str(SRC_DIR / "datasets") not in sys.path:
     sys.path.insert(0, str(SRC_DIR / "datasets"))
+
+from paths import get_project_root, get_alphaedit_root, get_result_root, get_checkpoint_root
+
+ALPHAEDIT_ROOT = get_alphaedit_root()
 
 
 # ─── Source Anchors (commit b84624f) ─────────────────────────────────────────
@@ -661,7 +664,7 @@ def main():
     validate_anchors()
 
     # Results directory
-    results_dir = PROJECT_ROOT / "results" / "controlled_coupling"
+    results_dir = get_result_root() / "controlled_coupling"
     results_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate or load streams (only needed for low/high coupling, not custom/matched)
@@ -747,13 +750,8 @@ def main():
         ckpt_base = Path(args.checkpoint_base)
         print(f"  Checkpoints: {ckpt_base} (user-specified)")
     else:
-        s3_ckpt_base = Path("/s3-data/continual-learning/alphaedit/checkpoints/controlled_coupling")
-        if s3_ckpt_base.parent.parent.exists():
-            ckpt_base = s3_ckpt_base
-            print(f"  Checkpoints: {ckpt_base} (S3-mounted, crash-resilient)")
-        else:
-            ckpt_base = results_dir / "checkpoints"
-            print(f"  Checkpoints: {ckpt_base} (local)")
+        ckpt_base = get_checkpoint_root() / "controlled_coupling"
+        print(f"  Checkpoints: {ckpt_base}")
 
     for stream_name, dataset_path in streams_to_run:
         # Write JSONL to checkpoint dir (S3-mounted = crash-resilient)

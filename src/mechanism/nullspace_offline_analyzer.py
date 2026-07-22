@@ -17,7 +17,7 @@ Output: JSONL file with one record per checkpoint, same schema as
 Usage:
     python src/nullspace_offline_analyzer.py \\
         --seed 42 \\
-        --checkpoint_dir ~/.cache/alphaedit_checkpoints/AlphaEdit/seed42
+        --checkpoint_dir ~/.cache/alphaedit_checkpoints/failure_curve/AlphaEdit/seed42
 
     # Auto-detect checkpoint directory (same resolution as checkpoint_runner.py)
     python src/nullspace_offline_analyzer.py --seed 42
@@ -33,28 +33,23 @@ from pathlib import Path
 import numpy as np
 import torch
 
+_SRC_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_SRC_DIR / "util"))
+
+from paths import get_project_root, get_result_root, get_checkpoint_root
+
 
 # Default layers and threshold matching vendor/AlphaEdit/hparams/AlphaEdit/Llama3-8B.json
 DEFAULT_LAYERS = [4, 5, 6, 7, 8]
 DEFAULT_THRESHOLD = 2e-2
 
 
-def get_project_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent
-
-
 def resolve_checkpoint_dir(explicit_dir: str | None, seed: int) -> Path:
-    """Resolve checkpoint directory using same priority as checkpoint_runner.py."""
+    """Resolve checkpoint directory using CHECKPOINT_ROOT env var."""
     if explicit_dir:
         return Path(explicit_dir)
 
-    # Priority 1: S3 mount
-    s3_path = Path("/s3-data/continual-learning/alphaedit/checkpoints/AlphaEdit") / f"seed{seed}"
-    if s3_path.exists():
-        return s3_path
-
-    # Priority 2: Local cache
-    return Path.home() / ".cache" / "alphaedit_checkpoints" / "AlphaEdit" / f"seed{seed}"
+    return get_checkpoint_root() / "failure_curve" / "AlphaEdit" / f"seed{seed}"
 
 
 def find_all_checkpoints(ckpt_dir: Path) -> list[tuple[int, Path]]:
@@ -243,7 +238,7 @@ def main():
     if args.output:
         output_jsonl = Path(args.output)
     else:
-        output_dir = project_root / "results" / "nullspace_tracking"
+        output_dir = get_result_root() / "nullspace_tracking"
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         output_jsonl = output_dir / f"offline_rank_trace_seed{args.seed}_{timestamp}.jsonl"
 

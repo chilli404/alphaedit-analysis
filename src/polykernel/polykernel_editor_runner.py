@@ -60,14 +60,7 @@ sys.path.insert(0, str(_SRC_DIR / "util"))
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file
-
-
-def get_project_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent
-
-
-def get_alphaedit_root() -> Path:
-    return get_project_root() / "vendor" / "AlphaEdit"
+from paths import get_project_root, get_alphaedit_root, get_result_root, get_checkpoint_root
 
 
 # --- Source anchors (commit b84624f) ---
@@ -582,7 +575,7 @@ def run(args: argparse.Namespace) -> None:
     kernel_tag = f"{args.kernel_type}{args.kernel_degree}" if args.kernel_type == "poly" else f"rbf_{args.kernel_sigma}"
     variant_name = f"{args.alg_name}-{kernel_tag}"
     results_dir = (
-        project_root / "results" / "polykernel_editor"
+        get_result_root() / "polykernel_editor"
         / f"seed{args.seed}" / f"{args.dataset_size_limit}edits" / variant_name
     )
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -595,10 +588,8 @@ def run(args: argparse.Namespace) -> None:
     if args.edit_only:
         if args.checkpoint_dir:
             checkpoint_dir = args.checkpoint_dir
-        elif Path("/s3-data/continual-learning/alphaedit/checkpoints").exists():
-            checkpoint_dir = str(Path("/s3-data/continual-learning/alphaedit/checkpoints") / f"poly{args.kernel_degree}" / args.alg_name / f"seed{args.seed}")
         else:
-            checkpoint_dir = str(Path.home() / ".cache" / "alphaedit_checkpoints" / f"poly{args.kernel_degree}" / args.alg_name / f"seed{args.seed}")
+            checkpoint_dir = str(get_checkpoint_root() / f"poly{args.kernel_degree}" / args.alg_name / f"seed{args.seed}")
         Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
     # RESULTS_DIR for evaluate.py is the parent of variant_name dir

@@ -484,16 +484,16 @@ def main():
         help="Path to multi_counterfact.json (auto-detected if not specified)"
     )
     parser.add_argument(
-        "--fast", action="store_true", default=True,
-        help="Use fast first-token evaluation (default: True, ~5x faster)"
+        "--fast", action="store_true",
+        help="Use fast first-token evaluation (~5x faster, less accurate)"
     )
     parser.add_argument(
-        "--full", action="store_true",
-        help="Use full multi-token evaluation (slower but matches vendor exactly)"
+        "--full", action="store_true", default=True,
+        help="Use full multi-token evaluation (matches vendor exactly, default)"
     )
     args = parser.parse_args()
-    if args.full:
-        args.fast = False
+    if args.fast:
+        args.full = False
 
     from model_download import resolve_model_path
     model_name = resolve_model_path(args.model_name)

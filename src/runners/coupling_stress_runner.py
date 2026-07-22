@@ -41,14 +41,7 @@ sys.path.insert(0, str(_SRC_DIR / "datasets"))
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file
-
-
-def get_project_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent
-
-
-def get_alphaedit_root() -> Path:
-    return get_project_root() / "vendor" / "AlphaEdit"
+from paths import get_project_root, get_alphaedit_root, get_result_root
 
 
 # --- Source anchors (commit b84624f) ---
@@ -375,7 +368,7 @@ def run(args: argparse.Namespace) -> None:
     validate_anchors()
 
     # Generate coupling dataset (or load from cache if already generated)
-    results_dir = project_root / "results" / "coupling_stress" / f"seed{args.seed}" / "AlphaEdit"
+    results_dir = get_result_root() / "coupling_stress" / f"seed{args.seed}" / "AlphaEdit"
     results_dir.mkdir(parents=True, exist_ok=True)
 
     dataset_path = results_dir / f"coupling_dataset_seed{args.seed}.json"

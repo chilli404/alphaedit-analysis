@@ -6,6 +6,9 @@ set -euo pipefail
 # Runs either AlphaEdit or full-history MEMIT-Seq on the matched ordering
 # streams. Designed for SkyPilot parallel execution.
 #
+# If all checkpoints already exist in the checkpoint directory, automatically
+# runs post-hoc evaluation via eval_seqreg_checkpoints.py instead of editing.
+#
 # Usage:
 #   bash scripts/run_matched_ordering.sh [SEED] [ALG] [ORDERING]
 #   bash scripts/run_matched_ordering.sh 42 MEMIT-Seq-1-0 clustered
@@ -18,6 +21,7 @@ set -euo pipefail
 #   TARGET_EDITS     - Stream length (default: 5000)
 #   SAVE_INTERVAL    - Checkpoint save interval (default: 10)
 #   FAST_CHECKPOINT  - "true" for fast mode (default: true)
+#   EVAL_CHECKPOINTS - Space-separated batch indices to eval (default: auto-detect all)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -51,7 +55,7 @@ else
     echo "  Tried: $S3_MATCHED/${ORDERING}_seed${SEED}.json"
     echo "  Tried: $LOCAL_MATCHED/${ORDERING}_seed${SEED}.json"
     echo ""
-    echo "  Generate with: uv run python src/datasets/matched_ordering_dataset.py --seed $SEED"
+    echo "  Generate with: uv run python src/datasets/generate_orderings.py --seed $SEED"
     exit 1
 fi
 
@@ -92,6 +96,52 @@ echo ""
 
 cd "$PROJECT_DIR"
 
+NUM_EDITS=100
+TOTAL_BATCHES=$((DATASET_SIZE_LIMIT / NUM_EDITS))
+FINAL_BATCH_IDX=$((TOTAL_BATCHES - 1))
+
+# Check if all checkpoints exist — if so, run eval instead of editing
+all_checkpoints_present=true
+AVAILABLE_BATCHES=()
+for ((b=SAVE_INTERVAL-1; b<TOTAL_BATCHES; b+=SAVE_INTERVAL)); do
+    if [[ -d "$CKPT_DIR/batch_${b}" ]] && [[ -f "$CKPT_DIR/batch_${b}/model_weights.pt" ]]; then
+        AVAILABLE_BATCHES+=("$b")
+    else
+        all_checkpoints_present=false
+    fi
+done
+
+if [[ "$all_checkpoints_present" == "true" ]] && [[ ${#AVAILABLE_BATCHES[@]} -gt 0 ]]; then
+    echo "  All ${#AVAILABLE_BATCHES[@]} checkpoints found — running post-hoc evaluation"
+    echo "  Checkpoints: ${AVAILABLE_BATCHES[*]}"
+
+    # Use explicit list or default to all available
+    EVAL_BATCHES="${EVAL_CHECKPOINTS:-${AVAILABLE_BATCHES[*]}}"
+
+    # Use the STREAM file as dataset — it contains the actual edited records in order.
+    # Using raw multi_counterfact.json would evaluate the wrong facts since the stream
+    # selects and reorders records from across the full 20K+ MCF dataset.
+    uv run python scripts/eval_seqreg_checkpoints.py \
+        --seed "$SEED" \
+        --alg_name "$ALG" \
+        --ordering "$ORDERING" \
+        --model_name "$MODEL_NAME" \
+        --checkpoint_dir "$CKPT_DIR" \
+        --checkpoints $EVAL_BATCHES \
+        --num_edits "$NUM_EDITS" \
+        --dataset_path "$STREAM_PATH"
+
+    echo ""
+    echo "=== Matched Ordering eval complete ==="
+    echo "  Algorithm: $ALG"
+    echo "  Ordering:  $ORDERING"
+    echo "  Results:   $PROJECT_DIR/results/matched_ordering/$ALG/$ORDERING/seed$SEED/"
+    echo "  Finished:  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    exit 0
+fi
+
+# --- Normal edit mode (checkpoints incomplete or missing) ---
+
 FAST_FLAG=""
 if [[ "${FAST_CHECKPOINT:-true}" == "true" ]]; then
     FAST_FLAG="--fast_checkpoint"
@@ -107,7 +157,7 @@ if [[ "$ALG" == "MEMIT-Seq-1-0" ]]; then
         --hparams_fname Llama3-8B.json \
         --ds_name mcf \
         --dataset_size_limit "$DATASET_SIZE_LIMIT" \
-        --num_edits 100 \
+        --num_edits "$NUM_EDITS" \
         --downstream_eval_steps 10 \
         --conserve_memory \
         --lambda_prev 1.0 \
@@ -126,7 +176,7 @@ elif [[ "$ALG" == "AlphaEdit" ]]; then
         --cuda_device "$CUDA_DEVICE" \
         --model_name "$MODEL_NAME" \
         --stream_length "$DATASET_SIZE_LIMIT" \
-        --num_edits 100 \
+        --num_edits "$NUM_EDITS" \
         --save_interval "$SAVE_INTERVAL" \
         --stream "$ORDERING" \
         --stream_path "$STREAM_PATH" \
@@ -138,10 +188,15 @@ else
     exit 1
 fi
 
-# Copy results to output dir
-if [[ -d "$PROJECT_DIR/results/memit_seqreg" ]]; then
-    cp -r "$PROJECT_DIR/results/memit_seqreg"/log_seed${SEED}_lp1.0_ld0.0_*.jsonl "$RESULTS_DIR/" 2>/dev/null || true
-    cp -r "$PROJECT_DIR/results/memit_seqreg"/metadata_seed${SEED}_*.json "$RESULTS_DIR/" 2>/dev/null || true
+# Copy results to output dir (check hierarchical layout first, then flat legacy)
+_SEQREG_BASE="$PROJECT_DIR/results/memit_seqreg"
+_SEQREG_HIER="$_SEQREG_BASE/seed${SEED}/${DATASET_SIZE_LIMIT}edits/MEMIT-SEQ-lp1.0-ld0.0-cache0"
+if [[ -d "$_SEQREG_HIER" ]]; then
+    cp -r "$_SEQREG_HIER"/log_seed${SEED}_lp1.0_ld0.0_*.jsonl "$RESULTS_DIR/" 2>/dev/null || true
+    cp -r "$_SEQREG_HIER"/metadata_seed${SEED}_*.json "$RESULTS_DIR/" 2>/dev/null || true
+elif [[ -d "$_SEQREG_BASE" ]]; then
+    cp -r "$_SEQREG_BASE"/log_seed${SEED}_lp1.0_ld0.0_*.jsonl "$RESULTS_DIR/" 2>/dev/null || true
+    cp -r "$_SEQREG_BASE"/metadata_seed${SEED}_*.json "$RESULTS_DIR/" 2>/dev/null || true
 fi
 
 echo ""

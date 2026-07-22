@@ -59,11 +59,8 @@ appendix:
 	$(PYTHON) -m analysis.appendix_figures --output-dir $(APPENDIX)
 
 validate_ordering:
-	@echo "── Matched Ordering: Pre-Experiment Validation ──"
-	$(PYTHON) -m analysis.validate_key_orderings \
-		--seed 42 \
-		--keys_path $(MATCHED)/key_geometry/keys_seed42_layer6.npz \
-		--stream_dir $(MATCHED)
+	@echo "── Matched Ordering: Generate & Validate ──"
+	$(PYTHON) src/datasets/generate_orderings.py --seed 42
 
 
 check:

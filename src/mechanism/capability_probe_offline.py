@@ -19,7 +19,7 @@ Usage:
     python src/capability_probe_offline.py \\
         --seed 42 \\
         --alg_name AlphaEdit \\
-        --checkpoint_dir ~/.cache/alphaedit_checkpoints/AlphaEdit/seed42
+        --checkpoint_dir ~/.cache/alphaedit_checkpoints/failure_curve/AlphaEdit/seed42
 
     # Auto-detect checkpoint dir, skip MMLU for speed
     python src/capability_probe_offline.py --seed 42 --alg_name AlphaEdit --no_mmlu
@@ -45,24 +45,15 @@ from capability_probe import (
     load_wikitext_samples,
 )
 from model_download import resolve_model_path
-
-
-def get_project_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent
+from paths import get_project_root, get_result_root, get_checkpoint_root
 
 
 def resolve_checkpoint_dir(explicit_dir: str | None, alg_name: str, seed: int) -> Path:
-    """Resolve checkpoint directory using same priority as checkpoint_runner.py."""
+    """Resolve checkpoint directory using CHECKPOINT_ROOT env var."""
     if explicit_dir:
         return Path(explicit_dir)
 
-    # Priority 1: S3 mount
-    s3_path = Path("/s3-data/continual-learning/alphaedit/checkpoints") / alg_name / f"seed{seed}"
-    if s3_path.exists():
-        return s3_path
-
-    # Priority 2: Local cache
-    return Path.home() / ".cache" / "alphaedit_checkpoints" / alg_name / f"seed{seed}"
+    return get_checkpoint_root() / "failure_curve" / alg_name / f"seed{seed}"
 
 
 def find_all_checkpoints(ckpt_dir: Path) -> list[tuple[int, Path]]:
@@ -244,13 +235,24 @@ def main():
     # Resolve checkpoint directory
     ckpt_dir = resolve_checkpoint_dir(args.checkpoint_dir, args.alg_name, args.seed)
 
+    # Determine max edit count from checkpoints
+    checkpoints = find_all_checkpoints(ckpt_dir)
+    if checkpoints:
+        last_batch_dir = checkpoints[-1][1]
+        with open(last_batch_dir / "metadata.json", "r") as f:
+            last_meta = json.load(f)
+        max_edits = last_meta.get("total_edits", (checkpoints[-1][0] + 1) * 100)
+    else:
+        max_edits = 0
+
     # Resolve output path
     if args.output:
         output_jsonl = Path(args.output)
     else:
-        output_dir = project_root / "results" / "capability_probe"
+        output_dir = get_result_root() / "capability_probe" / f"seed{args.seed}" / f"{max_edits}edits" / args.alg_name
+        output_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        output_jsonl = output_dir / f"offline_probe_seed{args.seed}_{args.alg_name}_{timestamp}.jsonl"
+        output_jsonl = output_dir / f"offline_probe_{timestamp}.jsonl"
 
     print(f"{'=' * 70}")
     print("Offline Capability Probe")

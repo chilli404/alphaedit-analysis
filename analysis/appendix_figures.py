@@ -4,6 +4,7 @@ Produces:
   A1. Full per-seed failure curves (all seeds × all orderings)
   A3. Full cohort heatmaps (one per seed/trajectory)
   A8. SeqReg mechanism trajectory (cache size, disruption ratio, update norm)
+  A9. Polykernel editor analysis (behavioral comparison + Gram diagnostics)
 
 Usage:
     uv run python -m analysis.appendix_figures
@@ -18,11 +19,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from analysis.style import (
-    ALGO_COLORS, SEED_COLORS, setup_style, save_figure, APPENDIX_OUTPUT,
+    ALGO_COLORS, KERNEL_COLORS, SEED_COLORS, setup_style, save_figure,
+    APPENDIX_OUTPUT,
 )
 from analysis.loaders import (
     load_checkpoint_metrics,
     load_checkpoint_cohorts,
+    load_polykernel_diagnostic,
+    load_polykernel_logs,
+    load_polykernel_metrics,
     load_seqreg_logs,
 )
 
@@ -213,6 +218,142 @@ def figure_a8(output_dir: Path):
     save_figure(fig, "a8_seqreg_mechanism", output_dir)
 
 
+# ─── A9: Polykernel Analysis ─────────────────────────────────────────────────
+
+
+def figure_a9_polykernel(output_dir: Path):
+    """A9: Polykernel editor analysis (behavioral + diagnostic).
+
+    Panel A: Bar chart comparing standard vs poly2 vs rbf at 2K edits.
+    Panel B: Bar chart comparing standard vs poly2 at 10K edits.
+    Panel C: Effective rank ratio (poly2/linear) per layer across batches.
+    Panel D: Trace ratio evolution across batches for poly2@10K.
+    """
+    setup_style()
+
+    seed = 42
+
+    # Load behavioral data
+    poly2_2k = load_polykernel_metrics(seed, 2000, "poly2")
+    rbf_2k = load_polykernel_metrics(seed, 2000, "rbf")
+    standard_2k = load_checkpoint_metrics(seed, 2000, "AlphaEdit")
+    poly2_10k = load_polykernel_metrics(seed, 10000, "poly2")
+    standard_10k = load_checkpoint_metrics(seed, 10000, "AlphaEdit")
+
+    # Load diagnostic data
+    diag = load_polykernel_diagnostic(seed, "AlphaEdit")
+    logs_10k = load_polykernel_logs(seed, 10000, "poly2")
+
+    has_behavioral = any([poly2_2k, rbf_2k, standard_2k, poly2_10k, standard_10k])
+    has_diagnostic = diag is not None and "per_batch" in (diag or {})
+    has_logs = len(logs_10k) > 0
+
+    if not has_behavioral and not has_diagnostic and not has_logs:
+        print("  [A9] SKIP: no polykernel data available")
+        return
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 9))
+    fig.suptitle("A9: Polykernel Editor Analysis", fontsize=13, y=0.98)
+
+    # ── Panel A: Behavioral at 2K ──
+    ax = axes[0, 0]
+    metrics = ["efficacy", "paraphrase", "neighborhood"]
+    metric_labels = ["Efficacy", "Paraphrase", "Specificity"]
+    methods = [
+        ("Standard", standard_2k, KERNEL_COLORS["AlphaEdit"]),
+        ("Poly2", poly2_2k, KERNEL_COLORS["poly2"]),
+        ("RBF", rbf_2k, KERNEL_COLORS["rbf"]),
+    ]
+    x = np.arange(len(metrics))
+    width = 0.25
+    for i, (label, data, color) in enumerate(methods):
+        if data is None:
+            continue
+        vals = [data.get(m, 0) for m in metrics]
+        ax.bar(x + i * width, vals, width, label=label, color=color, alpha=0.85)
+    ax.set_xticks(x + width)
+    ax.set_xticklabels(metric_labels)
+    ax.set_ylim(0, 1.05)
+    ax.set_ylabel("Score")
+    ax.set_title("Panel A: Behavioral @ 2K Edits")
+    ax.legend(loc="lower right")
+
+    # ── Panel B: Behavioral at 10K ──
+    ax = axes[0, 1]
+    methods_10k = [
+        ("Standard", standard_10k, KERNEL_COLORS["AlphaEdit"]),
+        ("Poly2", poly2_10k, KERNEL_COLORS["poly2"]),
+    ]
+    width_10k = 0.3
+    for i, (label, data, color) in enumerate(methods_10k):
+        if data is None:
+            continue
+        vals = [data.get(m, 0) for m in metrics]
+        ax.bar(x + i * width_10k, vals, width_10k, label=label, color=color, alpha=0.85)
+    ax.set_xticks(x + width_10k / 2)
+    ax.set_xticklabels(metric_labels)
+    ax.set_ylim(0, 1.05)
+    ax.set_ylabel("Score")
+    ax.set_title("Panel B: Behavioral @ 10K Edits")
+    ax.legend(loc="lower right")
+
+    # ── Panel C: Effective rank ratio from diagnostic ──
+    ax = axes[1, 0]
+    if has_diagnostic:
+        layers = ["4", "5", "6", "7", "8"]
+        layer_colors = plt.cm.viridis(np.linspace(0.2, 0.9, len(layers)))
+        per_batch = diag["per_batch"]
+        for li, layer in enumerate(layers):
+            batches_x = []
+            ratios_y = []
+            for entry in per_batch:
+                if layer in entry.get("layers", {}):
+                    ratio_data = entry["layers"][layer].get("ratio", {})
+                    if "eff_rank" in ratio_data:
+                        batches_x.append(entry["batch_idx"])
+                        ratios_y.append(ratio_data["eff_rank"])
+            if batches_x:
+                ax.plot(batches_x, ratios_y, linewidth=1.5, color=layer_colors[li],
+                        marker="o", markersize=3, label=f"Layer {layer}")
+        ax.axhline(1.0, color="gray", linestyle=":", alpha=0.5, label="Parity")
+        ax.set_xlabel("Batch Index")
+        ax.set_ylabel("Poly2 / Linear Effective Rank")
+        ax.legend(fontsize=7, loc="best")
+    else:
+        ax.text(0.5, 0.5, "No diagnostic data", ha="center", va="center",
+                transform=ax.transAxes, fontsize=11, color="gray")
+    ax.set_title("Panel C: Gram Effective Rank Ratio")
+
+    # ── Panel D: Trace ratio from logs ──
+    ax = axes[1, 1]
+    if has_logs:
+        # Group by layer
+        by_layer = defaultdict(lambda: ([], []))
+        for r in logs_10k:
+            layer = r.get("layer")
+            batch = r.get("batch")
+            tr = r.get("trace_ratio")
+            if layer is not None and batch is not None and tr is not None:
+                by_layer[layer][0].append(batch)
+                by_layer[layer][1].append(tr)
+
+        layer_colors = plt.cm.viridis(np.linspace(0.2, 0.9, 5))
+        for li, layer in enumerate(sorted(by_layer.keys())):
+            batches_x, trs_y = by_layer[layer]
+            ax.plot(batches_x, trs_y, linewidth=1.5, color=layer_colors[li],
+                    marker="o", markersize=2, label=f"Layer {layer}")
+        ax.set_xlabel("Batch Index")
+        ax.set_ylabel("Trace Ratio (kernel / linear)")
+        ax.legend(fontsize=7, loc="best")
+    else:
+        ax.text(0.5, 0.5, "No log data", ha="center", va="center",
+                transform=ax.transAxes, fontsize=11, color="gray")
+    ax.set_title("Panel D: Trace Ratio @ 10K (Poly2)")
+
+    plt.tight_layout()
+    save_figure(fig, "a9_polykernel", output_dir)
+
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 
@@ -223,10 +364,11 @@ def generate(output_dir: Path = APPENDIX_OUTPUT):
     figure_a1(output_dir)
     figure_a3(output_dir)
     figure_a8(output_dir)
+    figure_a9_polykernel(output_dir)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate appendix figures (A1, A3, A8)")
+    parser = argparse.ArgumentParser(description="Generate appendix figures (A1, A3, A8, A9)")
     parser.add_argument("--output-dir", type=Path, default=APPENDIX_OUTPUT)
     args = parser.parse_args()
     generate(args.output_dir)

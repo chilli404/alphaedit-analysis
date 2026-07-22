@@ -25,7 +25,7 @@ CHECKPOINT_BATCH="${2:-${CHECKPOINT_BATCH:-69}}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
 MODEL_NAME="${MODEL_NAME:-NousResearch/Meta-Llama-3-8B-Instruct}"
 HPARAMS_FNAME="${HPARAMS_FNAME:-Llama3-8B.json}"
-CHECKPOINT_DIR="${CHECKPOINT_DIR:-/s3-data/continual-learning/alphaedit/checkpoints}"
+CHECKPOINT_DIR="${CHECKPOINT_DIR:-/s3-data/continual-learning/alphaedit/checkpoints/failure_curve}"
 
 # Output
 EDITS=$(( (CHECKPOINT_BATCH + 1) * 100 ))

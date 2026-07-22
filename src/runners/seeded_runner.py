@@ -41,16 +41,7 @@ from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file, build_order_shuffle_injection, SHUFFLE_ANCHOR
 from dataset_fingerprint import build_fingerprint_injection
 from eval_config import hash_eval_config
-
-
-def get_project_root() -> Path:
-    """Return the alphaedit_replication/ directory."""
-    return Path(__file__).resolve().parent.parent.parent
-
-
-def get_alphaedit_root() -> Path:
-    """Return the vendor/AlphaEdit/ directory."""
-    return get_project_root() / "vendor" / "AlphaEdit"
+from paths import get_project_root, get_alphaedit_root, get_result_root
 
 
 def _resolve_results_dir(args: argparse.Namespace) -> Path | None:
@@ -65,8 +56,7 @@ def _resolve_results_dir(args: argparse.Namespace) -> Path | None:
         # Derive from algorithm + dataset (e.g. "alphaedit_mcf")
         experiment = f"{args.alg_name.lower()}_{args.ds_name}"
 
-    project_root = get_project_root()
-    results_base = project_root / "results" / experiment / f"seed{args.seed}"
+    results_base = get_result_root() / experiment / f"seed{args.seed}"
     results_base = results_base / f"{args.dataset_size_limit}edits"
 
     # For order-sensitivity experiments, add order subdirectory
@@ -393,7 +383,7 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(result.returncode)
 
     # Record metadata in the results directory
-    results_dir = results_dir_override or (get_project_root() / "results")
+    results_dir = results_dir_override or get_result_root()
     run_dir = results_dir / args.alg_name / "run_000" if results_dir_override else None
     run_dir_rel = str(run_dir.relative_to(get_project_root())) if run_dir and run_dir.exists() else None
 

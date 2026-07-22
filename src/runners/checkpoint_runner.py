@@ -59,16 +59,7 @@ from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file, build_order_shuffle_injection, SHUFFLE_ANCHOR
 from dataset_fingerprint import build_fingerprint_injection
 from eval_config import hash_eval_config
-
-
-def get_project_root() -> Path:
-    """Return the alphaedit_replication/ directory."""
-    return Path(__file__).resolve().parent.parent.parent
-
-
-def get_alphaedit_root() -> Path:
-    """Return the vendor/AlphaEdit/ directory."""
-    return get_project_root() / "vendor" / "AlphaEdit"
+from paths import get_project_root, get_alphaedit_root, get_result_root, get_checkpoint_root
 
 
 # --- Source anchors from evaluate.py at commit b84624f ---
@@ -90,17 +81,14 @@ def resolve_checkpoint_dir(explicit_dir: str | None, alg_name: str, seed: int, o
     """Resolve the checkpoint directory in priority order.
 
     If explicit_dir is provided, use it as-is (the caller sets the full path).
-    Otherwise, auto-resolve:
-        Ordering runs (order_id > 0):  checkpoints/comparison_ordered/{alg}/seed{N}/order{M}/
-        Standard failure curve:        checkpoints/failure_curve/{alg}/seed{N}/
+    Otherwise, auto-resolve using CHECKPOINT_ROOT env var:
+        Ordering runs (order_id > 0):  {CHECKPOINT_ROOT}/comparison_ordered/{alg}/seed{N}/order{M}/
+        Standard failure curve:        {CHECKPOINT_ROOT}/failure_curve/{alg}/seed{N}/
     """
     if explicit_dir:
         return Path(explicit_dir)
 
-    if Path("/s3-data/continual-learning/alphaedit/checkpoints").exists():
-        base = Path("/s3-data/continual-learning/alphaedit/checkpoints")
-    else:
-        base = Path.home() / ".cache" / "alphaedit_checkpoints"
+    base = get_checkpoint_root()
 
     if order_id > 0:
         return base / "comparison_ordered" / alg_name / f"seed{seed}" / f"order{order_id}"
@@ -152,8 +140,7 @@ def _resolve_results_dir(args: argparse.Namespace) -> Path | None:
     if not experiment:
         return None  # Fall back to vendor/AlphaEdit/results/ (legacy behavior)
 
-    project_root = get_project_root()
-    results_base = project_root / "results" / experiment / f"seed{args.seed}"
+    results_base = get_result_root() / experiment / f"seed{args.seed}"
     results_base = results_base / f"{args.dataset_size_limit}edits"
 
     # Include order subdirectory for ordering experiments
@@ -181,6 +168,7 @@ def build_checkpoint_script(
     eval_at_checkpoints_only: bool = False,
     order_id: int = 0,
     results_dir: str | None = None,
+    result_root: str | None = None,
 ) -> str:
     """
     Build an inline Python script that:
@@ -395,8 +383,8 @@ _presync_injection = '''    print(f"Results will be stored at {{run_dir}}")
     # === CHECKPOINT: pre-sync partial eval results from previous runs (injected) ===
     if _ckpt_start_batch > 0:
         import glob as _glob_mod
-        _s3_results_base = Path("/s3-data/continual-learning/alphaedit/results/failure_curve_checkpointed")
-        _s3_eval_dir = _s3_results_base / f"seed{{_ckpt_seed}}" / f"{{_ckpt_dataset_size_limit}}edits" / "alphaedit_results" / dir_name / "run_000"
+        _s3_results_base = Path("{result_root}") / "failure_curve_checkpointed"
+        _s3_eval_dir = _s3_results_base / f"seed{{_ckpt_seed}}" / f"{{_ckpt_dataset_size_limit}}edits" / dir_name / "run_000"
         if _s3_eval_dir.exists():
             _existing_evals = list(_s3_eval_dir.glob("*_edits-case_*.json"))
             if _existing_evals:
@@ -681,6 +669,7 @@ def run(args: argparse.Namespace) -> None:
         eval_at_checkpoints_only=args.eval_at_checkpoints_only,
         order_id=args.order_id,
         results_dir=str(results_dir_override) if results_dir_override else None,
+        result_root=str(get_result_root()),
     )
 
     # Environment
@@ -765,7 +754,7 @@ def run(args: argparse.Namespace) -> None:
         },
     }
 
-    results_dir = project_root / "results"
+    results_dir = get_result_root()
     metadata_dir = results_dir / "metadata"
     metadata_dir.mkdir(parents=True, exist_ok=True)
     # JSONL: append one line per segment so multi-resume runs build a history

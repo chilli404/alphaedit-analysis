@@ -12,11 +12,11 @@ set -euo pipefail
 #   bash scripts/run_predictive_divergence_gpu.sh 2024
 
 SEED="${1:-42}"
-CHECKPOINT_BASE="${CHECKPOINT_BASE:-/s3-data/continual-learning/alphaedit/checkpoints/AlphaEdit/seed${SEED}}"
+CHECKPOINT_BASE="${CHECKPOINT_BASE:-/s3-data/continual-learning/alphaedit/checkpoints/failure_curve/AlphaEdit/seed${SEED}}"
 
 # Fallback to local cache if S3 not mounted
 if [[ ! -d "$CHECKPOINT_BASE" ]]; then
-    CHECKPOINT_BASE="$HOME/.cache/alphaedit_checkpoints/AlphaEdit/seed${SEED}"
+    CHECKPOINT_BASE="$HOME/.cache/alphaedit_checkpoints/failure_curve/AlphaEdit/seed${SEED}"
 fi
 
 echo "=== Extended Cache Metrics (GPU) ==="

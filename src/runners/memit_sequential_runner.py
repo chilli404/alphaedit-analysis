@@ -60,20 +60,13 @@ from model_download import resolve_model_path
 from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file
 from eval_config import hash_eval_config
-
-
-def get_project_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent
-
-
-def get_alphaedit_root() -> Path:
-    return get_project_root() / "vendor" / "AlphaEdit"
+from paths import get_project_root, get_alphaedit_root, get_result_root, get_checkpoint_root
 
 
 def resolve_checkpoint_dir(explicit_dir: str | None, seed: int, lambda_prev: float, lambda_delta: float, cache_max: int | None = None) -> Path:
     """Resolve checkpoint directory for MEMIT+SeqReg.
 
-    Convention: checkpoints/failure_curve/MEMIT-SEQ-lp{lp}-ld{ld}-cache{cm}/seed{N}/
+    Convention: {CHECKPOINT_ROOT}/failure_curve/MEMIT-SEQ-lp{lp}-ld{ld}-cache{cm}/seed{N}/
     """
     if explicit_dir:
         return Path(explicit_dir)
@@ -81,12 +74,7 @@ def resolve_checkpoint_dir(explicit_dir: str | None, seed: int, lambda_prev: flo
     cache_max_str = str(cache_max) if cache_max is not None else "0"
     variant_name = f"MEMIT-SEQ-lp{lambda_prev}-ld{lambda_delta}-cache{cache_max_str}"
 
-    if Path("/s3-data/continual-learning/alphaedit/checkpoints").exists():
-        base = Path("/s3-data/continual-learning/alphaedit/checkpoints")
-    else:
-        base = Path.home() / ".cache" / "alphaedit_checkpoints"
-
-    return base / "failure_curve" / variant_name / f"seed{seed}"
+    return get_checkpoint_root() / "failure_curve" / variant_name / f"seed{seed}"
 
 
 def find_latest_checkpoint(ckpt_dir: Path) -> tuple[int, Path] | None:
@@ -707,7 +695,7 @@ def run(args: argparse.Namespace) -> None:
     cache_max_str = str(cache_max) if cache_max is not None else "0"
     variant_name = f"MEMIT-SEQ-lp{args.lambda_prev}-ld{args.lambda_delta}-cache{cache_max_str}"
     results_dir = (
-        project_root / "results" / "memit_seqreg"
+        get_result_root() / "memit_seqreg"
         / f"seed{args.seed}" / f"{args.dataset_size_limit}edits" / variant_name
     )
     results_dir.mkdir(parents=True, exist_ok=True)

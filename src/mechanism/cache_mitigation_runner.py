@@ -42,16 +42,7 @@ sys.path.insert(0, str(_SRC_DIR / "util"))
 
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
-
-
-def get_project_root() -> Path:
-    """Return the alphaedit_replication/ directory."""
-    return Path(__file__).resolve().parent.parent.parent
-
-
-def get_alphaedit_root() -> Path:
-    """Return the vendor/AlphaEdit/ directory."""
-    return get_project_root() / "vendor" / "AlphaEdit"
+from paths import get_project_root, get_alphaedit_root, get_result_root
 
 
 # Source anchor from evaluate.py at commit b84624f.
@@ -257,7 +248,7 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     # Output directory
-    output_dir = project_root / "results" / "mitigation"
+    output_dir = get_result_root() / "mitigation"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")

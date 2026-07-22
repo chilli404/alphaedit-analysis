@@ -55,7 +55,7 @@ CKPT_DIR=""
 if [[ "$FORCE_ONLINE" != "true" ]]; then
     # Priority 1: Explicit override
     if [[ -n "${CHECKPOINT_DIR:-}" ]]; then
-        candidate="${CHECKPOINT_DIR}/AlphaEdit/seed${SEED}"
+        candidate="${CHECKPOINT_DIR}/failure_curve/AlphaEdit/seed${SEED}"
         if [[ -d "$candidate" ]] && ls "$candidate"/batch_*/cache_c.pt &>/dev/null; then
             CKPT_DIR="$candidate"
         fi
@@ -63,7 +63,7 @@ if [[ "$FORCE_ONLINE" != "true" ]]; then
 
     # Priority 2: S3 mount (SkyPilot clusters)
     if [[ -z "$CKPT_DIR" ]]; then
-        candidate="/s3-data/continual-learning/alphaedit/checkpoints/AlphaEdit/seed${SEED}"
+        candidate="/s3-data/continual-learning/alphaedit/checkpoints/failure_curve/AlphaEdit/seed${SEED}"
         if [[ -d "$candidate" ]] && ls "$candidate"/batch_*/cache_c.pt &>/dev/null; then
             CKPT_DIR="$candidate"
         fi
@@ -71,7 +71,7 @@ if [[ "$FORCE_ONLINE" != "true" ]]; then
 
     # Priority 3: Local cache
     if [[ -z "$CKPT_DIR" ]]; then
-        candidate="$HOME/.cache/alphaedit_checkpoints/AlphaEdit/seed${SEED}"
+        candidate="$HOME/.cache/alphaedit_checkpoints/failure_curve/AlphaEdit/seed${SEED}"
         if [[ -d "$candidate" ]] && ls "$candidate"/batch_*/cache_c.pt &>/dev/null; then
             CKPT_DIR="$candidate"
         fi

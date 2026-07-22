@@ -595,13 +595,21 @@ def load_polykernel_logs(
     if not base.exists():
         return []
 
+    # Logs live inside {Alg}-{kernel}/ subdirectory
+    subdir = base / f"{alg}-{kernel}"
+    pattern = f"log_{alg}_seed{seed}_{kernel}_*.jsonl"
+
     records = []
-    for jsonl in sorted(base.glob(f"log_{alg}_seed{seed}_{kernel}_*.jsonl")):
-        with open(jsonl) as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    records.append(json.loads(line))
+    search_dirs = [subdir, base] if subdir.exists() else [base]
+    for search_dir in search_dirs:
+        for jsonl in sorted(search_dir.glob(pattern)):
+            with open(jsonl) as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        records.append(json.loads(line))
+        if records:
+            break
     return records
 
 
@@ -618,6 +626,27 @@ def load_polykernel_metadata(
     path = base / f"metadata_{alg}_seed{seed}_{kernel_short}.json"
     if not path.exists():
         path = base / f"metadata_{alg}_seed{seed}_{kernel}.json"
+    if not path.exists():
+        return None
+    with open(path) as f:
+        return json.load(f)
+
+
+# ─── Polykernel Diagnostic Loaders ───────────────────────────────────────────
+
+
+def load_polykernel_diagnostic(
+    seed: int,
+    alg: str = "AlphaEdit",
+) -> Optional[Dict]:
+    """Load Gram matrix diagnostic analysis for polykernel experiment.
+
+    Layout: polykernel_diagnostic/analysis_{alg}_seed{seed}.json
+
+    Returns dict with: metadata, analysis_params, per_batch, cumulative,
+    sliding, by_coupling_type, cross_group_separation, summary.
+    """
+    path = RESULTS / "polykernel_diagnostic" / f"analysis_{alg}_seed{seed}.json"
     if not path.exists():
         return None
     with open(path) as f:

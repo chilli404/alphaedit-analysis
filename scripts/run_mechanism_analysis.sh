@@ -21,7 +21,7 @@ if [[ -f "$PROJECT_DIR/.env" ]]; then
 fi
 
 SEED="${1:?Usage: $0 <seed>}"
-CHECKPOINT_BASE="${CHECKPOINT_DIR:-/s3-data/continual-learning/alphaedit/checkpoints}/AlphaEdit/seed${SEED}"
+CHECKPOINT_BASE="${CHECKPOINT_DIR:-/s3-data/continual-learning/alphaedit/checkpoints}/failure_curve/AlphaEdit/seed${SEED}"
 MODEL_NAME="${MODEL_NAME:-NousResearch/Meta-Llama-3-8B-Instruct}"
 HPARAMS_FNAME="${HPARAMS_FNAME:-Llama3-8B.json}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
@@ -53,7 +53,7 @@ echo "=========================================="
 if [ ! -d "${CHECKPOINT_BASE}" ]; then
     echo "ERROR: Checkpoint directory not found: ${CHECKPOINT_BASE}"
     echo "  Available S3 paths:"
-    ls /s3-data/continual-learning/alphaedit/checkpoints/AlphaEdit/ 2>/dev/null || echo "  (S3 not mounted)"
+    ls /s3-data/continual-learning/alphaedit/checkpoints/failure_curve/AlphaEdit/ 2>/dev/null || echo "  (S3 not mounted)"
     exit 1
 fi
 

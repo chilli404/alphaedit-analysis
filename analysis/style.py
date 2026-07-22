@@ -32,6 +32,12 @@ STREAM_COLORS = {
     "high_coupling": "#E91E63",
 }
 
+KERNEL_COLORS = {
+    "AlphaEdit": "#2196F3",   # Standard (same as ALGO_COLORS)
+    "poly2": "#9C27B0",       # Purple
+    "rbf": "#795548",         # Brown
+}
+
 # ─── Matplotlib Style ─────────────────────────────────────────────────────────
 
 RCPARAMS = {

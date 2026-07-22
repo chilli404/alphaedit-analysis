@@ -25,7 +25,7 @@ Usage:
         --ds_name mcf \\
         --dataset_size_limit 10000 \\
         --num_edits 100 \\
-        --checkpoint_dir /s3-data/.../checkpoints/AlphaEdit/seed42 \\
+        --checkpoint_dir /s3-data/.../checkpoints/failure_curve/AlphaEdit/seed42 \\
         --save_interval 10
 """
 
@@ -40,12 +40,15 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-ALPHAEDIT_ROOT = PROJECT_ROOT / "vendor" / "AlphaEdit"
 SRC_DIR = PROJECT_ROOT / "src"
 
 # NOTE: Do NOT add SRC_DIR to sys.path — src/datasets/ shadows HuggingFace 'datasets'
 if str(SRC_DIR / "util") not in sys.path:
     sys.path.insert(0, str(SRC_DIR / "util"))
+
+from paths import get_alphaedit_root, get_result_root, get_checkpoint_root
+
+ALPHAEDIT_ROOT = get_alphaedit_root()
 
 
 # ─── Source Anchors ──────────────────────────────────────────────────────────
@@ -348,14 +351,10 @@ def main():
 
     # Resolve checkpoint dir
     if args.checkpoint_dir is None:
-        s3_path = Path(f"/s3-data/continual-learning/alphaedit/checkpoints/AlphaEdit/seed{args.seed}")
-        if s3_path.exists():
-            args.checkpoint_dir = str(s3_path)
-        else:
-            args.checkpoint_dir = str(Path.home() / ".cache" / "alphaedit_checkpoints" / f"AlphaEdit/seed{args.seed}")
+        args.checkpoint_dir = str(get_checkpoint_root() / "failure_curve" / "AlphaEdit" / f"seed{args.seed}")
 
     # Output
-    output_dir = PROJECT_ROOT / "results" / "plasticity_tracking"
+    output_dir = get_result_root() / "plasticity_tracking"
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     output_jsonl = output_dir / f"plasticity_seed{args.seed}_{args.dataset_size_limit}edits_{timestamp}.jsonl"
