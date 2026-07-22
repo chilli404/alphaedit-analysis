@@ -78,6 +78,7 @@ def build_order_script(
     downstream_eval_steps: int,
     conserve_memory: bool,
     metadata_jsonl: str,
+    eval_results_dir: str = "",
 ) -> str:
     """
     Build an inline Python script that:
@@ -137,6 +138,16 @@ source = source.replace(
     cuda_patch_target,
     '# CUDA_VISIBLE_DEVICES managed by order_sensitivity_runner',
 )
+
+# 5a. Override RESULTS_DIR
+_globals_import = 'from util.globals import *'
+assert _globals_import in source, "globals import not found in evaluate.py"
+source = source.replace(
+    _globals_import,
+    _globals_import + '\\nRESULTS_DIR = Path("{eval_results_dir}")\\n',
+    1,
+)
+print(f"  [RESULTS_DIR] Overridden to: {eval_results_dir}")
 
 # 6. Inject dataset shuffle BEFORE the edit loop
 shuffle_anchor = '    for record_chunks in chunks(ds, num_edits):'
@@ -218,7 +229,11 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     # Output directory
-    output_dir = project_root / "results" / "order_sensitivity"
+    output_dir = (
+        project_root / "results" / "order_sensitivity"
+        / f"seed{args.seed}" / f"{args.dataset_size_limit}edits"
+        / f"order{args.order_seed}" / args.alg_name
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -240,6 +255,7 @@ def run(args: argparse.Namespace) -> None:
         downstream_eval_steps=args.downstream_eval_steps,
         conserve_memory=args.conserve_memory,
         metadata_jsonl=str(metadata_jsonl),
+        eval_results_dir=str(output_dir.parent),
     )
 
     # Environment

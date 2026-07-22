@@ -12,7 +12,6 @@ results/
 │           └── {Alg}/             # AlphaEdit or MEMIT
 │               └── run_000/
 │                   ├── {E}_edits-case_0.json
-│                   ├── {E}_edits-case_1.json
 │                   └── ...
 ├── controlled_coupling/
 │   ├── {stream}_seed{N}*.jsonl    # stream = low_coupling or high_coupling
@@ -21,8 +20,25 @@ results/
 ├── comparison_ordered/
 │   └── seed{N}/
 │       └── {E}edits/
-│           ├── {Alg}/run_000/*_edits-case_*.json   # order 0 (base)
-│           └── order{1-9}/{Alg}/run_000/...        # additional orderings
+│           ├── order{0-9}/{Alg}/run_000/*_edits-case_*.json
+│           └── (legacy) {Alg}/run_000/*_edits-case_*.json
+├── order_sensitivity/
+│   └── seed{N}/
+│       ├── order_{Alg}_seed{N}_order{I}_*.jsonl    # metadata
+│       └── order{0-4}/{Alg}/run_000/*_edits-case_*.json
+├── coupling_stress/
+│   ├── coupling_stats_seed{N}.json              # aggregated stats
+│   └── seed{N}/AlphaEdit/
+│       ├── coupling_trace_seed{N}_*.jsonl       # per-edit trace
+│       ├── coupling_dataset_seed{N}.json
+│       └── metadata_seed{N}.json
+├── polykernel_editor/
+│   └── seed{N}/
+│       └── {E}edits/
+│           ├── {Alg}-{kernel}/run_000/*_edits-case_*.json
+│           ├── eval_{E}/                         # flat eval dir (10k)
+│           ├── log_{Alg}_seed{N}_{kernel}_*.jsonl
+│           └── metadata_{Alg}_seed{N}_{kernel}.json
 ├── memit_seqreg/
 │   ├── full_eval_seed{N}_lp{X}_ld{Y}.json
 │   ├── log_seed{N}_lp{X}_ld{Y}_*.jsonl
@@ -30,11 +46,29 @@ results/
 │       └── *_edits-case_*.json
 ├── mechanism_analysis/
 │   └── seed{N}/
-│       └── mechanism_seed{N}_*.jsonl      # per-layer cache spectrum data
+│       └── mechanism_seed{N}_*.jsonl
+├── matched_ordering/
+│   ├── key_clustered_seed{N}.json       # stream definitions
+│   ├── key_dispersed_seed{N}.json
+│   ├── key_stream_properties_seed{N}.json
+│   ├── validation_report_seed{N}.json
+│   ├── k_sweep_seed{N}.json
+│   ├── key_geometry/
+│   │   └── keys_seed{N}_layer{L}.npz
+│   ├── {ALG}/{ORDERING}/seed{SEED}/     # runtime results
+│   │   └── *.jsonl
+│   └── diagnostics/
+│       └── cohort_balance_seed{N}.json
 ├── mve1_alphaedit_mcf/
 │   └── seed{N}/alphaedit_results/AlphaEdit/run_000/*_edits-case_*.json
 ├── mve2_memit_mcf/
 │   └── seed{N}/alphaedit_results/MEMIT/run_000/*_edits-case_*.json
+├── mve3_alphaedit_zsre/
+│   └── seed{N}/alphaedit_results/AlphaEdit/run_000/*_edits-case_*.json
+├── mve4_conflict_seq/
+│   └── seed{N}/
+│       └── {E}edits/
+│           └── {Alg}/run_000/*_edits-case_*.json
 └── figures/paper/
     └── stream_matching_audit_seed{N}.json
 """
@@ -95,6 +129,34 @@ def extract_case_metrics(case_json: dict) -> dict:
     return row
 
 
+def _aggregate_case_files(run_dir: Path) -> Optional[Dict[str, Any]]:
+    """Aggregate metrics from a directory of case JSON files.
+
+    Returns dict with: efficacy, paraphrase, neighborhood,
+    efficacy_prob, paraphrase_prob, neighborhood_prob, n_facts.
+    """
+    case_files = list(run_dir.glob("*_edits-case_*.json"))
+    if not case_files:
+        return None
+
+    metrics = defaultdict(list)
+    for f_path in case_files:
+        with open(f_path) as f:
+            data = json.load(f)
+        row = extract_case_metrics(data)
+        for k in ("efficacy", "paraphrase", "neighborhood",
+                  "efficacy_prob", "paraphrase_prob", "neighborhood_prob"):
+            if row.get(k) is not None:
+                metrics[k].append(row[k])
+
+    if not metrics.get("efficacy"):
+        return None
+
+    result = {k: float(np.mean(v)) for k, v in metrics.items()}
+    result["n_facts"] = len(metrics["efficacy"])
+    return result
+
+
 # ─── Failure Curve Loaders ────────────────────────────────────────────────────
 
 
@@ -115,27 +177,7 @@ def load_checkpoint_metrics(seed: int, edits: int, alg: str) -> Optional[Dict[st
     run_dir = _find_run_dir(seed, edits, alg)
     if run_dir is None:
         return None
-
-    files = list(run_dir.glob("*_edits-case_*.json"))
-    if not files:
-        return None
-
-    metrics = defaultdict(list)
-    for f_path in files:
-        with open(f_path) as f:
-            data = json.load(f)
-        row = extract_case_metrics(data)
-        for k in ("efficacy", "paraphrase", "neighborhood",
-                  "efficacy_prob", "paraphrase_prob", "neighborhood_prob"):
-            if row.get(k) is not None:
-                metrics[k].append(row[k])
-
-    if not metrics.get("efficacy"):
-        return None
-
-    result = {k: float(np.mean(v)) for k, v in metrics.items()}
-    result["n_facts"] = len(metrics["efficacy"])
-    return result
+    return _aggregate_case_files(run_dir)
 
 
 def load_checkpoint_cohorts(
@@ -275,10 +317,10 @@ def load_comparison_ordered(
     seed: int,
     edits: int,
 ) -> List[Dict[str, Any]]:
-    """Load all orderings for a given seed and edit count.
+    """Load all orderings for a given seed and edit count (comparison_ordered experiment).
 
-    Returns list of dicts, one per ordering, with:
-    order_id, efficacy, paraphrase, neighborhood, glue (if available).
+    Returns list of dicts, one per ordering × algorithm, with:
+    order_id, algorithm, efficacy, paraphrase, neighborhood, glue (if available).
     """
     base = RESULTS / "comparison_ordered" / f"seed{seed}" / f"{edits}edits"
     if not base.exists():
@@ -286,18 +328,16 @@ def load_comparison_ordered(
 
     results = []
 
-    # Two conventions for order 0:
-    #   - 3K style: AlphaEdit/MEMIT directly under base (base IS order 0)
-    #   - 7K style: explicit order0/ subdirectory
+    # All orderings live in order0/, order1/, ... subdirectories.
+    # Legacy fallback: if order0/ doesn't exist but AlphaEdit/ does at base level,
+    # treat base as order0.
     order_dirs = []
-    if (base / "order0").exists():
-        # Explicit order directories (order0, order1, ...)
-        for i in range(10):
-            d = base / f"order{i}"
-            if d.exists():
-                order_dirs.append((str(i), d))
-    else:
-        # Base directory is order 0, then order1, order2, ...
+    for i in range(10):
+        d = base / f"order{i}"
+        if d.exists():
+            order_dirs.append((str(i), d))
+    # Fallback: base directory has AlphaEdit/MEMIT directly (legacy layout)
+    if not order_dirs and (base / "AlphaEdit").exists():
         order_dirs.append(("0", base))
         for i in range(1, 10):
             d = base / f"order{i}"
@@ -347,6 +387,238 @@ def load_comparison_ordered(
             results.append(entry)
 
     return results
+
+
+def load_order_sensitivity(
+    seed: int,
+) -> List[Dict[str, Any]]:
+    """Load per-ordering metrics from order_sensitivity experiment.
+
+    Layout: order_sensitivity/seed{N}/order{I}/{Alg}/run_000/*_edits-case_*.json
+
+    Returns list of dicts with: order_id, algorithm, efficacy, paraphrase,
+    neighborhood, n_facts.
+    """
+    base = RESULTS / "order_sensitivity" / f"seed{seed}"
+    if not base.exists():
+        return []
+
+    results = []
+    for i in range(10):
+        order_dir = base / f"order{i}"
+        if not order_dir.exists():
+            continue
+        for alg in ("AlphaEdit", "MEMIT"):
+            run_dir = order_dir / alg / "run_000"
+            if not run_dir.exists():
+                continue
+            agg = _aggregate_case_files(run_dir)
+            if agg is None:
+                continue
+            agg["order_id"] = str(i)
+            agg["algorithm"] = alg
+            results.append(agg)
+
+    return results
+
+
+def load_order_sensitivity_logs(
+    seed: int,
+) -> List[Dict]:
+    """Load order sensitivity JSONL metadata logs.
+
+    Returns list of metadata records (one per ordering × algorithm).
+    """
+    base = RESULTS / "order_sensitivity" / f"seed{seed}"
+    if not base.exists():
+        return []
+
+    records = []
+    for jsonl in sorted(base.glob("order_*_seed*.jsonl")):
+        with open(jsonl) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
+    return records
+
+
+# ─── Coupling Stress Loaders ────────────────────────────────────────────────
+
+
+def load_coupling_stress_stats(seed: int) -> Optional[Dict]:
+    """Load aggregated coupling stress statistics.
+
+    Returns dict with: summary, kruskal_wallis, pairwise_mannwhitney,
+    cliffs_delta_3v0, spearman_loss_vs_norm.
+    """
+    path = RESULTS / "coupling_stress" / f"coupling_stats_seed{seed}.json"
+    if not path.exists():
+        return None
+    with open(path) as f:
+        return json.load(f)
+
+
+def load_coupling_stress_trace(
+    seed: int,
+    alg: str = "AlphaEdit",
+) -> List[Dict]:
+    """Load per-edit coupling stress trace JSONL.
+
+    Layout: coupling_stress/seed{N}/{Alg}/coupling_trace_seed{N}_*.jsonl
+
+    Returns list of records with: edit_idx, case_id, coupling_type,
+    coupling_type_name, role, pair_id, layers, aggregate.
+    """
+    trace_dir = RESULTS / "coupling_stress" / f"seed{seed}" / alg
+    if not trace_dir.exists():
+        return []
+
+    records = []
+    for jsonl in sorted(trace_dir.glob(f"coupling_trace_seed{seed}_*.jsonl")):
+        with open(jsonl) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
+    return records
+
+
+def load_coupling_stress_dataset(
+    seed: int,
+    alg: str = "AlphaEdit",
+) -> Optional[List[Dict]]:
+    """Load the coupling dataset used for stress test."""
+    path = RESULTS / "coupling_stress" / f"seed{seed}" / alg / f"coupling_dataset_seed{seed}.json"
+    if not path.exists():
+        return None
+    with open(path) as f:
+        return json.load(f)
+
+
+# ─── Polykernel Editor Loaders ──────────────────────────────────────────────
+
+
+def load_polykernel_metrics(
+    seed: int,
+    edits: int,
+    kernel: str = "poly2",
+    alg: str = "AlphaEdit",
+) -> Optional[Dict[str, Any]]:
+    """Load aggregate metrics for a polykernel editor run.
+
+    Layout: polykernel_editor/seed{N}/{E}edits/{Alg}-{kernel}/run_000/
+
+    Also checks eval_{E}/ flat directory (used for 10k evals).
+
+    Args:
+        seed: Random seed.
+        edits: Edit count (2000, 10000).
+        kernel: Kernel type ("poly2", "rbf").
+        alg: Algorithm name ("AlphaEdit").
+    """
+    base = RESULTS / "polykernel_editor" / f"seed{seed}" / f"{edits}edits"
+    if not base.exists():
+        return None
+
+    # Primary: {Alg}-{kernel}/run_000/
+    run_dir = base / f"{alg}-{kernel}" / "run_000"
+    if run_dir.exists():
+        result = _aggregate_case_files(run_dir)
+        if result is not None:
+            return result
+
+    # Fallback: eval_{edits}/ flat dir (10k milestone eval)
+    eval_dir = base / f"eval_{edits // 1000}k"
+    if eval_dir.exists():
+        return _aggregate_case_files(eval_dir)
+
+    return None
+
+
+def load_polykernel_cohorts(
+    seed: int,
+    edits: int,
+    kernel: str = "poly2",
+    alg: str = "AlphaEdit",
+    batch_size: int = 100,
+) -> Optional[Dict[int, Dict[str, Any]]]:
+    """Load per-cohort metrics for polykernel editor."""
+    base = RESULTS / "polykernel_editor" / f"seed{seed}" / f"{edits}edits"
+    if not base.exists():
+        return None
+
+    # Find case files
+    run_dir = base / f"{alg}-{kernel}" / "run_000"
+    if not run_dir.exists():
+        run_dir = base / f"eval_{edits // 1000}k"
+    if not run_dir.exists():
+        return None
+
+    cohorts = defaultdict(lambda: defaultdict(list))
+    for f_path in run_dir.glob("*_edits-case_*.json"):
+        with open(f_path) as f:
+            data = json.load(f)
+        row = extract_case_metrics(data)
+        if row["case_id"] is None:
+            continue
+        cohort_idx = row["case_id"] // batch_size
+        for k in ("efficacy", "paraphrase", "neighborhood"):
+            if row.get(k) is not None:
+                cohorts[cohort_idx][k].append(row[k])
+
+    if not cohorts:
+        return None
+
+    result = {}
+    for idx, vals in sorted(cohorts.items()):
+        result[idx] = {k: float(np.mean(v)) for k, v in vals.items()}
+        result[idx]["n_facts"] = len(vals.get("efficacy", []))
+    return result
+
+
+def load_polykernel_logs(
+    seed: int,
+    edits: int,
+    kernel: str = "poly2",
+    alg: str = "AlphaEdit",
+) -> List[Dict]:
+    """Load per-batch JSONL mechanism logs for polykernel editor.
+
+    Returns list of records with: batch, layer, trace_ratio, G_lin_rank,
+    kernel_type, phase.
+    """
+    base = RESULTS / "polykernel_editor" / f"seed{seed}" / f"{edits}edits"
+    if not base.exists():
+        return []
+
+    records = []
+    for jsonl in sorted(base.glob(f"log_{alg}_seed{seed}_{kernel}_*.jsonl")):
+        with open(jsonl) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
+    return records
+
+
+def load_polykernel_metadata(
+    seed: int,
+    edits: int,
+    kernel: str = "poly2",
+    alg: str = "AlphaEdit",
+) -> Optional[Dict]:
+    """Load experiment metadata for a polykernel run."""
+    base = RESULTS / "polykernel_editor" / f"seed{seed}" / f"{edits}edits"
+    # Try kernel-specific naming (deg2, rbf_median)
+    kernel_short = kernel.replace("poly", "deg") if kernel.startswith("poly") else kernel
+    path = base / f"metadata_{alg}_seed{seed}_{kernel_short}.json"
+    if not path.exists():
+        path = base / f"metadata_{alg}_seed{seed}_{kernel}.json"
+    if not path.exists():
+        return None
+    with open(path) as f:
+        return json.load(f)
 
 
 # ─── Mechanism Analysis Loaders ──────────────────────────────────────────────
@@ -434,20 +706,7 @@ def load_seqreg_behavioral(
         if sample.get("num_edits") != edits:
             continue
 
-        metrics = defaultdict(list)
-        for f_path in case_files:
-            with open(f_path) as f:
-                data = json.load(f)
-            row = extract_case_metrics(data)
-            for k in ("efficacy", "paraphrase", "neighborhood",
-                      "efficacy_prob", "paraphrase_prob", "neighborhood_prob"):
-                if row.get(k) is not None:
-                    metrics[k].append(row[k])
-
-        if metrics:
-            result = {k: float(np.mean(v)) for k, v in metrics.items()}
-            result["n_facts"] = len(metrics["efficacy"])
-            return result
+        return _aggregate_case_files(subdir)
 
     return None
 
@@ -471,37 +730,129 @@ def load_mve_metrics(experiment: str, seed: int, alg: str) -> Optional[Dict[str,
     """Load aggregate metrics for an MVE experiment.
 
     Args:
-        experiment: e.g. "mve1_alphaedit_mcf", "mve2_memit_mcf"
+        experiment: e.g. "mve1_alphaedit_mcf", "mve2_memit_mcf",
+                   "mve3_alphaedit_zsre", "mve4_conflict_seq"
         seed: random seed
         alg: "AlphaEdit" or "MEMIT"
     """
-    # Try the results subdirectory
-    run_dir = RESULTS / experiment / f"seed{seed}" / "alphaedit_results" / alg / "run_000"
-    if not run_dir.exists():
-        run_dir = RESULTS / experiment / f"seed{seed}" / "results" / alg / "run_000"
-    if not run_dir.exists():
+    seed_dir = RESULTS / experiment / f"seed{seed}"
+    if not seed_dir.exists():
         return None
 
-    case_files = list(run_dir.glob("*_edits-case_*.json"))
-    if not case_files:
+    # Try multiple layout conventions
+    candidates = [
+        seed_dir / "alphaedit_results" / alg / "run_000",  # mve1-3 standard
+        seed_dir / "results" / alg / "run_000",            # legacy
+    ]
+    # mve4 uses {E}edits/{Alg}/run_000/
+    for edits_dir in sorted(seed_dir.glob("*edits")):
+        candidates.append(edits_dir / alg / "run_000")
+
+    for run_dir in candidates:
+        if not run_dir.exists():
+            continue
+        result = _aggregate_case_files(run_dir)
+        if result is not None:
+            return result
+
+    return None
+
+
+# ─── Matched Ordering Loaders ─────────────────────────────────────────────────
+
+
+def load_matched_ordering_validation(seed: int) -> Optional[Dict]:
+    """Load the pre-experiment validation report for key-clustered orderings.
+
+    Returns the full validation report with cosine stats, prefix geometry,
+    future-key exposure, and cohort balance.
+    """
+    path = RESULTS / "matched_ordering" / f"validation_report_seed{seed}.json"
+    if not path.exists():
         return None
+    with open(path) as f:
+        return json.load(f)
 
-    metrics = defaultdict(list)
-    for f_path in case_files:
-        with open(f_path) as f:
-            data = json.load(f)
-        row = extract_case_metrics(data)
-        for k in ("efficacy", "paraphrase", "neighborhood",
-                  "efficacy_prob", "paraphrase_prob", "neighborhood_prob"):
-            if row.get(k) is not None:
-                metrics[k].append(row[k])
 
-    if not metrics.get("efficacy"):
+def load_matched_ordering_properties(seed: int) -> Optional[Dict]:
+    """Load stream properties (cosine ratio, cluster stats, etc.)."""
+    path = RESULTS / "matched_ordering" / f"key_stream_properties_seed{seed}.json"
+    if not path.exists():
         return None
+    with open(path) as f:
+        return json.load(f)
 
-    result = {k: float(np.mean(v)) for k, v in metrics.items()}
-    result["n_facts"] = len(metrics["efficacy"])
-    return result
+
+def load_matched_ordering_ksweep(seed: int) -> Optional[List[Dict]]:
+    """Load k-means cluster count sweep results."""
+    path = RESULTS / "matched_ordering" / f"k_sweep_seed{seed}.json"
+    if not path.exists():
+        return None
+    with open(path) as f:
+        return json.load(f)
+
+
+def load_matched_ordering_keys(seed: int, layer: int = 6) -> Optional[Dict]:
+    """Load precomputed MEMIT keys and case_ids.
+
+    Returns dict with 'keys' (ndarray N×D), 'case_ids' (list of int).
+    """
+    path = RESULTS / "matched_ordering" / "key_geometry" / f"keys_seed{seed}_layer{layer}.npz"
+    if not path.exists():
+        return None
+    npz = np.load(path)
+    return {
+        "keys": npz["keys"],
+        "case_ids": npz["case_ids"].tolist(),
+        "layer": int(npz["layer"]),
+    }
+
+
+def load_matched_ordering_stream(seed: int, ordering: str) -> Optional[List[Dict]]:
+    """Load a matched ordering stream (key_clustered or key_dispersed).
+
+    Args:
+        seed: Random seed.
+        ordering: One of 'key_clustered', 'key_dispersed', 'clustered', 'dispersed'.
+
+    Returns list of MCF records in the stream's order.
+    """
+    path = RESULTS / "matched_ordering" / f"{ordering}_seed{seed}.json"
+    if not path.exists():
+        return None
+    with open(path) as f:
+        return json.load(f)
+
+
+def load_matched_ordering_results(
+    seed: int,
+    ordering: str,
+    alg: str = "AlphaEdit",
+) -> List[Dict]:
+    """Load runtime JSONL results from matched ordering experiment.
+
+    Layout: matched_ordering/{ALG}/{ORDERING}/seed{SEED}/*.jsonl
+
+    Args:
+        seed: Random seed.
+        ordering: Stream ordering (e.g. "clustered", "dispersed",
+                  "key_clustered", "key_dispersed").
+        alg: Algorithm name ("AlphaEdit" or "MEMIT-Seq-1-0").
+
+    Returns list of per-batch records with mechanism and evaluation data.
+    """
+    result_dir = RESULTS / "matched_ordering" / alg / ordering / f"seed{seed}"
+    if not result_dir.exists():
+        return []
+
+    records = []
+    for jsonl in sorted(result_dir.glob("*.jsonl")):
+        with open(jsonl) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
+    return records
 
 
 # ─── Discovery ───────────────────────────────────────────────────────────────
@@ -545,13 +896,53 @@ def discover_available_data() -> Dict[str, Any]:
         }
         summary["controlled_coupling"] = cc
 
-    # Order sensitivity
+    # Order sensitivity (comparison_ordered)
     co_dir = RESULTS / "comparison_ordered"
     if co_dir.exists():
         co = {}
         for seed_dir in sorted(co_dir.glob("seed*")):
             co[seed_dir.name] = [d.name for d in sorted(seed_dir.iterdir()) if d.is_dir()]
         summary["comparison_ordered"] = co
+
+    # Order sensitivity (dedicated experiment)
+    os_dir = RESULTS / "order_sensitivity"
+    if os_dir.exists():
+        os_data = {}
+        for seed_dir in sorted(os_dir.glob("seed*")):
+            orders = [d.name for d in sorted(seed_dir.iterdir())
+                      if d.is_dir() and d.name.startswith("order")]
+            jsonls = [f.name for f in sorted(seed_dir.glob("*.jsonl"))]
+            os_data[seed_dir.name] = {"orders": orders, "logs": jsonls}
+        summary["order_sensitivity"] = os_data
+
+    # Coupling stress
+    cs_dir = RESULTS / "coupling_stress"
+    if cs_dir.exists():
+        cs = {
+            "stats": [f.name for f in sorted(cs_dir.glob("coupling_stats_*.json"))],
+            "seeds": [],
+        }
+        for seed_dir in sorted(cs_dir.glob("seed*")):
+            algos = [d.name for d in seed_dir.iterdir() if d.is_dir()]
+            cs["seeds"].append({"seed": seed_dir.name, "algorithms": algos})
+        summary["coupling_stress"] = cs
+
+    # Polykernel editor
+    pk_dir = RESULTS / "polykernel_editor"
+    if pk_dir.exists():
+        pk = {}
+        for seed_dir in sorted(pk_dir.glob("seed*")):
+            edits_info = {}
+            for edit_dir in sorted(seed_dir.glob("*edits")):
+                alg_dirs = [d.name for d in edit_dir.iterdir() if d.is_dir()]
+                logs = [f.name for f in edit_dir.glob("log_*.jsonl")]
+                edits_info[edit_dir.name] = {
+                    "algorithms": alg_dirs,
+                    "logs": logs,
+                }
+            if edits_info:
+                pk[seed_dir.name] = edits_info
+        summary["polykernel_editor"] = pk
 
     # SeqReg
     sr_dir = RESULTS / "memit_seqreg"
@@ -564,19 +955,55 @@ def discover_available_data() -> Dict[str, Any]:
         }
 
     # MVE experiments (reproduction at standard scale)
-    for mve_name in ("mve1_alphaedit_mcf", "mve2_memit_mcf", "mve3_alphaedit_zsre"):
+    for mve_name in ("mve1_alphaedit_mcf", "mve2_memit_mcf",
+                     "mve3_alphaedit_zsre", "mve4_conflict_seq"):
         mve_dir = RESULTS / mve_name
         if mve_dir.exists():
             mve = {}
             for seed_dir in sorted(mve_dir.glob("seed*")):
-                # Count case files under alphaedit_results/{Alg}/run_000/
                 n_cases = 0
+                # Standard layout: alphaedit_results/{Alg}/run_000/
                 for run_dir in seed_dir.glob("alphaedit_results/*/run_000"):
+                    n_cases += len(list(run_dir.glob("*_edits-case_*.json")))
+                # mve4 layout: {E}edits/{Alg}/run_000/
+                for run_dir in seed_dir.glob("*edits/*/run_000"):
                     n_cases += len(list(run_dir.glob("*_edits-case_*.json")))
                 if n_cases > 0:
                     mve[seed_dir.name] = n_cases
             if mve:
                 summary[mve_name] = mve
+
+    # Matched ordering
+    mo_dir = RESULTS / "matched_ordering"
+    if mo_dir.exists():
+        mo = {}
+        for stream_file in sorted(mo_dir.glob("key_*_seed*.json")):
+            mo.setdefault("streams", []).append(stream_file.name)
+        for val_file in sorted(mo_dir.glob("validation_report_*.json")):
+            mo.setdefault("validation", []).append(val_file.name)
+        kg_dir = mo_dir / "key_geometry"
+        if kg_dir.exists():
+            mo["keys"] = [f.name for f in sorted(kg_dir.glob("keys_*.npz"))]
+        # Runtime results: {ALG}/{ORDERING}/seed{N}/
+        result_dirs = []
+        for alg_dir in sorted(mo_dir.iterdir()):
+            if not alg_dir.is_dir():
+                continue
+            if alg_dir.name in ("key_geometry", "diagnostics"):
+                continue
+            for ordering_dir in sorted(alg_dir.iterdir()):
+                if not ordering_dir.is_dir():
+                    continue
+                for seed_dir in sorted(ordering_dir.glob("seed*")):
+                    n_jsonl = len(list(seed_dir.glob("*.jsonl")))
+                    if n_jsonl > 0:
+                        result_dirs.append(
+                            f"{alg_dir.name}/{ordering_dir.name}/{seed_dir.name}: {n_jsonl} files"
+                        )
+        if result_dirs:
+            mo["results"] = result_dirs
+        if mo:
+            summary["matched_ordering"] = mo
 
     # Mechanism analysis
     mech_dir = RESULTS / "mechanism_analysis"

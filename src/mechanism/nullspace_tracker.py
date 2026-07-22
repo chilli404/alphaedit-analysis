@@ -86,6 +86,7 @@ def build_tracker_script(
     downstream_eval_steps: int,
     conserve_memory: bool,
     output_jsonl: str,
+    eval_results_dir: str = "",
 ) -> str:
     """
     Build an inline Python script that:
@@ -229,6 +230,16 @@ source = source.replace(
     '# CUDA_VISIBLE_DEVICES managed by nullspace_tracker',
 )
 
+# 5a. Override RESULTS_DIR
+_globals_import = 'from util.globals import *'
+assert _globals_import in source, "globals import not found in evaluate.py"
+source = source.replace(
+    _globals_import,
+    _globals_import + '\\nRESULTS_DIR = Path("{eval_results_dir}")\\n',
+    1,
+)
+print(f"  [RESULTS_DIR] Overridden to: {eval_results_dir}")
+
 # 6. Inject pre-edit tracking code
 pre_anchor = '        start = time()\\n        if any(alg in alg_name for alg in ["AlphaEdit", "MEMIT_seq", "NSE"]):'
 assert pre_anchor in source, (
@@ -321,7 +332,10 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     # Output file
-    output_dir = project_root / "results" / "nullspace_tracking"
+    output_dir = (
+        project_root / "results" / "nullspace_tracking"
+        / f"seed{args.seed}" / f"{args.dataset_size_limit}edits" / "AlphaEdit"
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -339,6 +353,7 @@ def run(args: argparse.Namespace) -> None:
         downstream_eval_steps=args.downstream_eval_steps,
         conserve_memory=args.conserve_memory,
         output_jsonl=str(output_jsonl),
+        eval_results_dir=str(output_dir.parent),
     )
 
     # Environment

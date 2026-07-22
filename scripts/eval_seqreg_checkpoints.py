@@ -465,6 +465,10 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--lambda_prev", type=float, default=1.0)
     parser.add_argument("--lambda_delta", type=float, default=1.0)
+    parser.add_argument("--alg_name", type=str, default=None,
+                        help="Algorithm name for output path (default: auto-detect from checkpoint_dir or MEMIT-SEQ)")
+    parser.add_argument("--ordering", type=str, default=None,
+                        help="Ordering type (e.g. key_clustered, key_dispersed) — used in output path")
     parser.add_argument("--model_name", default="meta-llama/Meta-Llama-3-8B-Instruct")
     parser.add_argument(
         "--checkpoints", nargs="+", type=int, default=[19, 29, 49],
@@ -561,10 +565,38 @@ def main():
         del model_cache
         torch.cuda.empty_cache()
 
-    # Save results
-    out_dir = PROJECT_ROOT / "results" / "memit_seqreg"
+    # Save results in matched_ordering format:
+    #   results/matched_ordering/{alg_name}/{ordering}/seed{seed}/full_eval_seed{seed}.json
+    if args.alg_name:
+        variant_name = args.alg_name
+    elif args.checkpoint_dir:
+        # Derive from checkpoint_dir structure:
+        #   .../AlphaEdit/key_clustered/seed42 → alg=AlphaEdit, ordering=key_clustered
+        #   .../matched_key_clustered_seed42 → fall back to MEMIT-SEQ
+        ckpt_parts = Path(args.checkpoint_dir).parts
+        if "AlphaEdit" in ckpt_parts:
+            variant_name = "AlphaEdit"
+        else:
+            variant_name = f"MEMIT-SEQ-lp{args.lambda_prev}-ld{args.lambda_delta}"
+    else:
+        variant_name = f"MEMIT-SEQ-lp{args.lambda_prev}-ld{args.lambda_delta}"
+
+    # Determine ordering from --ordering flag or dataset_path filename
+    ordering = args.ordering
+    if not ordering and args.dataset_path:
+        ds_stem = Path(args.dataset_path).stem  # e.g. "key_clustered_seed42"
+        # Strip _seed{N} suffix
+        for suffix in [f"_seed{args.seed}", f"_seed"]:
+            if suffix in ds_stem:
+                ordering = ds_stem[:ds_stem.index(suffix)]
+                break
+
+    if ordering:
+        out_dir = PROJECT_ROOT / "results" / "matched_ordering" / variant_name / ordering / f"seed{args.seed}"
+    else:
+        out_dir = PROJECT_ROOT / "results" / "matched_ordering" / variant_name / f"seed{args.seed}"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"full_eval_seed{args.seed}_lp{args.lambda_prev}_ld{args.lambda_delta}.json"
+    out_path = out_dir / f"full_eval_seed{args.seed}.json"
     with open(str(out_path), "w") as f:
         json.dump(all_summaries, f, indent=2)
     print(f"\nResults saved: {out_path}")

@@ -248,7 +248,7 @@ def generate(output_dir: Path = PAPER_OUTPUT):
     results = load_results(output_dir)
     if not results:
         print("  ERROR: No interference_panel_results.json found.")
-        print("  Run: uv run python -m analysis.interference_panel --keys-dir results/keys")
+        print("  Run: uv run python -m analysis.interference_panel --keys-dir results/key_vectors")
         return
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 9))

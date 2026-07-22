@@ -477,7 +477,7 @@ def main():
     if args.output_dir:
         output_dir = Path(args.output_dir)
     else:
-        output_dir = PROJECT_ROOT / "results" / "mechanism_analysis"
+        output_dir = PROJECT_ROOT / "results" / "mechanism_analysis" / f"seed{args.seed}" / "AlphaEdit"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")

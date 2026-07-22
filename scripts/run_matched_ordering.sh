@@ -3,15 +3,15 @@ set -euo pipefail
 
 # Matched ordering experiment: same 5K facts, clustered vs dispersed.
 #
-# Runs either AlphaEdit or full-history MEMIT-seq on the matched ordering
+# Runs either AlphaEdit or full-history MEMIT-Seq on the matched ordering
 # streams. Designed for SkyPilot parallel execution.
 #
 # Usage:
 #   bash scripts/run_matched_ordering.sh [SEED] [ALG] [ORDERING]
-#   bash scripts/run_matched_ordering.sh 42 memit_seq clustered
-#   bash scripts/run_matched_ordering.sh 42 memit_seq dispersed
-#   bash scripts/run_matched_ordering.sh 42 alphaedit clustered
-#   bash scripts/run_matched_ordering.sh 42 alphaedit dispersed
+#   bash scripts/run_matched_ordering.sh 42 MEMIT-Seq-1-0 clustered
+#   bash scripts/run_matched_ordering.sh 42 MEMIT-Seq-1-0 dispersed
+#   bash scripts/run_matched_ordering.sh 42 AlphaEdit clustered
+#   bash scripts/run_matched_ordering.sh 42 AlphaEdit dispersed
 #
 # Environment variables:
 #   CUDA_DEVICE      - GPU device index (default: 0)
@@ -29,7 +29,7 @@ fi
 
 MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 SEED="${1:-42}"
-ALG="${2:-${ALG_NAME:-memit_seq}}"
+ALG="${2:-${ALG_NAME:-MEMIT-Seq-1-0}}"
 ORDERING="${3:-${ORDERING:-clustered}}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
 DATASET_SIZE_LIMIT="${TARGET_EDITS:-5000}"
@@ -53,14 +53,16 @@ else
 fi
 
 # Resolve checkpoint dir: prefer S3 for crash resilience
-S3_CKPT="/s3-data/continual-learning/alphaedit/checkpoints/matched_ordering/${ALG}/${ORDERING}_seed${SEED}"
-LOCAL_CKPT="$HOME/.cache/memit_seqreg_checkpoints/matched_${ORDERING}_seed${SEED}"
+# Convention: checkpoints/matched_ordering/{ALG}/{ORDERING}/seed{N}
+S3_CKPT="/s3-data/continual-learning/alphaedit/checkpoints/matched_ordering/${ALG}/${ORDERING}/seed${SEED}"
+LOCAL_CKPT="$HOME/.cache/alphaedit_checkpoints/matched_ordering/${ALG}/${ORDERING}/seed${SEED}"
 
 if [[ -d "/s3-data/continual-learning/alphaedit" ]]; then
     CKPT_DIR="$S3_CKPT"
     mkdir -p "$CKPT_DIR"
 else
     CKPT_DIR="$LOCAL_CKPT"
+    mkdir -p "$CKPT_DIR"
 fi
 
 # Results output (always to S3 if available)
@@ -93,7 +95,7 @@ if [[ "${FAST_CHECKPOINT:-true}" == "true" ]]; then
     echo "  FAST MODE: only evaluate edited batch"
 fi
 
-if [[ "$ALG" == "memit_seq" ]]; then
+if [[ "$ALG" == "MEMIT-Seq-1-0" ]]; then
     # Full-history MEMIT-seq (λ_prev=1, λ_delta=0, unlimited cache)
     uv run python src/runners/memit_sequential_runner.py \
         --seed "$SEED" \
@@ -114,7 +116,7 @@ if [[ "$ALG" == "memit_seq" ]]; then
         --dataset_override "$STREAM_PATH" \
         $FAST_FLAG
 
-elif [[ "$ALG" == "alphaedit" ]]; then
+elif [[ "$ALG" == "AlphaEdit" ]]; then
     # AlphaEdit via controlled_coupling_runner (reuses its stream override mechanism)
     uv run python src/runners/controlled_coupling_runner.py \
         --seed "$SEED" \
@@ -129,7 +131,7 @@ elif [[ "$ALG" == "alphaedit" ]]; then
         ${FAST_CHECKPOINT:+--eval_at_checkpoints_only}
 
 else
-    echo "ERROR: Unknown algorithm '$ALG'. Use 'memit_seq' or 'alphaedit'."
+    echo "ERROR: Unknown algorithm '$ALG'. Use 'AlphaEdit' or 'MEMIT-Seq-1-0'."
     exit 1
 fi
 

@@ -79,6 +79,7 @@ def build_extraction_script(
     conserve_memory: bool,
     coupling_dataset_path: str | None,
     output_pt: str,
+    eval_results_dir: str = "",
 ) -> str:
     """
     Build inline Python script for key extraction.
@@ -241,6 +242,16 @@ _eval_source = _eval_source.replace(
     "# CUDA_VISIBLE_DEVICES managed by polykernel_key_extractor",
 )
 
+# Override RESULTS_DIR to project-level results
+_globals_import = 'from util.globals import *'
+assert _globals_import in _eval_source, "globals import not found in evaluate.py"
+_eval_source = _eval_source.replace(
+    _globals_import,
+    _globals_import + '\\nRESULTS_DIR = Path("{eval_results_dir}")\\n',
+    1,
+)
+print(f"  [RESULTS_DIR] Overridden to: {eval_results_dir}")
+
 # Inject coupling dataset override before for loop (if applicable)
 _shuffle_anchor = {repr(SHUFFLE_ANCHOR)}
 assert _shuffle_anchor in _eval_source, "SHUFFLE_ANCHOR not found in evaluate.py."
@@ -344,7 +355,10 @@ def run(args: argparse.Namespace) -> None:
     validate_anchors(args.alg_name)
 
     # Output directory
-    results_dir = project_root / "results" / "polykernel_diagnostic"
+    results_dir = (
+        project_root / "results" / "polykernel_diagnostic"
+        / f"seed{args.seed}" / f"{args.dataset_size_limit}edits" / args.alg_name
+    )
     results_dir.mkdir(parents=True, exist_ok=True)
 
     output_pt = results_dir / f"keys_{args.alg_name}_seed{args.seed}.pt"
@@ -370,6 +384,7 @@ def run(args: argparse.Namespace) -> None:
         conserve_memory=args.conserve_memory,
         coupling_dataset_path=coupling_dataset_path,
         output_pt=str(output_pt),
+        eval_results_dir=str(results_dir.parent),
     )
 
     # Environment

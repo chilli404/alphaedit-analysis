@@ -61,6 +61,7 @@ def build_probe_script(
     probe_interval: int,
     output_jsonl: str,
     compute_mmlu: bool,
+    eval_results_dir: str = "",
 ) -> str:
     """
     Build a script that runs evaluate.py with capability probing injected
@@ -212,6 +213,16 @@ if patch_target in source:
         '# CUDA_VISIBLE_DEVICES managed by capability_probe_runner',
     )
 
+# Override RESULTS_DIR
+_globals_import = 'from util.globals import *'
+assert _globals_import in source, "globals import not found in evaluate.py"
+source = source.replace(
+    _globals_import,
+    _globals_import + '\\nRESULTS_DIR = Path("{eval_results_dir}")\\n',
+    1,
+)
+print(f"  [RESULTS_DIR] Overridden to: {eval_results_dir}")
+
 # Inject GLUEEval monkey-patch after imports
 glue_patch = '''
 # === Capability probe patch (injected by capability_probe_runner.py) ===
@@ -262,7 +273,7 @@ def run(args: argparse.Namespace) -> None:
     model_name = resolve_model_path(args.model_name)
 
     # Output file
-    output_dir = project_root / "results" / "capability_probe"
+    output_dir = project_root / "results" / "capability_probe" / f"seed{args.seed}" / args.alg_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -282,6 +293,7 @@ def run(args: argparse.Namespace) -> None:
         probe_interval=args.probe_interval,
         output_jsonl=str(output_jsonl),
         compute_mmlu=not args.no_mmlu,
+        eval_results_dir=str(output_dir.parent),
     )
 
     env = os.environ.copy()

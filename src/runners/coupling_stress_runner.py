@@ -76,6 +76,7 @@ def build_coupling_script(
     conserve_memory: bool,
     coupling_dataset_path: str,
     output_jsonl: str,
+    eval_results_dir: str = "",
 ) -> str:
     """
     Build the inline Python script that:
@@ -269,6 +270,16 @@ _eval_source = _eval_source.replace(
     "# CUDA_VISIBLE_DEVICES managed by coupling_stress_runner",
 )
 
+# Override RESULTS_DIR
+_globals_import = 'from util.globals import *'
+assert _globals_import in _eval_source, "globals import not found in evaluate.py"
+_eval_source = _eval_source.replace(
+    _globals_import,
+    _globals_import + '\\nRESULTS_DIR = Path("{eval_results_dir}")\\n',
+    1,
+)
+print(f"  [RESULTS_DIR] Overridden to: {eval_results_dir}")
+
 # Inject dataset override BEFORE the for loop
 _shuffle_anchor = {repr(SHUFFLE_ANCHOR)}
 assert _shuffle_anchor in _eval_source, (
@@ -364,7 +375,7 @@ def run(args: argparse.Namespace) -> None:
     validate_anchors()
 
     # Generate coupling dataset (or load from cache if already generated)
-    results_dir = project_root / "results" / "coupling_stress"
+    results_dir = project_root / "results" / "coupling_stress" / f"seed{args.seed}" / "AlphaEdit"
     results_dir.mkdir(parents=True, exist_ok=True)
 
     dataset_path = results_dir / f"coupling_dataset_seed{args.seed}.json"
@@ -405,6 +416,7 @@ def run(args: argparse.Namespace) -> None:
         conserve_memory=args.conserve_memory,
         coupling_dataset_path=str(dataset_path),
         output_jsonl=str(output_jsonl),
+        eval_results_dir=str(results_dir.parent),
     )
 
     # Set up environment

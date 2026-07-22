@@ -53,6 +53,30 @@ def get_alphaedit_root() -> Path:
     return get_project_root() / "vendor" / "AlphaEdit"
 
 
+def _resolve_results_dir(args: argparse.Namespace) -> Path | None:
+    """Resolve the project-level results directory for this experiment.
+
+    Uses EXPERIMENT_NAME env var if set (SkyPilot), otherwise derives from args.
+    Returns the base dir that evaluate.py will use as RESULTS_DIR
+    (evaluate.py then appends {Alg}/run_000/ internally).
+    """
+    experiment = os.environ.get("EXPERIMENT_NAME", "")
+    if not experiment:
+        # Derive from algorithm + dataset (e.g. "alphaedit_mcf")
+        experiment = f"{args.alg_name.lower()}_{args.ds_name}"
+
+    project_root = get_project_root()
+    results_base = project_root / "results" / experiment / f"seed{args.seed}"
+    results_base = results_base / f"{args.dataset_size_limit}edits"
+
+    # For order-sensitivity experiments, add order subdirectory
+    order_id = getattr(args, "order_id", 0)
+    if "ordered" in experiment or "order" in experiment:
+        results_base = results_base / f"order{order_id}"
+
+    return results_base
+
+
 def build_runner_script(
     seed: int,
     cuda_device: str,
@@ -68,6 +92,7 @@ def build_runner_script(
     conserve_memory: bool,
     use_cache: bool,
     order_id: int = 0,
+    results_dir: str | None = None,
 ) -> str:
     """
     Build an inline Python script that:
@@ -96,54 +121,70 @@ def build_runner_script(
 
     argv_str = repr(argv_parts)
 
+    # Build RESULTS_DIR injection (outside f-string to avoid escaping issues)
+    if results_dir:
+        results_dir_injection = (
+            f'\n# 3a. Override RESULTS_DIR to project-level results\n'
+            f'_globals_import = \'from util.globals import *\'\n'
+            f'assert _globals_import in source, "globals import not found in evaluate.py"\n'
+            f'source = source.replace(\n'
+            f'    _globals_import,\n'
+            f'    _globals_import + \'\\nRESULTS_DIR = Path("{results_dir}")\\n\',\n'
+            f'    1,\n'
+            f')\n'
+            f'print(f"  [RESULTS_DIR] Overridden to: {results_dir}")\n'
+        )
+    else:
+        results_dir_injection = ""
+
     script = textwrap.dedent(f"""\
-        import os, sys, random
-        import numpy as np
-        import torch
+import os, sys, random
+import numpy as np
+import torch
 
-        # 1. Seed all sources of randomness
-        seed = {seed}
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-        torch.use_deterministic_algorithms(True, warn_only=True)
+# 1. Seed all sources of randomness
+seed = {seed}
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+torch.use_deterministic_algorithms(True, warn_only=True)
 
-        # 2. Set sys.argv for argparse in evaluate.py
-        sys.argv = {argv_str}
+# 2. Set sys.argv for argparse in evaluate.py
+sys.argv = {argv_str}
 
-        # 3. Read evaluate.py and patch the hardcoded CUDA line
-        with open("experiments/evaluate.py", "r") as f:
-            source = f.read()
+# 3. Read evaluate.py and patch the hardcoded CUDA line
+with open("experiments/evaluate.py", "r") as f:
+    source = f.read()
 
-        patch_target = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
-        if patch_target not in source:
-            print("WARNING: CUDA_VISIBLE_DEVICES patch target not found in evaluate.py")
-            print("  The upstream code may have changed. Proceeding without patch.")
-        else:
-            source = source.replace(
-                patch_target,
-                '# CUDA_VISIBLE_DEVICES managed by seeded_runner',
-            )
+patch_target = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
+if patch_target not in source:
+    print("WARNING: CUDA_VISIBLE_DEVICES patch target not found in evaluate.py")
+    print("  The upstream code may have changed. Proceeding without patch.")
+else:
+    source = source.replace(
+        patch_target,
+        '# CUDA_VISIBLE_DEVICES managed by seeded_runner',
+    )
+{results_dir_injection}
+# 4. Inject order shuffle (if order_id > 0)
+shuffle_anchor = '    for record_chunks in chunks(ds, num_edits):'
+if shuffle_anchor in source:
+    shuffle_code = {repr(build_order_shuffle_injection(order_id))}
+    if shuffle_code:
+        source = source.replace(shuffle_anchor, shuffle_code + shuffle_anchor, 1)
 
-        # 4. Inject order shuffle (if order_id > 0)
-        shuffle_anchor = '    for record_chunks in chunks(ds, num_edits):'
-        if shuffle_anchor in source:
-            shuffle_code = {repr(build_order_shuffle_injection(order_id))}
-            if shuffle_code:
-                source = source.replace(shuffle_anchor, shuffle_code + shuffle_anchor, 1)
+# 5. Inject dataset fingerprint
+if shuffle_anchor in source:
+    fingerprint_code = {repr(build_fingerprint_injection(order_id))}
+    source = source.replace(shuffle_anchor, fingerprint_code + shuffle_anchor, 1)
 
-        # 5. Inject dataset fingerprint
-        if shuffle_anchor in source:
-            fingerprint_code = {repr(build_fingerprint_injection(order_id))}
-            source = source.replace(shuffle_anchor, fingerprint_code + shuffle_anchor, 1)
-
-        # 6. Execute as __main__ (triggers argparse + main() call)
-        exec(compile(source, "experiments/evaluate.py", "exec"),
-             {{"__name__": "__main__", "__file__": "experiments/evaluate.py"}})
-    """)
+# 6. Execute as __main__ (triggers argparse + main() call)
+exec(compile(source, "experiments/evaluate.py", "exec"),
+     {{"__name__": "__main__", "__file__": "experiments/evaluate.py"}})
+""")
     return script
 
 
@@ -235,9 +276,8 @@ def record_metadata(
         },
     }
 
-    metadata_dir = results_dir / "metadata"
-    metadata_dir.mkdir(parents=True, exist_ok=True)
-    metadata_file = metadata_dir / f"run_seed{seed}_{args.alg_name}_{args.ds_name}_{args.dataset_size_limit}.json"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    metadata_file = results_dir / f"run_seed{seed}_{args.alg_name}_{args.ds_name}_{args.dataset_size_limit}.json"
 
     with open(metadata_file, "w") as f:
         json.dump(metadata, f, indent=2)
@@ -278,7 +318,6 @@ def validate_environment(args: argparse.Namespace) -> None:
 def run(args: argparse.Namespace) -> None:
     """Launch the experiment as a subprocess with full seed control."""
     alphaedit_root = get_alphaedit_root()
-    results_dir = get_project_root() / "results"
 
     if not alphaedit_root.exists():
         print(f"ERROR: AlphaEdit not found at {alphaedit_root}")
@@ -294,6 +333,9 @@ def run(args: argparse.Namespace) -> None:
 
     # Resolve model path (falls back to Artifactory mirror if HF access fails)
     model_name = resolve_model_path(args.model_name)
+
+    # Resolve results directory
+    results_dir_override = _resolve_results_dir(args)
 
     # Build the inline runner script
     script = build_runner_script(
@@ -311,6 +353,7 @@ def run(args: argparse.Namespace) -> None:
         conserve_memory=args.conserve_memory,
         use_cache=args.use_cache,
         order_id=args.order_id,
+        results_dir=str(results_dir_override) if results_dir_override else None,
     )
 
     # Set up environment for subprocess
@@ -331,10 +374,10 @@ def run(args: argparse.Namespace) -> None:
     print(f"  Seed:       {args.seed}")
     print(f"  CUDA:       device {args.cuda_device}")
     print(f"  Model:      {args.model_name}")
+    print(f"  Results:    {results_dir_override}")
     print(f"  Started:    {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print(f"{'=' * 70}")
 
-    # Find the uv executable to use the project's venv
     cmd = [
         sys.executable, "-c", script
     ]
@@ -349,22 +392,22 @@ def run(args: argparse.Namespace) -> None:
         print(f"\nERROR: Experiment failed with return code {result.returncode}")
         sys.exit(result.returncode)
 
-    # Detect run_dir and run_id created by evaluate.py
-    run_dir_rel, run_id = find_latest_run_dir(args.alg_name)
+    # Record metadata in the results directory
+    results_dir = results_dir_override or (get_project_root() / "results")
+    run_dir = results_dir / args.alg_name / "run_000" if results_dir_override else None
+    run_dir_rel = str(run_dir.relative_to(get_project_root())) if run_dir and run_dir.exists() else None
 
-    # Record metadata with run_dir and run_id
     record_metadata(
         args.seed, args, results_dir,
+        experiment_name=os.environ.get("EXPERIMENT_NAME", ""),
         run_dir=run_dir_rel,
-        run_id=run_id,
+        run_id="run_000",
     )
 
     print(f"\n{'=' * 70}")
     print("Experiment completed successfully.")
     print(f"  Finished:  {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    print(f"  Results:   {alphaedit_root / 'results' / args.alg_name}")
-    if run_id:
-        print(f"  Run ID:    {run_id}")
+    print(f"  Results:   {results_dir / args.alg_name / 'run_000'}")
     print(f"{'=' * 70}")
 
 

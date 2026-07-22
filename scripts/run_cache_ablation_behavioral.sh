@@ -28,10 +28,11 @@ HPARAMS_FNAME="${HPARAMS_FNAME:-Llama3-8B.json}"
 CHECKPOINT_DIR="${CHECKPOINT_DIR:-/s3-data/continual-learning/alphaedit/checkpoints}"
 
 # Output
+EDITS=$(( (CHECKPOINT_BATCH + 1) * 100 ))
 if [[ -d "/s3-data/continual-learning/alphaedit/results" ]]; then
-    OUTPUT_DIR="/s3-data/continual-learning/alphaedit/results/cache_ablation_behavioral/seed${SEED}"
+    OUTPUT_DIR="/s3-data/continual-learning/alphaedit/results/cache_ablation_behavioral/seed${SEED}/${EDITS}edits/AlphaEdit"
 else
-    OUTPUT_DIR="$PROJECT_DIR/results/cache_ablation_behavioral"
+    OUTPUT_DIR="$PROJECT_DIR/results/cache_ablation_behavioral/seed${SEED}/${EDITS}edits/AlphaEdit"
 fi
 
 echo "=========================================="

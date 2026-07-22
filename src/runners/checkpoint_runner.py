@@ -89,20 +89,23 @@ CUDA_PATCH_TARGET = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
 def resolve_checkpoint_dir(explicit_dir: str | None, alg_name: str, seed: int, order_id: int = 0) -> Path:
     """Resolve the checkpoint directory in priority order.
 
-    When order_id > 0, checkpoints are stored in a separate subdirectory
-    to avoid overwriting checkpoints from other orderings.
+    If explicit_dir is provided, use it as-is (the caller sets the full path).
+    Otherwise, auto-resolve:
+        Ordering runs (order_id > 0):  checkpoints/comparison_ordered/{alg}/seed{N}/order{M}/
+        Standard failure curve:        checkpoints/failure_curve/{alg}/seed{N}/
     """
     if explicit_dir:
-        base = Path(explicit_dir)
-    elif Path("/s3-data/continual-learning/alphaedit/checkpoints").exists():
+        return Path(explicit_dir)
+
+    if Path("/s3-data/continual-learning/alphaedit/checkpoints").exists():
         base = Path("/s3-data/continual-learning/alphaedit/checkpoints")
     else:
         base = Path.home() / ".cache" / "alphaedit_checkpoints"
 
-    path = base / alg_name / f"seed{seed}"
     if order_id > 0:
-        path = path / f"order{order_id}"
-    return path
+        return base / "comparison_ordered" / alg_name / f"seed{seed}" / f"order{order_id}"
+    else:
+        return base / "failure_curve" / alg_name / f"seed{seed}"
 
 
 def find_latest_checkpoint(ckpt_dir: Path) -> tuple[int, Path] | None:
@@ -133,6 +136,33 @@ def find_latest_checkpoint(ckpt_dir: Path) -> tuple[int, Path] | None:
     return None
 
 
+def _resolve_results_dir(args: argparse.Namespace) -> Path | None:
+    """Build the results directory path for evaluate.py output.
+
+    Structure: {project_root}/results/{experiment}/seed{seed}/{edits}edits[/order{N}]
+
+    evaluate.py appends {AlgName}/run_000/ to RESULTS_DIR, so final path is:
+        results/{experiment}/seed{seed}/{edits}edits[/order{N}]/{AlgName}/run_000/
+    """
+    if args.results_dir:
+        return Path(args.results_dir)
+
+    # Auto-construct from experiment name env var + args
+    experiment = os.environ.get("EXPERIMENT_NAME", "")
+    if not experiment:
+        return None  # Fall back to vendor/AlphaEdit/results/ (legacy behavior)
+
+    project_root = get_project_root()
+    results_base = project_root / "results" / experiment / f"seed{args.seed}"
+    results_base = results_base / f"{args.dataset_size_limit}edits"
+
+    # Include order subdirectory for ordering experiments
+    if "ordered" in experiment or "order" in experiment:
+        results_base = results_base / f"order{args.order_id}"
+
+    return results_base
+
+
 def build_checkpoint_script(
     seed: int,
     cuda_device: str,
@@ -150,6 +180,7 @@ def build_checkpoint_script(
     fast_checkpoint: bool = False,
     eval_at_checkpoints_only: bool = False,
     order_id: int = 0,
+    results_dir: str | None = None,
 ) -> str:
     """
     Build an inline Python script that:
@@ -178,6 +209,21 @@ def build_checkpoint_script(
         argv_parts.append("--conserve_memory")
 
     argv_str = repr(argv_parts)
+
+    # Build optional RESULTS_DIR override injection
+    if results_dir:
+        results_dir_injection = (
+            f'\n_globals_import = \'from util.globals import *\'\n'
+            f'assert _globals_import in source, "globals import not found in evaluate.py"\n'
+            f'source = source.replace(\n'
+            f'    _globals_import,\n'
+            f'    _globals_import + \'\\nRESULTS_DIR = Path("{results_dir}")\\n\',\n'
+            f'    1,\n'
+            f')\n'
+            f'print(f"  [RESULTS_DIR] Overridden to: {results_dir}")\n'
+        )
+    else:
+        results_dir_injection = ""
 
     script = textwrap.dedent(f"""\
 import os, sys, random, json
@@ -308,6 +354,8 @@ source = source.replace(
     '# CUDA_VISIBLE_DEVICES managed by checkpoint_runner',
 )
 
+# 5a. Override RESULTS_DIR to write to project results/ directory
+{results_dir_injection}
 # 5b. Patch P/cache_c initialization to not depend on hardcoded model name whitelist.
 # The upstream code only initializes P for model names in a fixed list. If hparams.model_name
 # doesn't match, P and cache_c are never created and the edit call crashes with
@@ -594,6 +642,9 @@ def run(args: argparse.Namespace) -> None:
     ckpt_dir = resolve_checkpoint_dir(args.checkpoint_dir, args.alg_name, args.seed, args.order_id)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
+    # Resolve results directory (where evaluate.py writes per-case JSONs)
+    results_dir_override = _resolve_results_dir(args)
+
     # Determine start_from_batch
     total_batches = args.dataset_size_limit // args.num_edits
     start_from_batch = args.start_from_batch
@@ -629,6 +680,7 @@ def run(args: argparse.Namespace) -> None:
         fast_checkpoint=args.fast_checkpoint,
         eval_at_checkpoints_only=args.eval_at_checkpoints_only,
         order_id=args.order_id,
+        results_dir=str(results_dir_override) if results_dir_override else None,
     )
 
     # Environment
@@ -659,6 +711,10 @@ def run(args: argparse.Namespace) -> None:
     print(f"  CUDA:            device {args.cuda_device}")
     print(f"  Model:           {args.model_name}")
     print(f"  Checkpoint dir:  {ckpt_dir}")
+    if results_dir_override:
+        print(f"  Results dir:     {results_dir_override}")
+    else:
+        print(f"  Results dir:     {alphaedit_root / 'results'} (legacy)")
     print(f"  Started:         {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print(f"{'=' * 70}")
 
@@ -766,6 +822,11 @@ def main():
     # Order sensitivity
     parser.add_argument("--order_id", type=int, default=0,
                         help="Edit ordering ID (0=canonical, >0=shuffle with Random(order_id))")
+
+    # Output directory
+    parser.add_argument("--results_dir", default=None,
+                        help="Override RESULTS_DIR so evaluate.py writes directly to project results/ "
+                             "(default: auto-construct from experiment name, seed, edits, order)")
 
     # Retention probes (for mechanism figure)
     parser.add_argument("--retention_probe_batches", type=str, default=None,

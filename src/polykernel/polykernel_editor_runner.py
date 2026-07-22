@@ -113,6 +113,8 @@ def build_editor_script(
     checkpoint_dir: str = "",
     eval_only: bool = False,
     load_checkpoint: str = "",
+    eval_results_dir: str = "",
+    variant_name: str = "",
 ) -> str:
     """
     Build inline Python script for the kernel editor.
@@ -416,6 +418,24 @@ _eval_source = _eval_source.replace(
     "# CUDA_VISIBLE_DEVICES managed by polykernel_editor_runner",
 )
 
+# Override RESULTS_DIR to project-level results
+_globals_import = 'from util.globals import *'
+assert _globals_import in _eval_source, "globals import not found in evaluate.py"
+_eval_source = _eval_source.replace(
+    _globals_import,
+    _globals_import + '\\nRESULTS_DIR = Path("{eval_results_dir}")\\n',
+    1,
+)
+print(f"  [RESULTS_DIR] Overridden to: {eval_results_dir}")
+
+# Override dir_name to use kernel variant
+_eval_source = _eval_source.replace(
+    'dir_name=args.alg_name,',
+    'dir_name="{variant_name}",',
+    1,
+)
+print(f"  [dir_name] Overridden to: {variant_name}")
+
 # Inject batch increment before POST_EDIT_ANCHOR
 _post_anchor = {repr(POST_EDIT_ANCHOR)}
 assert _post_anchor in _eval_source, "POST_EDIT_ANCHOR not found in evaluate.py."
@@ -559,11 +579,15 @@ def run(args: argparse.Namespace) -> None:
     validate_anchors(args.alg_name)
 
     # Output directory
-    results_dir = project_root / "results" / "polykernel_editor"
+    kernel_tag = f"{args.kernel_type}{args.kernel_degree}" if args.kernel_type == "poly" else f"rbf_{args.kernel_sigma}"
+    variant_name = f"{args.alg_name}-{kernel_tag}"
+    results_dir = (
+        project_root / "results" / "polykernel_editor"
+        / f"seed{args.seed}" / f"{args.dataset_size_limit}edits" / variant_name
+    )
     results_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    kernel_tag = f"{args.kernel_type}{args.kernel_degree}" if args.kernel_type == "poly" else f"rbf_{args.kernel_sigma}"
     output_jsonl = results_dir / f"log_{args.alg_name}_seed{args.seed}_{kernel_tag}_{timestamp}.jsonl"
 
     # Resolve checkpoint dir for edit_only mode
@@ -572,10 +596,13 @@ def run(args: argparse.Namespace) -> None:
         if args.checkpoint_dir:
             checkpoint_dir = args.checkpoint_dir
         elif Path("/s3-data/continual-learning/alphaedit/checkpoints").exists():
-            checkpoint_dir = str(Path("/s3-data/continual-learning/alphaedit/checkpoints") / f"{args.alg_name}_poly{args.kernel_degree}" / f"seed{args.seed}")
+            checkpoint_dir = str(Path("/s3-data/continual-learning/alphaedit/checkpoints") / f"poly{args.kernel_degree}" / args.alg_name / f"seed{args.seed}")
         else:
-            checkpoint_dir = str(Path.home() / ".cache" / "alphaedit_checkpoints" / f"{args.alg_name}_poly{args.kernel_degree}" / f"seed{args.seed}")
+            checkpoint_dir = str(Path.home() / ".cache" / "alphaedit_checkpoints" / f"poly{args.kernel_degree}" / args.alg_name / f"seed{args.seed}")
         Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+
+    # RESULTS_DIR for evaluate.py is the parent of variant_name dir
+    eval_results_dir = results_dir.parent  # .../seed42/10000edits/
 
     script = build_editor_script(
         seed=args.seed,
@@ -597,6 +624,8 @@ def run(args: argparse.Namespace) -> None:
         checkpoint_dir=checkpoint_dir,
         eval_only=args.eval_only,
         load_checkpoint=args.load_checkpoint or "",
+        eval_results_dir=str(eval_results_dir),
+        variant_name=variant_name,
     )
 
     # Environment

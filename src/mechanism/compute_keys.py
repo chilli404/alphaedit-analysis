@@ -23,7 +23,7 @@ Requirements:
 Usage:
     uv run python -m src.mechanism.compute_keys --seed 42
     uv run python -m src.mechanism.compute_keys --seed 42 --layer 5
-    uv run python -m src.mechanism.compute_keys --seed 42 2024 --output-dir results/keys
+    uv run python -m src.mechanism.compute_keys --seed 42 2024 --output-dir results/key_vectors
 """
 
 import argparse
@@ -245,8 +245,9 @@ def compute_keys_for_seed(
         return
 
     # Save
-    output_dir.mkdir(parents=True, exist_ok=True)
-    out_path = output_dir / f"keys_seed{seed}.npz"
+    seed_dir = output_dir / f"seed{seed}"
+    seed_dir.mkdir(parents=True, exist_ok=True)
+    out_path = seed_dir / f"keys_seed{seed}.npz"
 
     np.savez_compressed(
         out_path,
@@ -256,7 +257,7 @@ def compute_keys_for_seed(
     )
 
     # Also save metadata JSON
-    meta_path = output_dir / f"keys_seed{seed}_meta.json"
+    meta_path = seed_dir / f"keys_seed{seed}_meta.json"
     with open(meta_path, "w") as f:
         json.dump({
             "seed": seed,
@@ -281,7 +282,7 @@ def main():
                         help="Seeds to compute keys for")
     parser.add_argument("--layer", type=int, default=DEFAULT_LAYER,
                         help=f"Layer to extract keys from (default: {DEFAULT_LAYER})")
-    parser.add_argument("--output-dir", type=Path, default=RESULTS / "keys",
+    parser.add_argument("--output-dir", type=Path, default=RESULTS / "key_vectors",
                         help="Output directory for .npz files")
     parser.add_argument("--max-cases", type=int, default=None,
                         help="Limit number of cases (for testing)")

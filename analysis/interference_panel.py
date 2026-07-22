@@ -24,7 +24,7 @@ Design choices (following reviewer guidance):
 
 Usage:
     uv run python -m analysis.interference_panel
-    uv run python -m analysis.interference_panel --keys-dir results/keys
+    uv run python -m analysis.interference_panel --keys-dir results/key_vectors
     uv run python -m analysis.interference_panel --output-dir results/figures/paper
 """
 
@@ -57,7 +57,7 @@ BATCH_SIZE = 100
 def load_key_vectors(keys_dir: Optional[Path], seed: int) -> Optional[Dict[int, np.ndarray]]:
     """Load precomputed key vectors for a trajectory.
 
-    Expected file: {keys_dir}/keys_seed{seed}.npz with arrays:
+    Expected file: {keys_dir}/seed{seed}/keys_seed{seed}.npz with arrays:
       - case_ids: int array of case IDs
       - keys: float32 array of shape (n_cases, hidden_dim)
 
@@ -65,7 +65,7 @@ def load_key_vectors(keys_dir: Optional[Path], seed: int) -> Optional[Dict[int, 
     """
     if keys_dir is None:
         return None
-    path = Path(keys_dir) / f"keys_seed{seed}.npz"
+    path = Path(keys_dir) / f"seed{seed}" / f"keys_seed{seed}.npz"
     if not path.exists():
         return None
     data = np.load(path)
@@ -777,7 +777,7 @@ def negative_control_preceding_keys(
     if keys_dir is None:
         return {"error": "no keys_dir"}
 
-    key_path = Path(keys_dir) / f"keys_seed{seed}.npz"
+    key_path = Path(keys_dir) / f"seed{seed}" / f"keys_seed{seed}.npz"
     if not key_path.exists():
         return {"error": f"no key file: {key_path}"}
 
@@ -965,7 +965,7 @@ def negative_control_random_keys(
     if keys_dir is None:
         return {"error": "no keys_dir"}
 
-    key_path = Path(keys_dir) / f"keys_seed{seed}.npz"
+    key_path = Path(keys_dir) / f"seed{seed}" / f"keys_seed{seed}.npz"
     if not key_path.exists():
         return {"error": f"no key file: {key_path}"}
 
@@ -1504,7 +1504,7 @@ def generate(output_dir: Path = PAPER_OUTPUT, keys_dir: Optional[Path] = None):
     else:
         print(f"\n  Tier 2 (key cosine similarity): NOT AVAILABLE")
         print(f"  Run: uv run python -m src.mechanism.compute_keys")
-        print(f"  Then: uv run python -m analysis.interference_panel --keys-dir results/keys")
+        print(f"  Then: uv run python -m analysis.interference_panel --keys-dir results/key_vectors")
 
     print(f"\n  NOTE: This is within-trajectory mechanistic evidence (N={len(TRAJECTORIES)} trajectories),")
     print(f"  not population-level inference. Complements the controlled-coupling experiment.")

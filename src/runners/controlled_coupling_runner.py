@@ -497,6 +497,16 @@ if _cc_start_batch > 0:
     eval_source = eval_source.replace(ckpt_load_anchor, _ckpt_injection + "\\n" + ckpt_load_anchor, 1)
     print(f"[CC] Checkpoint resumption injected (start_from_batch={{_cc_start_batch}})")
 
+# Always inject defaults before the for loop to prevent UnboundLocalError
+# when all batches are skipped (checkpoint resumption or already_finished).
+# The CHECKPOINT_LOAD_ANCHOR is just before cnt=0 and the editing for-loop.
+_exec_time_default = '''
+    exec_time = 0  # Default: overwritten by each batch, prevents UnboundLocalError if all skipped
+    edited_model = model  # Default: checkpoint loading already modified model in-place
+'''
+assert ckpt_load_anchor in eval_source, "CHECKPOINT_LOAD_ANCHOR not found for exec_time init."
+eval_source = eval_source.replace(ckpt_load_anchor, ckpt_load_anchor + "\\n" + _exec_time_default, 1)
+
 print("[CC] evaluate.py patched with dataset override + mechanism hooks")
 
 # ─── 5. Execute ─────────────────────────────────────────────────────
@@ -747,7 +757,11 @@ def main():
 
     for stream_name, dataset_path in streams_to_run:
         # Write JSONL to checkpoint dir (S3-mounted = crash-resilient)
-        ckpt_dir = ckpt_base / f"{stream_name}" / f"seed{args.seed}"
+        if args.checkpoint_base:
+            # User-specified base already includes stream/seed path
+            ckpt_dir = ckpt_base
+        else:
+            ckpt_dir = ckpt_base / f"{stream_name}" / f"seed{args.seed}"
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         output_jsonl = ckpt_dir / f"{stream_name}_seed{args.seed}_{timestamp}.jsonl"
 

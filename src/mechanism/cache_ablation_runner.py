@@ -119,10 +119,11 @@ def main():
 
     ckpt_dir = ckpt_base / f"batch_{args.checkpoint_batch}"
 
+    edits = (args.checkpoint_batch + 1) * 100
     if args.output_dir:
         output_dir = Path(args.output_dir)
     else:
-        output_dir = PROJECT_ROOT / "results" / "cache_ablation"
+        output_dir = PROJECT_ROOT / "results" / "cache_ablation" / f"seed{args.seed}" / f"{edits}edits" / "AlphaEdit"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")

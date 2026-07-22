@@ -70,12 +70,23 @@ def get_alphaedit_root() -> Path:
     return get_project_root() / "vendor" / "AlphaEdit"
 
 
-def resolve_checkpoint_dir(explicit_dir: str | None, seed: int, lambda_prev: float, lambda_delta: float) -> Path:
-    """Resolve checkpoint directory for MEMIT+SeqReg."""
+def resolve_checkpoint_dir(explicit_dir: str | None, seed: int, lambda_prev: float, lambda_delta: float, cache_max: int | None = None) -> Path:
+    """Resolve checkpoint directory for MEMIT+SeqReg.
+
+    Convention: checkpoints/failure_curve/MEMIT-SEQ-lp{lp}-ld{ld}-cache{cm}/seed{N}/
+    """
     if explicit_dir:
         return Path(explicit_dir)
-    base = Path.home() / ".cache" / "memit_seqreg_checkpoints"
-    return base / f"seed{seed}_lp{lambda_prev}_ld{lambda_delta}"
+
+    cache_max_str = str(cache_max) if cache_max is not None else "0"
+    variant_name = f"MEMIT-SEQ-lp{lambda_prev}-ld{lambda_delta}-cache{cache_max_str}"
+
+    if Path("/s3-data/continual-learning/alphaedit/checkpoints").exists():
+        base = Path("/s3-data/continual-learning/alphaedit/checkpoints")
+    else:
+        base = Path.home() / ".cache" / "alphaedit_checkpoints"
+
+    return base / "failure_curve" / variant_name / f"seed{seed}"
 
 
 def find_latest_checkpoint(ckpt_dir: Path) -> tuple[int, Path] | None:
@@ -141,6 +152,8 @@ def build_sequential_script(
     checkpoint_dir: str = "",
     start_from_batch: int = 0,
     dataset_override: str | None = None,
+    eval_results_dir: str = "",
+    variant_name: str = "",
 ) -> str:
     """
     Build inline Python script for MEMIT+SeqReg.
@@ -487,6 +500,23 @@ _eval_source = _eval_source.replace(
     "# CUDA_VISIBLE_DEVICES managed by memit_sequential_runner",
 )
 
+# Override RESULTS_DIR
+_globals_import = 'from util.globals import *'
+assert _globals_import in _eval_source, "globals import not found in evaluate.py"
+_eval_source = _eval_source.replace(
+    _globals_import,
+    _globals_import + '\\nRESULTS_DIR = Path("{eval_results_dir}")\\n',
+    1,
+)
+print(f"  [RESULTS_DIR] Overridden to: {eval_results_dir}")
+
+# Override dir_name to use variant
+_eval_source = _eval_source.replace(
+    'dir_name=args.alg_name,',
+    'dir_name="{variant_name}",',
+    1,
+)
+
 # Inject order shuffle + fingerprint before loop
 _loop_anchor = '    for record_chunks in chunks(ds, num_edits):'
 assert _loop_anchor in _eval_source, "Loop anchor not found in evaluate.py."
@@ -546,6 +576,7 @@ if _ds_override_path:
 
 # Inject checkpoint LOAD before the loop
 _ckpt_load_injection = '''    # === CHECKPOINT: load state from previous run (injected) ===
+    exec_time = 0  # Default: prevents UnboundLocalError if all batches skipped
     if _ckpt_start_batch > 0 and '_ckpt_load' in globals():
         _ckpt_load(model, hparams)
     # === END checkpoint load ===
@@ -669,19 +700,24 @@ def run(args: argparse.Namespace) -> None:
     print("Validating source anchors...")
     validate_anchors()
 
+    # Parse cache_max
+    cache_max = None if args.cache_max == "none" else int(args.cache_max)
+
     # Output directory
-    results_dir = project_root / "results" / "memit_seqreg"
+    cache_max_str = str(cache_max) if cache_max is not None else "0"
+    variant_name = f"MEMIT-SEQ-lp{args.lambda_prev}-ld{args.lambda_delta}-cache{cache_max_str}"
+    results_dir = (
+        project_root / "results" / "memit_seqreg"
+        / f"seed{args.seed}" / f"{args.dataset_size_limit}edits" / variant_name
+    )
     results_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     output_jsonl = results_dir / f"log_seed{args.seed}_lp{args.lambda_prev}_ld{args.lambda_delta}_{timestamp}.jsonl"
 
-    # Parse cache_max
-    cache_max = None if args.cache_max == "none" else int(args.cache_max)
-
     # Resolve checkpoint directory and auto-detect resume point
     ckpt_dir = resolve_checkpoint_dir(
-        args.checkpoint_dir, args.seed, args.lambda_prev, args.lambda_delta
+        args.checkpoint_dir, args.seed, args.lambda_prev, args.lambda_delta, cache_max
     )
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
@@ -723,6 +759,8 @@ def run(args: argparse.Namespace) -> None:
         checkpoint_dir=str(ckpt_dir),
         start_from_batch=start_from_batch,
         dataset_override=args.dataset_override,
+        eval_results_dir=str(results_dir.parent),
+        variant_name=variant_name,
     )
 
     # Environment

@@ -69,8 +69,8 @@ if [ "$ALG_NAME" = "MEMIT_seq" ]; then
         --conserve_memory
 else
     # Use checkpoint_runner for AlphaEdit and MEMIT
-    # Explicit checkpoint_dir to avoid colliding with standard failure curve checkpoints
-    CKPT_DIR="${CHECKPOINT_DIR:-/s3-data/continual-learning/alphaedit/checkpoints}/${ALG_NAME}/seed${SEED}/order${ORDER_ID}"
+    # Checkpoints go to comparison_ordered/ namespace to avoid colliding with failure curve
+    CKPT_DIR="${CHECKPOINT_DIR:-/s3-data/continual-learning/alphaedit/checkpoints}/comparison_ordered/${ALG_NAME}/seed${SEED}/order${ORDER_ID}"
     uv run python "$PROJECT_ROOT/src/runners/checkpoint_runner.py" \
         --seed "$SEED" \
         --alg_name "$ALG_NAME" \

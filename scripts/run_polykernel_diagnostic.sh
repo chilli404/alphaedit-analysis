@@ -71,7 +71,7 @@ EXTRA_ARGS=""
 
 if [[ "$COUPLING_MODE" == "true" ]]; then
     # Coupling mode: use coupling dataset with num_edits=1
-    COUPLING_DATASET="results/coupling_stress/coupling_dataset_seed${SEED}.json"
+    COUPLING_DATASET="results/coupling_stress/seed${SEED}/AlphaEdit/coupling_dataset_seed${SEED}.json"
     if [[ ! -f "$COUPLING_DATASET" ]]; then
         echo "  Coupling dataset not found at $COUPLING_DATASET"
         echo "  Generating via coupling_dataset module..."

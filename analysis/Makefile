@@ -16,12 +16,13 @@
 # All outputs go to results/figures/paper/ (or appendix/).
 # Run from the repo root: make -C analysis all
 
-PYTHON := uv run python
+PYTHON := PYTHONPATH=.. uv run python
 OUTPUT := ../results/figures/paper
 APPENDIX := ../results/figures/appendix
-KEYS := ../results/keys
+KEYS := ../results/key_vectors
+MATCHED := ../results/matched_ordering
 
-.PHONY: all fig1 fig2 fig3 fig4 fig5 interference tables appendix check clean
+.PHONY: all fig1 fig2 fig3 fig4 fig5 interference tables appendix check clean validate_ordering
 
 all: fig1 fig2 fig3 fig4 interference fig5 tables
 
@@ -56,6 +57,13 @@ tables:
 appendix:
 	@echo "── Appendix Figures ──"
 	$(PYTHON) -m analysis.appendix_figures --output-dir $(APPENDIX)
+
+validate_ordering:
+	@echo "── Matched Ordering: Pre-Experiment Validation ──"
+	$(PYTHON) -m analysis.validate_key_orderings \
+		--seed 42 \
+		--keys_path $(MATCHED)/key_geometry/keys_seed42_layer6.npz \
+		--stream_dir $(MATCHED)
 
 check:
 	@echo "── Data Availability Report ──"
