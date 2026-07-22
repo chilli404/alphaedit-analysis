@@ -2,7 +2,6 @@
 
 Produces:
   - table1_reproduction.csv (method × dataset × metrics, mean ± std across seeds)
-  - table2_controlled_coupling.csv (seed × stream × metrics)
   - table3_matched_comparison.csv (method × edits × cohort metrics)
   - table4_stream_audit.csv (matched vs manipulated properties)
   - paper_numbers.json (all numbers cited in prose)
@@ -24,13 +23,10 @@ from analysis.loaders import (
     load_checkpoint_metrics,
     load_checkpoint_cohorts,
     load_comparison_ordered,
-    load_controlled_coupling_behavioral,
-    load_controlled_coupling_jsonl,
     load_mve_metrics,
     load_polykernel_diagnostic,
     load_polykernel_metrics,
     load_seqreg_eval,
-    load_stream_audit,
 )
 
 # ─── Configuration ────────────────────────────────────────────────────────────
@@ -89,54 +85,6 @@ def table1_reproduction(output_dir: Path):
 
     # Write CSV
     csv_path = output_dir / "table1_reproduction.csv"
-    if rows:
-        fieldnames = list(rows[0].keys())
-        with open(csv_path, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(rows)
-        print(f"  {csv_path.name}: {len(rows)} rows")
-    return rows
-
-
-# ─── Table 2: Controlled Coupling Summary ────────────────────────────────────
-
-
-def table2_controlled_coupling(output_dir: Path):
-    """Table 2: Controlled coupling summary across seeds."""
-    rows = []
-
-    for seed in [42, 137]:
-        behav = load_controlled_coupling_behavioral(seed)
-        if behav is None:
-            continue
-
-        for stream in ("low_coupling", "high_coupling"):
-            data = behav.get(stream, {})
-            if not data:
-                continue
-
-            row = {
-                "seed": seed,
-                "stream": stream,
-                "overall_efficacy": data.get("overall_efficacy"),
-                "first_1k_efficacy": data.get("first_1k_mean_efficacy"),
-                "latest_1k_efficacy": data.get("last_1k_mean_efficacy"),
-                "retention_auc": data.get("retention_auc"),
-            }
-
-            # Get mechanism metrics from JSONL (last record)
-            jsonl_records = load_controlled_coupling_jsonl(stream, seed)
-            if jsonl_records:
-                last = jsonl_records[-1]
-                agg = last.get("mechanism", {}).get("aggregate", {})
-                row["effective_rank"] = agg.get("mean_cache_effective_rank")
-                row["removed_fraction"] = agg.get("mean_removed_fraction")
-                row["condition"] = agg.get("mean_cache_condition")
-
-            rows.append(row)
-
-    csv_path = output_dir / "table2_controlled_coupling.csv"
     if rows:
         fieldnames = list(rows[0].keys())
         with open(csv_path, "w", newline="") as f:
@@ -218,58 +166,6 @@ def table3_matched_comparison(output_dir: Path):
     return rows
 
 
-# ─── Table 4: Stream-Matching Audit ──────────────────────────────────────────
-
-
-def table4_stream_audit(output_dir: Path):
-    """Table 4: Stream-matching audit (matched vs manipulated properties)."""
-    audit = load_stream_audit(42)
-    if audit is None:
-        print("  table4_stream_audit.csv: SKIP (no audit data)")
-        return []
-
-    low_key = "low_structure" if "low_structure" in audit else "low_coupling"
-    high_key = "high_structure" if "high_structure" in audit else "high_coupling"
-    low = audit.get(low_key, {})
-    high = audit.get(high_key, {})
-
-    properties = [
-        ("n_records", "N records"),
-        ("prompt_len_mean", "Prompt length (mean)"),
-        ("prompt_len_std", "Prompt length (std)"),
-        ("target_new_len_mean", "Target length (mean)"),
-        ("n_unique_relations", "Unique relations"),
-        ("relation_entropy", "Relation entropy"),
-        ("n_unique_subjects", "Unique subjects"),
-        ("subject_reuse_rate", "Subject reuse rate"),
-        ("max_subject_repeats", "Max subject repeats"),
-        ("mean_intra_batch_overlap", "Mean intra-batch overlap"),
-        ("max_intra_batch_overlap", "Max intra-batch overlap"),
-    ]
-
-    rows = []
-    for key, label in properties:
-        rows.append({
-            "property": label,
-            "low_coupling": low.get(key),
-            "high_coupling": high.get(key),
-            "status": "MANIPULATED" if key in ("n_unique_subjects", "subject_reuse_rate",
-                                                "max_subject_repeats",
-                                                "mean_intra_batch_overlap",
-                                                "max_intra_batch_overlap") else "MATCHED",
-        })
-
-    csv_path = output_dir / "table4_stream_audit.csv"
-    if rows:
-        fieldnames = list(rows[0].keys())
-        with open(csv_path, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(rows)
-        print(f"  {csv_path.name}: {len(rows)} rows")
-    return rows
-
-
 # ─── Table 5: Per-Edit Interference ──────────────────────────────────────────
 
 
@@ -332,25 +228,6 @@ def generate_paper_numbers(output_dir: Path):
                 numbers[f"ae_efficacy_seed{seed}_{edits}"] = ae["efficacy"]
             if memit:
                 numbers[f"memit_efficacy_seed{seed}_{edits}"] = memit["efficacy"]
-
-    # Controlled coupling
-    for seed in [42, 137]:
-        behav = load_controlled_coupling_behavioral(seed)
-        if behav:
-            for stream in ("low_coupling", "high_coupling"):
-                data = behav.get(stream, {})
-                prefix = f"coupling_{stream}_seed{seed}"
-                numbers[f"{prefix}_overall_eff"] = data.get("overall_efficacy")
-                numbers[f"{prefix}_first_1k"] = data.get("first_1k_mean_efficacy")
-                numbers[f"{prefix}_last_1k"] = data.get("last_1k_mean_efficacy")
-                numbers[f"{prefix}_auc"] = data.get("retention_auc")
-
-        # First-1K gap
-        if behav:
-            low_f1k = behav.get("low_coupling", {}).get("first_1k_mean_efficacy")
-            high_f1k = behav.get("high_coupling", {}).get("first_1k_mean_efficacy")
-            if low_f1k is not None and high_f1k is not None:
-                numbers[f"coupling_first_1k_gap_seed{seed}"] = low_f1k - high_f1k
 
     # Order sensitivity
     for edits in [3000, 7000]:
@@ -482,9 +359,7 @@ def generate(output_dir: Path = PAPER_OUTPUT):
     output_dir.mkdir(parents=True, exist_ok=True)
     print("Generating tables...")
     table1_reproduction(output_dir)
-    table2_controlled_coupling(output_dir)
     table3_matched_comparison(output_dir)
-    table4_stream_audit(output_dir)
     table5_interference(output_dir)
     print("\nGenerating paper numbers...")
     generate_paper_numbers(output_dir)

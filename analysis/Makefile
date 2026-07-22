@@ -4,8 +4,6 @@
 #   make all          Generate everything
 #   make fig1         Figure 1: Reproduction + long-horizon
 #   make fig2         Figure 2: Anatomy of forgetting
-#   make fig3         Figure 3: Controlled coupling
-#   make fig4         Figure 4: Attribution
 #   make fig5         Figure 5: Per-edit interference (key geometry)
 #   make interference Run interference panel analysis (requires keys)
 #   make tables       All tables + paper_numbers.json
@@ -22,9 +20,9 @@ APPENDIX := ../results/figures/appendix
 KEYS := ../results/key_vectors
 MATCHED := ../results/matched_ordering
 
-.PHONY: all fig1 fig2 fig3 fig4 fig5 interference tables appendix check clean validate_ordering
+.PHONY: all fig1 fig2 fig5 interference tables appendix check clean validate_ordering
 
-all: fig1 fig2 fig3 fig4 interference fig5 tables
+all: fig1 fig2 interference fig5 tables
 
 fig1:
 	@echo "── Figure 1: Reproduction & Long-Horizon ──"
@@ -33,14 +31,6 @@ fig1:
 fig2:
 	@echo "── Figure 2: Anatomy of Forgetting ──"
 	$(PYTHON) -m analysis.fig2_forgetting --output-dir $(OUTPUT)
-
-fig3:
-	@echo "── Figure 3: Controlled Coupling ──"
-	$(PYTHON) -m analysis.fig3_coupling --output-dir $(OUTPUT)
-
-fig4:
-	@echo "── Figure 4: Attribution ──"
-	$(PYTHON) -m analysis.fig4_attribution --output-dir $(OUTPUT)
 
 interference:
 	@echo "── Interference Panel Analysis ──"

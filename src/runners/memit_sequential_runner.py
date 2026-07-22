@@ -29,7 +29,7 @@ Calibration settings:
     C: λ_prev=10, λ_delta=1       # Strong prev-key protection
     D: λ_prev=100, λ_delta=1      # Very strong prev-key protection
 
-Implementation: Dual source injection (following coupling_stress_runner.py):
+Implementation: Dual source injection (following alphaedit_stream_runner.py):
   1. Read memit_main.py, inject LHS augmentation + cache storage + norm logging
   2. Compile/exec patched memit → extract apply_memit_to_model
   3. Read evaluate.py, replace MEMIT import, inject batch counter

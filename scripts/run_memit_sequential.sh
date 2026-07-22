@@ -42,7 +42,7 @@ LAMBDA_PREV="${2:-${LAMBDA_PREV:-1.0}}"
 LAMBDA_DELTA="${3:-${LAMBDA_DELTA:-1.0}}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
 CACHE_STRATEGY="${CACHE_STRATEGY:-recent}"
-CACHE_MAX="${CACHE_MAX:-20}"
+CACHE_MAX="${CACHE_MAX:-none}"
 DATASET_SIZE_LIMIT="${TARGET_EDITS:-2000}"
 SAVE_INTERVAL="${SAVE_INTERVAL:-10}"
 # CHECKPOINT_DIR: explicit override for checkpoint path (overrides CHECKPOINT_ROOT env var)
@@ -87,7 +87,7 @@ uv run python src/runners/memit_sequential_runner.py \
     --ds_name mcf \
     --dataset_size_limit "$DATASET_SIZE_LIMIT" \
     --num_edits 100 \
-    --downstream_eval_steps 10 \
+    --downstream_eval_steps 0 \
     --conserve_memory \
     --lambda_prev "$LAMBDA_PREV" \
     --lambda_delta "$LAMBDA_DELTA" \

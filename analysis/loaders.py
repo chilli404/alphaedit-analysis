@@ -13,25 +13,11 @@ results/
 │               └── run_000/
 │                   ├── {E}_edits-case_0.json
 │                   └── ...
-├── controlled_coupling/
-│   ├── {stream}_seed{N}*.jsonl    # stream = low_coupling or high_coupling
-│   ├── behavioral_eval_seed{N}.json
-│   └── stream_properties_seed{N}.json
 ├── comparison_ordered/
 │   └── seed{N}/
 │       └── {E}edits/
 │           ├── order{0-9}/{Alg}/run_000/*_edits-case_*.json
 │           └── (legacy) {Alg}/run_000/*_edits-case_*.json
-├── order_sensitivity/
-│   └── seed{N}/
-│       ├── order_{Alg}_seed{N}_order{I}_*.jsonl    # metadata
-│       └── order{0-4}/{Alg}/run_000/*_edits-case_*.json
-├── coupling_stress/
-│   ├── coupling_stats_seed{N}.json              # aggregated stats
-│   └── seed{N}/AlphaEdit/
-│       ├── coupling_trace_seed{N}_*.jsonl       # per-edit trace
-│       ├── coupling_dataset_seed{N}.json
-│       └── metadata_seed{N}.json
 ├── polykernel_editor/
 │   └── seed{N}/
 │       └── {E}edits/
@@ -68,10 +54,6 @@ results/
 │   └── seed{N}/alphaedit_results/MEMIT/run_000/*_edits-case_*.json
 ├── mve3_alphaedit_zsre/
 │   └── seed{N}/alphaedit_results/AlphaEdit/run_000/*_edits-case_*.json
-├── mve4_conflict_seq/
-│   └── seed{N}/
-│       └── {E}edits/
-│           └── {Alg}/run_000/*_edits-case_*.json
 └── figures/paper/
     └── stream_matching_audit_seed{N}.json
 """
@@ -257,62 +239,6 @@ def load_checkpoint_glue(seed: int, edits: int, alg: str) -> Optional[Dict[str, 
     return scores
 
 
-# ─── Controlled Coupling Loaders ─────────────────────────────────────────────
-
-
-def load_controlled_coupling_jsonl(
-    stream: str,
-    seed: int,
-) -> List[Dict]:
-    """Load per-batch mechanism records from controlled coupling JSONL.
-
-    Args:
-        stream: "low_coupling" or "high_coupling"
-        seed: random seed (42, 137)
-
-    Returns list of records with keys: stream, batch_idx, total_edits,
-    mechanism.{layers, aggregate, projection_layers}, evaluation.
-    """
-    cc_dir = RESULTS / "controlled_coupling"
-    if not cc_dir.exists():
-        return []
-
-    records = []
-    for jsonl in sorted(cc_dir.glob(f"{stream}_seed{seed}*.jsonl")):
-        with open(jsonl) as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    records.append(json.loads(line))
-    return records
-
-
-def load_controlled_coupling_behavioral(seed: int) -> Optional[Dict]:
-    """Load behavioral evaluation results for controlled coupling.
-
-    Returns dict with keys "low_coupling" and "high_coupling", each containing:
-    overall_efficacy, first_1k_mean_efficacy, last_1k_mean_efficacy,
-    retention_auc, cohort_retention, per_fact_results.
-    """
-    path = RESULTS / "controlled_coupling" / f"behavioral_eval_seed{seed}.json"
-    if not path.exists():
-        return None
-    with open(path) as f:
-        return json.load(f)
-
-
-def load_stream_audit(seed: int) -> Optional[Dict]:
-    """Load stream-matching audit results."""
-    path = RESULTS / "figures" / "paper" / f"stream_matching_audit_seed{seed}.json"
-    if not path.exists():
-        # Try controlled_coupling dir
-        path = RESULTS / "controlled_coupling" / f"stream_properties_seed{seed}.json"
-    if not path.exists():
-        return None
-    with open(path) as f:
-        return json.load(f)
-
-
 # ─── Order Sensitivity Loaders ───────────────────────────────────────────────
 
 
@@ -390,113 +316,6 @@ def load_comparison_ordered(
             results.append(entry)
 
     return results
-
-
-def load_order_sensitivity(
-    seed: int,
-) -> List[Dict[str, Any]]:
-    """Load per-ordering metrics from order_sensitivity experiment.
-
-    Layout: order_sensitivity/seed{N}/order{I}/{Alg}/run_000/*_edits-case_*.json
-
-    Returns list of dicts with: order_id, algorithm, efficacy, paraphrase,
-    neighborhood, n_facts.
-    """
-    base = RESULTS / "order_sensitivity" / f"seed{seed}"
-    if not base.exists():
-        return []
-
-    results = []
-    for i in range(10):
-        order_dir = base / f"order{i}"
-        if not order_dir.exists():
-            continue
-        for alg in ("AlphaEdit", "MEMIT"):
-            run_dir = order_dir / alg / "run_000"
-            if not run_dir.exists():
-                continue
-            agg = _aggregate_case_files(run_dir)
-            if agg is None:
-                continue
-            agg["order_id"] = str(i)
-            agg["algorithm"] = alg
-            results.append(agg)
-
-    return results
-
-
-def load_order_sensitivity_logs(
-    seed: int,
-) -> List[Dict]:
-    """Load order sensitivity JSONL metadata logs.
-
-    Returns list of metadata records (one per ordering × algorithm).
-    """
-    base = RESULTS / "order_sensitivity" / f"seed{seed}"
-    if not base.exists():
-        return []
-
-    records = []
-    for jsonl in sorted(base.glob("order_*_seed*.jsonl")):
-        with open(jsonl) as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    records.append(json.loads(line))
-    return records
-
-
-# ─── Coupling Stress Loaders ────────────────────────────────────────────────
-
-
-def load_coupling_stress_stats(seed: int) -> Optional[Dict]:
-    """Load aggregated coupling stress statistics.
-
-    Returns dict with: summary, kruskal_wallis, pairwise_mannwhitney,
-    cliffs_delta_3v0, spearman_loss_vs_norm.
-    """
-    path = RESULTS / "coupling_stress" / f"coupling_stats_seed{seed}.json"
-    if not path.exists():
-        return None
-    with open(path) as f:
-        return json.load(f)
-
-
-def load_coupling_stress_trace(
-    seed: int,
-    alg: str = "AlphaEdit",
-) -> List[Dict]:
-    """Load per-edit coupling stress trace JSONL.
-
-    Layout: coupling_stress/seed{N}/{Alg}/coupling_trace_seed{N}_*.jsonl
-
-    Returns list of records with: edit_idx, case_id, coupling_type,
-    coupling_type_name, role, pair_id, layers, aggregate.
-    """
-    trace_dir = RESULTS / "coupling_stress" / f"seed{seed}" / alg
-    if not trace_dir.exists():
-        return []
-
-    records = []
-    for jsonl in sorted(trace_dir.glob(f"coupling_trace_seed{seed}_*.jsonl")):
-        with open(jsonl) as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    records.append(json.loads(line))
-    return records
-
-
-def load_coupling_stress_dataset(
-    seed: int,
-    alg: str = "AlphaEdit",
-) -> Optional[List[Dict]]:
-    """Load the coupling dataset used for stress test."""
-    path = RESULTS / "coupling_stress" / f"seed{seed}" / alg / f"coupling_dataset_seed{seed}.json"
-    if not path.exists():
-        return None
-    with open(path) as f:
-        return json.load(f)
 
 
 # ─── Polykernel Editor Loaders ──────────────────────────────────────────────
@@ -747,8 +566,8 @@ def load_seqreg_behavioral(
 
 
 def load_weight_drift(seed: int) -> Optional[Dict]:
-    """Load weight drift analysis for controlled coupling."""
-    path = RESULTS / "figures" / "paper" / f"weight_drift_controlled_coupling_seed{seed}.json"
+    """Load weight drift analysis."""
+    path = RESULTS / "figures" / "paper" / f"weight_drift_seed{seed}.json"
     if not path.exists():
         return None
     with open(path) as f:
@@ -763,7 +582,7 @@ def load_mve_metrics(experiment: str, seed: int, alg: str) -> Optional[Dict[str,
 
     Args:
         experiment: e.g. "mve1_alphaedit_mcf", "mve2_memit_mcf",
-                   "mve3_alphaedit_zsre", "mve4_conflict_seq"
+                   "mve3_alphaedit_zsre"
         seed: random seed
         alg: "AlphaEdit" or "MEMIT"
     """
@@ -776,9 +595,6 @@ def load_mve_metrics(experiment: str, seed: int, alg: str) -> Optional[Dict[str,
         seed_dir / "alphaedit_results" / alg / "run_000",  # mve1-3 standard
         seed_dir / "results" / alg / "run_000",            # legacy
     ]
-    # mve4 uses {E}edits/{Alg}/run_000/
-    for edits_dir in sorted(seed_dir.glob("*edits")):
-        candidates.append(edits_dir / alg / "run_000")
 
     for run_dir in candidates:
         if not run_dir.exists():
@@ -919,15 +735,6 @@ def discover_available_data() -> Dict[str, Any]:
                 fc[seed] = edits_available
         summary["failure_curve"] = fc
 
-    # Controlled coupling
-    cc_dir = RESULTS / "controlled_coupling"
-    if cc_dir.exists():
-        cc = {
-            "jsonl_files": [f.name for f in cc_dir.glob("*.jsonl")],
-            "behavioral_evals": [f.name for f in cc_dir.glob("behavioral_eval_*.json")],
-        }
-        summary["controlled_coupling"] = cc
-
     # Order sensitivity (comparison_ordered)
     co_dir = RESULTS / "comparison_ordered"
     if co_dir.exists():
@@ -935,29 +742,6 @@ def discover_available_data() -> Dict[str, Any]:
         for seed_dir in sorted(co_dir.glob("seed*")):
             co[seed_dir.name] = [d.name for d in sorted(seed_dir.iterdir()) if d.is_dir()]
         summary["comparison_ordered"] = co
-
-    # Order sensitivity (dedicated experiment)
-    os_dir = RESULTS / "order_sensitivity"
-    if os_dir.exists():
-        os_data = {}
-        for seed_dir in sorted(os_dir.glob("seed*")):
-            orders = [d.name for d in sorted(seed_dir.iterdir())
-                      if d.is_dir() and d.name.startswith("order")]
-            jsonls = [f.name for f in sorted(seed_dir.glob("*.jsonl"))]
-            os_data[seed_dir.name] = {"orders": orders, "logs": jsonls}
-        summary["order_sensitivity"] = os_data
-
-    # Coupling stress
-    cs_dir = RESULTS / "coupling_stress"
-    if cs_dir.exists():
-        cs = {
-            "stats": [f.name for f in sorted(cs_dir.glob("coupling_stats_*.json"))],
-            "seeds": [],
-        }
-        for seed_dir in sorted(cs_dir.glob("seed*")):
-            algos = [d.name for d in seed_dir.iterdir() if d.is_dir()]
-            cs["seeds"].append({"seed": seed_dir.name, "algorithms": algos})
-        summary["coupling_stress"] = cs
 
     # Polykernel editor
     pk_dir = RESULTS / "polykernel_editor"
@@ -988,7 +772,7 @@ def discover_available_data() -> Dict[str, Any]:
 
     # MVE experiments (reproduction at standard scale)
     for mve_name in ("mve1_alphaedit_mcf", "mve2_memit_mcf",
-                     "mve3_alphaedit_zsre", "mve4_conflict_seq"):
+                     "mve3_alphaedit_zsre"):
         mve_dir = RESULTS / mve_name
         if mve_dir.exists():
             mve = {}
@@ -996,9 +780,6 @@ def discover_available_data() -> Dict[str, Any]:
                 n_cases = 0
                 # Standard layout: alphaedit_results/{Alg}/run_000/
                 for run_dir in seed_dir.glob("alphaedit_results/*/run_000"):
-                    n_cases += len(list(run_dir.glob("*_edits-case_*.json")))
-                # mve4 layout: {E}edits/{Alg}/run_000/
-                for run_dir in seed_dir.glob("*edits/*/run_000"):
                     n_cases += len(list(run_dir.glob("*_edits-case_*.json")))
                 if n_cases > 0:
                     mve[seed_dir.name] = n_cases

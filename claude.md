@@ -77,7 +77,7 @@ bash sky/sky_launch.sh failure_curve_ckpt 42   # Checkpointed failure curve
 bash sky/sky_launch.sh memit_sequential 42     # MEMIT+PrevKeyReg+Ridge
 ```
 
-Valid experiment names: `mve1`, `mve2`, `mve3`, `mve4`, `failure_curve_ckpt`, `second_model`, `nullspace`, `coupling_stress`, `order_sensitivity`, `capability_probe`, `memit_sequential`, `mve`, `all`
+Valid experiment names: `mve1`, `mve2`, `mve3`, `failure_curve_ckpt`, `second_model`, `nullspace`, `capability_probe`, `memit_sequential`, `matched_ordering`, `mve`, `all`
 
 Creates clusters named `ae-{experiment}-s{seed}` (e.g., `ae-mve1_alphaedit_mcf-s42`). If the cluster already exists, it uses `sky exec` (reuses existing cluster) instead of `sky launch` (creates new cluster). All jobs use `--detach-run` for asynchronous execution.
 
@@ -130,7 +130,6 @@ bash scripts/run_mve1_alphaedit_mcf.sh 42
 | `scripts/run_mve1_alphaedit_mcf.sh` | AlphaEdit | MultiCounterFact | Primary claim: 2000 facts, 100-edit batches, measures efficacy/paraphrase/neighborhood/GLUE |
 | `scripts/run_mve2_memit_mcf.sh` | MEMIT | MultiCounterFact | Fair comparison baseline (same data, same batches, unconstrained editing) |
 | `scripts/run_mve3_alphaedit_zsre.sh` | AlphaEdit | zsRE | Cross-dataset generalization |
-| `scripts/run_mve4_conflict_seq.sh` | AlphaEdit | Conflict (generated) | Sequential single edits with conflicting targets for same subject |
 
 ### Extended Analysis Scripts
 
@@ -139,8 +138,7 @@ bash scripts/run_mve1_alphaedit_mcf.sh 42
 | `scripts/run_failure_curve_checkpointed.sh` | Checkpointed failure curve at [3000, 5000, 7000, 9000, 10000] edits — finds where AlphaEdit's null-space advantage disappears |
 | `scripts/run_failure_curve_checkpointed.sh` | Checkpoint-based failure curve with 3 evaluation modes: normal (full eval every batch), fast (edited batch only), milestone (full eval at checkpoints only - RECOMMENDED) |
 | `scripts/run_nullspace_analysis.sh` | Tracks null-space rank consumption per layer per batch via SVD |
-| `scripts/run_order_sensitivity.sh` | 5 random orderings × 2 algorithms — tests if edit order affects final metrics |
-| `scripts/run_coupling_stress.sh` | Measures "projection loss" under 4 semantic coupling types (synonym, hypernym, co-occurrence, causal) |
+| `scripts/run_matched_ordering.sh` | Matched ordering: clustered vs dispersed key geometry under controlled 5K-edit streams |
 | `scripts/run_capability_probe.sh` | Measures WikiText perplexity + few-shot MMLU at intervals to detect general capability damage |
 | `scripts/run_memit_sequential.sh` | MEMIT+SeqReg: Non-projected analogue of AlphaEdit Eq. 12 — tests if sequential regularization can match null-space projection |
 
@@ -159,7 +157,7 @@ bash scripts/run_mve1_alphaedit_mcf.sh 42
 
 All runners use a **source injection** approach: they read `vendor/AlphaEdit/experiments/evaluate.py` as text, inject measurement/tracking code at specific anchor points, then `compile()` + `exec()` the modified source. This avoids import path issues with the vendor code and lets measurement code access internal variables (like the projection matrix P).
 
-**Dual source injection** (used by `coupling_stress_runner.py` and `memit_sequential_runner.py`): patches both an algorithm file (`memit_main.py` or `AlphaEdit_main.py`) AND `evaluate.py`. The algorithm file is compiled/exec'd into a separate namespace, the patched function is extracted, and then passed into the `evaluate.py` exec namespace to replace the import.
+**Dual source injection** (used by `alphaedit_stream_runner.py` and `memit_sequential_runner.py`): patches both an algorithm file (`memit_main.py` or `AlphaEdit_main.py`) AND `evaluate.py`. The algorithm file is compiled/exec'd into a separate namespace, the patched function is extracted, and then passed into the `evaluate.py` exec namespace to replace the import.
 
 ### Checkpoint Runner (`src/checkpoint_runner.py`)
 
@@ -212,13 +210,10 @@ lhs = α·C₀ + K_new@K_new^T + λ_prev·K_prev@K_prev^T + λ_delta·I
 |------|---------|
 | `src/seeded_runner.py` | Main wrapper: sets all RNG seeds (Python, NumPy, PyTorch, CUDA), patches CUDA device lines, launches experiment via source injection |
 | `src/nullspace_tracker.py` | Injects SVD tracking of the projection matrix P and covariance cache at each edit batch |
-| `src/coupling_stress_runner.py` | Injects projection-loss measurement inside the edit loop |
-| `src/order_sensitivity_runner.py` | Injects dataset shuffling with an independent order seed |
+| `src/alphaedit_stream_runner.py` | Generic AlphaEdit stream editor with mechanism measurement and checkpointing (used by matched ordering) |
 | `src/capability_probe_runner.py` | Hooks into GLUEEval to run perplexity/MMLU probes at configurable intervals |
 | `src/checkpoint_runner.py` | Injects checkpoint save/load/skip into evaluate.py for resumable long experiments (failure curve) |
 | `src/memit_sequential_runner.py` | MEMIT+PrevKeyReg+Ridge: dual source injection into memit_main.py (LHS augmentation) and evaluate.py (batch tracking) |
-| `src/coupling_dataset.py` | Generates anchor-probe pairs stratified by 4 semantic coupling types |
-| `src/conflict_dataset.py` | Generates conflicting edit pairs (same subject, contradictory targets) |
 | `src/capability_probe.py` | Computes WikiText-2 perplexity and few-shot MMLU accuracy |
 | `src/model_download.py` | Resolves model paths — tries local cache, then HuggingFace Hub, with optional Artifactory fallback |
 

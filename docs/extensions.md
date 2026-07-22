@@ -1,55 +1,6 @@
 # Novel Extensions — Detailed Design
 
-## Extension A: Semantic Coupling Stress Test
-
-### Motivation
-
-AlphaEdit assumes editability and preservation occupy orthogonal subspaces. But when a new edit is semantically coupled to preserved knowledge — same subject, same relation, or a direct contradiction — the required update direction may *lie partly in the preserved subspace*. The projection removes exactly that component.
-
-This failure mode is **more fundamental than saturation**: it can happen on the very first edit if that edit conflicts with the model's existing representations.
-
-### Coupling type hierarchy
-
-| Type | Name | Example |
-|------|------|---------|
-| 0 | **Unrelated** (control) | "Tesla born_in Smiljan" after preserving "Curie won Nobel" |
-| 1 | **Relation match** | "Einstein born_in Ulm" after preserving "Curie born_in Warsaw" |
-| 2 | **Subject match** | "Curie field_of_work Chemistry" after preserving "Curie born_in Warsaw" |
-| 3 | **Full conflict** | "Curie born_in Paris" after preserving "Curie born_in Warsaw" |
-
-### Design
-
-- 500 edits, `num_edits=1` (sequential, one at a time)
-- ~60 anchor-probe pairs per coupling type
-- Anchor establishes preserved knowledge → probe measures projection loss
-- Per-edit, per-layer measurement via **double source injection** into `AlphaEdit_main.py`
-
-### Hypotheses
-
-- **H1**: Projection loss increases with coupling strength (Type 0 < 1 < 2 < 3)
-- **H2**: High projection loss predicts low edit efficacy
-- **H3**: The effect is strongest at layers where the subject representation is concentrated
-
-### Statistical tests
-
-- Kruskal-Wallis H-test across coupling types
-- Pairwise Mann-Whitney U with Holm-Bonferroni correction
-- Cliff's delta: Type 3 vs Type 0
-- Spearman correlation: projection_loss ↔ update norm
-
----
-
-## Extension B: Edit Order Sensitivity
-
-AlphaEdit processes edits in source-file order with no shuffling. P is static, so the first edits claim the best null-space directions.
-
-**Design**: 2000 MCF edits × 5 random orderings × {AlphaEdit, MEMIT}
-
-**Test**: Levene's test for equality of variances. If AlphaEdit has significantly higher cross-ordering variance, ordering is a hidden hyperparameter the paper doesn't acknowledge.
-
----
-
-## Extension C: MEMIT+SeqReg — Non-Projected Sequential Regularization
+## Extension A: MEMIT+SeqReg — Non-Projected Sequential Regularization
 
 ### Scientific Question
 

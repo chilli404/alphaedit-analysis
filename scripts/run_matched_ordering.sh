@@ -170,8 +170,8 @@ if [[ "$ALG" == "MEMIT-Seq-1-0" ]]; then
         $FAST_FLAG
 
 elif [[ "$ALG" == "AlphaEdit" ]]; then
-    # AlphaEdit via controlled_coupling_runner (reuses its stream override mechanism)
-    uv run python src/runners/controlled_coupling_runner.py \
+    # AlphaEdit via alphaedit_stream_runner (checkpointed stream editing with mechanism measurement)
+    uv run python src/runners/alphaedit_stream_runner.py \
         --seed "$SEED" \
         --cuda_device "$CUDA_DEVICE" \
         --model_name "$MODEL_NAME" \

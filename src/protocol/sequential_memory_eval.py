@@ -1,6 +1,6 @@
 """Sequential-Memory Evaluation Protocol — core metric computation.
 
-Computes 8 metrics per method from existing checkpoint data:
+Computes 7 metrics per method from existing checkpoint data:
 
 1. current_batch_efficacy  — Can the model recall what it just learned?
 2. latest_1k_efficacy      — Short-term memory (most recent 1000 edits)
@@ -8,8 +8,7 @@ Computes 8 metrics per method from existing checkpoint data:
 4. age_binned_retention    — Retention curve by edit age (oldest → newest)
 5. retention_auc           — Scalar summary of the retention curve
 6. order_variance          — Coefficient of variation across orderings
-7. concentration_sensitivity — Retention gap between dispersed vs concentrated edits
-8. cost                    — Runtime and memory per batch
+7. cost                    — Runtime and memory per batch
 
 Usage:
     from src.protocol.sequential_memory_eval import evaluate_method
@@ -64,7 +63,6 @@ class MethodReport:
     retention_curve: Optional[RetentionCurve] = None
     retention_auc: Optional[float] = None
     order_variance: Optional[float] = None
-    concentration_sensitivity: Optional[float] = None
     cost_seconds_per_batch: Optional[float] = None
     cost_memory_mb: Optional[float] = None
 
@@ -85,7 +83,6 @@ class MethodReport:
             "first_1k_retention": self.first_1k_retention,
             "retention_auc": self.retention_auc,
             "order_variance": self.order_variance,
-            "concentration_sensitivity": self.concentration_sensitivity,
             "cost_seconds_per_batch": self.cost_seconds_per_batch,
             "cost_memory_mb": self.cost_memory_mb,
         }
@@ -281,28 +278,10 @@ def compute_order_variance(
     return cv, len(order_efficacies)
 
 
-def compute_concentration_sensitivity(seed: int) -> Optional[float]:
-    """Retention AUC gap between low-coupling and high-coupling streams.
-
-    Positive value = low coupling retains better (expected).
-    """
-    path = RESULTS / "controlled_coupling" / f"behavioral_eval_seed{seed}.json"
-    if not path.exists():
-        return None
-    with open(path) as f:
-        data = json.load(f)
-
-    low_auc = data.get("low_coupling", {}).get("retention_auc")
-    high_auc = data.get("high_coupling", {}).get("retention_auc")
-    if low_auc is None or high_auc is None:
-        return None
-    return float(low_auc - high_auc)
-
-
 def compute_cost(seed: int, alg: str) -> Tuple[Optional[float], Optional[float]]:
     """Estimate per-batch runtime (seconds) and memory cost (MB).
 
-    Runtime: from controlled coupling JSONL exec_time_s (AlphaEdit only),
+    Runtime: from matched ordering JSONL exec_time_s (AlphaEdit only),
              or from SeqReg logs.
     Memory: from checkpoint file sizes on disk.
     """
@@ -310,9 +289,9 @@ def compute_cost(seed: int, alg: str) -> Tuple[Optional[float], Optional[float]]
     memory = None
 
     if alg == "AlphaEdit":
-        # Runtime from controlled coupling logs
-        jsonl_path = RESULTS / "controlled_coupling"
-        for jsonl in sorted(jsonl_path.glob(f"low_coupling_seed{seed}*.jsonl")):
+        # Runtime from matched ordering logs
+        jsonl_path = RESULTS / "matched_ordering"
+        for jsonl in sorted(jsonl_path.glob(f"**/AlphaEdit/**/seed{seed}/*.jsonl")):
             times = []
             with open(jsonl) as f:
                 for line in f:
@@ -482,11 +461,6 @@ def evaluate_method(
         report.order_variance = ov
         report.order_variance_n_orderings = n
 
-    # --- Metric 7: Concentration sensitivity ---
-    # Only meaningful for AlphaEdit (coupling experiments used AlphaEdit)
-    if alg == "AlphaEdit":
-        report.concentration_sensitivity = compute_concentration_sensitivity(seed)
-
     # --- Metric 8: Cost ---
     runtime, memory = compute_cost(seed, alg)
     report.cost_seconds_per_batch = runtime
@@ -538,7 +512,7 @@ def evaluate_method_multiseed(
 
     metrics = [
         "current_batch_efficacy", "latest_1k_efficacy", "first_1k_retention",
-        "retention_auc", "order_variance", "concentration_sensitivity",
+        "retention_auc", "order_variance",
         "cost_seconds_per_batch", "cost_memory_mb",
     ]
 
@@ -605,8 +579,7 @@ def _print_report(report: MethodReport):
     print(f"  4. Retention AUC:             {_fmt(report.retention_auc)}")
     print(f"  5. Order variance (CV%):      {_fmt(report.order_variance)}")
     print(f"     (from {report.order_variance_n_orderings or 0} orderings)")
-    print(f"  6. Concentration sensitivity: {_fmt(report.concentration_sensitivity)}")
-    print(f"  7. Cost (s/batch):            {_fmt(report.cost_seconds_per_batch)}")
+    print(f"  6. Cost (s/batch):            {_fmt(report.cost_seconds_per_batch)}")
     print(f"     Cost (MB state):           {_fmt(report.cost_memory_mb)}")
 
     if report.retention_curve:
@@ -622,7 +595,7 @@ def _print_multiseed(result: Dict):
     print(f"  Seeds: {result['n_seeds']}")
     print()
     for key in ["current_batch_efficacy", "latest_1k_efficacy", "first_1k_retention",
-                "retention_auc", "order_variance", "concentration_sensitivity",
+                "retention_auc", "order_variance",
                 "cost_seconds_per_batch", "cost_memory_mb"]:
         val = result.get(key)
         if val and isinstance(val, dict):

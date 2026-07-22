@@ -19,14 +19,11 @@ A mechanistic reproducibility study of [AlphaEdit](https://github.com/jianghouch
 - [x] MVE1 — AlphaEdit on MultiCounterFact (5 seeds)
 - [x] MVE2 — MEMIT on MultiCounterFact (5 seeds)
 - [x] MVE3 — AlphaEdit on zsRE (5 seeds)
-- [x] MVE4 — Conflict sequence (5 seeds)
 
 ### Extended Experiments (3 seeds: 42, 137, 2024)
 
 - [x] Failure curve (500–10K edits)
 - [ ] Null-space rank tracking
-- [x] Coupling stress test
-- [ ] Order sensitivity (5 orderings × 2 algorithms)
 - [ ] MEMIT+SeqReg calibration
 - [ ] Cache mitigation sweep
 - [ ] Capability probe (WikiText perplexity + MMLU)
@@ -47,7 +44,6 @@ A mechanistic reproducibility study of [AlphaEdit](https://github.com/jianghouch
 | MVE1 | AlphaEdit on MultiCounterFact | Primary benchmark: 2000 facts, 5 seeds |
 | MVE2 | MEMIT on MultiCounterFact | Fair comparison under identical conditions |
 | MVE3 | AlphaEdit on zsRE | Cross-dataset generalization |
-| MVE4 | Conflict sequence | Sequential contradictions |
 
 All MVEs: batches of 100, evaluation every 5 batches, 5 seeds.
 
@@ -55,8 +51,7 @@ All MVEs: batches of 100, evaluation every 5 batches, 5 seeds.
 
 | Priority | Experiment | Core question |
 |----------|-----------|---------------|
-| **P0** | Semantic coupling stress test | Does the projection strip more of the edit when it's related to preserved knowledge? |
-| **P0** | Edit order sensitivity | Is ordering a hidden hyperparameter for null-space methods? |
+| **P0** | Matched ordering | Does key-space geometry of edit sequences affect performance? |
 | P1 | Failure curve (500–10K edits) | Where does AlphaEdit's advantage disappear? |
 | P1 | Null-space rank tracking | Which layers saturate first? |
 | P1 | MEMIT+PrevKeyReg+Ridge | Is null-space projection necessary, or does key-direction regularization suffice? |
@@ -89,7 +84,6 @@ bash scripts/smoke_test.sh  # requires GPU
 bash scripts/run_mve1_alphaedit_mcf.sh 42
 bash scripts/run_mve2_memit_mcf.sh 42
 bash scripts/run_mve3_alphaedit_zsre.sh 42
-bash scripts/run_mve4_conflict_seq.sh 42
 ```
 
 ### Failure Curve (Checkpointed)
@@ -105,10 +99,9 @@ FAST_CHECKPOINT=true bash scripts/run_failure_curve_checkpointed.sh 42 AlphaEdit
 ### Extensions
 
 ```bash
-bash scripts/run_coupling_stress.sh 42
-bash scripts/run_order_sensitivity.sh 42
 bash scripts/run_nullspace_analysis.sh 42
 bash scripts/run_capability_probe.sh 42
+bash scripts/run_matched_ordering.sh 42
 FAST_CHECKPOINT=true bash scripts/run_memit_sequential.sh 42 1 1
 ```
 
@@ -116,7 +109,7 @@ FAST_CHECKPOINT=true bash scripts/run_memit_sequential.sh 42 1 1
 
 ```bash
 bash scripts/run_all_seeds.sh mve     # All MVEs × 5 seeds (42, 137, 2024, 7, 99)
-bash scripts/run_all_seeds.sh coupling_stress  # Extensions × 3 seeds (42, 137, 2024)
+bash scripts/run_all_seeds.sh failure_curve  # Extensions × 3 seeds (42, 137, 2024)
 bash scripts/run_all_seeds.sh all     # Everything with appropriate seed counts
 ```
 
@@ -125,7 +118,7 @@ bash scripts/run_all_seeds.sh all     # Everything with appropriate seed counts
 ```bash
 bash sky/sky_launch.sh mve1           # MVE1 × 5 seeds
 bash sky/sky_launch.sh mve1 42        # MVE1, single seed override
-bash sky/sky_launch.sh coupling_stress  # Extension × 3 seeds
+bash sky/sky_launch.sh failure_curve_ckpt  # Extension × 3 seeds
 bash sky/sky_launch.sh all            # All experiments with appropriate seeds
 sky status                            # Monitor clusters
 sky logs ae-mve1_alphaedit_mcf-s42    # Stream logs
@@ -141,7 +134,6 @@ uv run python analysis/aggregate.py --results_dir results
 uv run python analysis/paired_bootstrap.py --results_dir results
 uv run python analysis/plots.py --results_dir results --output_dir results/figures
 uv run python analysis/nullspace_analysis.py --results_dir results/nullspace_tracking
-uv run python analysis/coupling_analysis.py --results_dir results/coupling_stress
 ```
 
 ---

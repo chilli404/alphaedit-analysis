@@ -9,12 +9,12 @@ set -euo pipefail
 #   - Extensions (failure_curve, nullspace, coupling, etc.): 3 seeds (42, 137, 2024)
 #
 # Usage: bash scripts/run_all_seeds.sh [EXPERIMENT]
-#   EXPERIMENT: mve1, mve2, mve3, mve4, mve, failure_curve, second_model,
-#              nullspace, coupling_stress, order_sensitivity, capability, all
+#   EXPERIMENT: mve1, mve2, mve3, mve, failure_curve, second_model,
+#              nullspace, capability, all
 #
 # Examples:
 #   bash scripts/run_all_seeds.sh mve1             # MVE1 × 5 seeds
-#   bash scripts/run_all_seeds.sh coupling_stress  # Coupling × 3 seeds
+#   bash scripts/run_all_seeds.sh failure_curve    # Failure curve × 3 seeds
 #   bash scripts/run_all_seeds.sh all              # Everything with appropriate seeds
 #
 # Environment variables:
@@ -66,15 +66,11 @@ case "$EXPERIMENT" in
     mve3)
         run_with_seeds "$MVE_SEEDS" "run_mve3_alphaedit_zsre.sh"
         ;;
-    mve4)
-        run_with_seeds "$MVE_SEEDS" "run_mve4_conflict_seq.sh"
-        ;;
     mve)
         run_with_seeds "$MVE_SEEDS" \
             "run_mve1_alphaedit_mcf.sh" \
             "run_mve2_memit_mcf.sh" \
-            "run_mve3_alphaedit_zsre.sh" \
-            "run_mve4_conflict_seq.sh"
+            "run_mve3_alphaedit_zsre.sh"
         ;;
     failure_curve)
         run_with_seeds "$EXT_SEEDS" "run_failure_curve_checkpointed.sh"
@@ -85,12 +81,6 @@ case "$EXPERIMENT" in
     nullspace)
         run_with_seeds "$EXT_SEEDS" "run_nullspace_analysis.sh"
         ;;
-    coupling_stress)
-        run_with_seeds "$EXT_SEEDS" "run_coupling_stress.sh"
-        ;;
-    order_sensitivity)
-        run_with_seeds "$EXT_SEEDS" "run_order_sensitivity.sh"
-        ;;
     capability)
         run_with_seeds "$EXT_SEEDS" "run_capability_probe.sh"
         ;;
@@ -99,20 +89,17 @@ case "$EXPERIMENT" in
         run_with_seeds "$MVE_SEEDS" \
             "run_mve1_alphaedit_mcf.sh" \
             "run_mve2_memit_mcf.sh" \
-            "run_mve3_alphaedit_zsre.sh" \
-            "run_mve4_conflict_seq.sh"
+            "run_mve3_alphaedit_zsre.sh"
         # Extensions: 3 seeds
         run_with_seeds "$EXT_SEEDS" \
             "run_failure_curve_checkpointed.sh" \
             "run_second_model.sh" \
             "run_nullspace_analysis.sh" \
-            "run_capability_probe.sh" \
-            "run_coupling_stress.sh" \
-            "run_order_sensitivity.sh"
+            "run_capability_probe.sh"
         ;;
     *)
         echo "ERROR: Unknown experiment '$EXPERIMENT'"
-        echo "Valid options: mve1, mve2, mve3, mve4, failure_curve, second_model, nullspace, coupling_stress, order_sensitivity, capability, mve, all"
+        echo "Valid options: mve1, mve2, mve3, failure_curve, second_model, nullspace, capability, mve, all"
         exit 1
         ;;
 esac

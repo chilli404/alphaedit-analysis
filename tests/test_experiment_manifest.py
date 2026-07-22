@@ -114,7 +114,6 @@ class TestExperiments:
         assert "mve1_alphaedit_mcf" in experiments
         assert "mve2_memit_mcf" in experiments
         assert "mve3_alphaedit_zsre" in experiments
-        assert "mve4_conflict_seq" in experiments
 
     def test_experiments_have_required_fields(self, manifest):
         """Each experiment should have alg_name, ds_name, and num_edits."""
@@ -188,12 +187,6 @@ class TestHighPriorityExperiments:
         assert "svd_truncation" in variants
         assert "exponential_decay" in variants
         assert "periodic_reset" in variants
-
-    def test_order_sensitivity_has_num_orderings(self, manifest):
-        """Order sensitivity should specify number of orderings."""
-        os_exp = manifest["high_priority_experiments"]["edit_order_sensitivity"]
-        assert "num_orderings" in os_exp
-        assert os_exp["num_orderings"] >= 5
 
     def test_capability_probe_defined(self, manifest):
         """Capability probe should be defined."""

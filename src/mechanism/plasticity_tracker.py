@@ -12,7 +12,7 @@ Extends checkpoint_runner with per-batch inline measurements:
 This script patches BOTH AlphaEdit_main.py (to capture raw vs projected updates)
 AND evaluate.py (for immediate evaluation and checkpoint management).
 
-Uses dual source injection pattern (like coupling_stress_runner.py).
+Uses dual source injection pattern (like alphaedit_stream_runner.py).
 
 Output: JSONL with one record per batch containing all plasticity + mechanism metrics.
 

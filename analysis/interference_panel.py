@@ -1507,7 +1507,7 @@ def generate(output_dir: Path = PAPER_OUTPUT, keys_dir: Optional[Path] = None):
         print(f"  Then: uv run python -m analysis.interference_panel --keys-dir results/key_vectors")
 
     print(f"\n  NOTE: This is within-trajectory mechanistic evidence (N={len(TRAJECTORIES)} trajectories),")
-    print(f"  not population-level inference. Complements the controlled-coupling experiment.")
+    print(f"  not population-level inference. Complements the matched-ordering experiment.")
 
 
 def main():

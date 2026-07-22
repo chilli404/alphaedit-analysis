@@ -10,7 +10,7 @@ This tests whether AlphaEdit/MEMIT failure modes are consistent with a linear
 key-space capacity bottleneck — i.e., whether a degree-2 polynomial kernel
 would create more linearly independent key directions.
 
-Architecture (dual source injection, following coupling_stress_runner.py):
+Architecture (dual source injection, following alphaedit_stream_runner.py):
   1. Read AlphaEdit_main.py (or memit_main.py), fix relative imports, inject
      key-save hook after compute_ks
   2. Compile/exec patched algo → extract apply_*_to_model
@@ -20,8 +20,7 @@ Architecture (dual source injection, following coupling_stress_runner.py):
 Usage:
     python src/polykernel_key_extractor.py \
         --seed 42 --alg_name AlphaEdit \
-        --ds_name mcf --dataset_size_limit 2000 --num_edits 100 \
-        [--coupling_dataset path/to/coupling_dataset_seed42.json]
+        --ds_name mcf --dataset_size_limit 2000 --num_edits 100
 """
 
 import argparse
@@ -70,7 +69,6 @@ def build_extraction_script(
     num_edits: int,
     downstream_eval_steps: int,
     conserve_memory: bool,
-    coupling_dataset_path: str | None,
     output_pt: str,
     eval_results_dir: str = "",
 ) -> str:
@@ -116,18 +114,7 @@ def build_extraction_script(
         # === END polykernel batch metadata ===
 '''
 
-    # Dataset override for coupling mode
     dataset_override = ""
-    if coupling_dataset_path:
-        dataset_override = f'''
-    # === POLYKERNEL: coupling dataset override (injected) ===
-    import json as _json_loader
-    with open("{coupling_dataset_path}", "r") as _cdf:
-        _coupling_data = _json_loader.load(_cdf)
-    ds.data = _coupling_data
-    print(f"  [Polykernel] Loaded {{len(_coupling_data)}} records from coupling dataset")
-    # === END coupling dataset override ===
-'''
 
     # Build the script based on algorithm
     if alg_name == "AlphaEdit":
@@ -283,7 +270,6 @@ _output = {{
         "num_edits": {num_edits},
         "dataset_size_limit": {dataset_size_limit},
         "ds_name": "{ds_name}",
-        "coupling_dataset": {repr(coupling_dataset_path)},
         "timestamp_utc": "{datetime.now(timezone.utc).isoformat()}",
         "alphaedit_commit": "b84624f",
     }},
@@ -356,14 +342,6 @@ def run(args: argparse.Namespace) -> None:
 
     output_pt = results_dir / f"keys_{args.alg_name}_seed{args.seed}.pt"
 
-    # Resolve coupling dataset path
-    coupling_dataset_path = None
-    if args.coupling_dataset:
-        coupling_dataset_path = str(Path(args.coupling_dataset).resolve())
-        if not Path(coupling_dataset_path).exists():
-            print(f"ERROR: Coupling dataset not found: {coupling_dataset_path}")
-            sys.exit(1)
-
     script = build_extraction_script(
         seed=args.seed,
         cuda_device=args.cuda_device,
@@ -375,7 +353,6 @@ def run(args: argparse.Namespace) -> None:
         num_edits=args.num_edits,
         downstream_eval_steps=0,
         conserve_memory=args.conserve_memory,
-        coupling_dataset_path=coupling_dataset_path,
         output_pt=str(output_pt),
         eval_results_dir=str(results_dir.parent),
     )
@@ -398,8 +375,6 @@ def run(args: argparse.Namespace) -> None:
     print(f"  Model:          {args.model_name}")
     print(f"  Dataset:        {args.ds_name} (limit={args.dataset_size_limit})")
     print(f"  Num edits:      {args.num_edits}")
-    if coupling_dataset_path:
-        print(f"  Coupling data:  {coupling_dataset_path}")
     print(f"  Output:         {output_pt}")
     print(f"  Started:        {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print(f"{'=' * 70}")
@@ -414,7 +389,6 @@ def run(args: argparse.Namespace) -> None:
         "ds_name": args.ds_name,
         "dataset_size_limit": args.dataset_size_limit,
         "num_edits": args.num_edits,
-        "coupling_dataset": coupling_dataset_path,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "alphaedit_commit": "b84624f",
         "output_pt": str(output_pt),
@@ -456,8 +430,6 @@ def main():
     parser.add_argument("--dataset_size_limit", type=int, default=2000)
     parser.add_argument("--num_edits", type=int, default=100)
     parser.add_argument("--conserve_memory", action="store_true", default=True)
-    parser.add_argument("--coupling_dataset", type=str, default=None,
-                        help="Path to coupling dataset JSON (enables coupling mode)")
 
     args = parser.parse_args()
     run(args)

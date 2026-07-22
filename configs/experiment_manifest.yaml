@@ -85,20 +85,6 @@ experiments:
     success_criterion: >
       Confirms AlphaEdit advantage is not CounterFact-only.
 
-  mve4_conflict_seq:
-    description: "Conflict sequence stress test (added value for TMLR certification)"
-    alg_name: "AlphaEdit"
-    ds_name: "mcf"
-    dataset_size_limit: 200
-    num_edits: 1
-    downstream_eval_steps: 0
-    skip_generation_tests: false
-    generation_test_interval: 1
-    conserve_memory: true
-    custom_dataset: true
-    success_criterion: >
-      Demonstrates where AlphaEdit's preservation advantage is stable
-      under conflicting sequential updates, and where it degrades.
 
 # Calibration baseline (validates evaluation harness correctness)
 calibration_experiments:
@@ -251,60 +237,6 @@ high_priority_experiments:
       while improving specificity at high edit counts (>1000 edits).
       Even negative results are publishable if they demonstrate that
       simple cache management is insufficient to overcome saturation.
-
-  edit_order_sensitivity:
-    description: >
-      Tests whether edit ordering affects AlphaEdit's final performance.
-      Runs the same 2000 MCF edits in 10 random orderings and compares
-      metric variance between AlphaEdit (sequential null-space) and
-      MEMIT (no null-space constraint). Hypothesis: AlphaEdit is
-      significantly more order-sensitive because early edits claim
-      null-space directions first, constraining later edits.
-    alg_name: "both"
-    ds_name: "mcf"
-    dataset_size_limit: 2000
-    num_edits: 100
-    downstream_eval_steps: 5
-    conserve_memory: true
-    num_orderings: 10
-    statistical_test: "Levene's test for equality of variances"
-    success_criterion: >
-      Demonstrates statistically significant difference in order
-      sensitivity between AlphaEdit and MEMIT (Levene's test p<0.05),
-      or shows that ordering has negligible effect (also publishable
-      as a negative finding confirming robustness).
-
-  semantic_coupling_stress:
-    description: >
-      Tests whether semantic coupling between edits causes the null-space
-      projection to strip edit content. Measures projection loss (fraction
-      of desired update removed by P) as a function of coupling type:
-      unrelated, relation_match, subject_match, full_conflict. This tests
-      the core assumption of AlphaEdit: that editability and preservation
-      directions are always separable. Uses per-edit, per-layer measurement
-      of projection residuals inside apply_AlphaEdit_to_model.
-    alg_name: "AlphaEdit"
-    ds_name: "mcf"
-    dataset_size_limit: 500
-    num_edits: 1
-    downstream_eval_steps: 0
-    conserve_memory: true
-    custom_dataset: true
-    coupling_types: ["unrelated", "relation_match", "subject_match", "full_conflict"]
-    pairs_per_type: 60
-    warmup_edits: 20
-    statistical_tests:
-      - "Kruskal-Wallis H-test across coupling types"
-      - "Pairwise Mann-Whitney U with Holm-Bonferroni correction"
-      - "Cliff's delta (full_conflict vs unrelated)"
-      - "Spearman correlation: projection_loss vs upd_matrix_norm"
-    success_criterion: >
-      Demonstrates statistically significant increase in projection loss
-      for high-coupling edits (Type 2, 3) compared to unrelated edits (Type 0).
-      Provides mechanistic evidence that AlphaEdit's core assumption can fail
-      when edits are semantically related to preserved knowledge. Even a null
-      result (no difference across types) is publishable as it would validate
-      the separability assumption.
 
 # Expanded experiments (run after MVE + high-priority are complete)
 expanded_experiments:

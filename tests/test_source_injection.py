@@ -1,5 +1,5 @@
 """
-Tests for source injection scripts (nullspace_tracker, cache_mitigation, order_sensitivity).
+Tests for source injection scripts (nullspace_tracker, cache_mitigation).
 
 Validates that generated scripts are syntactically valid Python, contain
 the correct anchors, seed settings, and injection points. No GPU required.
@@ -15,7 +15,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from nullspace_tracker import build_tracker_script, PRE_EDIT_ANCHOR, POST_EDIT_ANCHOR
 from cache_mitigation_runner import build_mitigation_script
-from order_sensitivity_runner import build_order_script
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -177,72 +176,3 @@ class TestCacheMitigationScript:
             ast.parse(script)
 
 
-class TestOrderSensitivityScript:
-    """Tests for order_sensitivity_runner.py script generation."""
-
-    def _build_default(self, **kwargs):
-        defaults = dict(
-            seed=42,
-            order_seed=0,
-            cuda_device="0",
-            alg_name="AlphaEdit",
-            model_name="meta-llama/Meta-Llama-3-8B-Instruct",
-            hparams_fname="Llama3-8B.json",
-            ds_name="mcf",
-            dataset_size_limit=2000,
-            num_edits=100,
-            downstream_eval_steps=5,
-            conserve_memory=True,
-            metadata_jsonl="/tmp/order_meta.jsonl",
-        )
-        defaults.update(kwargs)
-        return build_order_script(**defaults)
-
-    def test_generates_valid_python(self):
-        """Generated script should parse without syntax errors."""
-        script = self._build_default()
-        ast.parse(script)
-
-    def test_contains_model_seed(self):
-        """Script should set the model seed."""
-        script = self._build_default(seed=137)
-        assert "seed = 137" in script
-
-    def test_contains_order_seed(self):
-        """Script should set the order seed."""
-        script = self._build_default(order_seed=7)
-        assert "_order_seed = 7" in script
-
-    def test_contains_shuffle_injection(self):
-        """Script should inject shuffle code."""
-        script = self._build_default()
-        assert "ORDER SENSITIVITY: shuffle dataset" in script
-
-    def test_shuffle_uses_order_seed(self):
-        """Shuffle should use the order_seed, not model seed."""
-        script = self._build_default(seed=42, order_seed=5)
-        # The order_seed should be set as a variable
-        assert "_order_seed = 5" in script
-        # The shuffle injection builds the Random call via str(_order_seed)
-        assert "str(_order_seed)" in script
-
-    def test_different_order_seeds_produce_different_scripts(self):
-        """Different order seeds should produce different scripts."""
-        script_0 = self._build_default(order_seed=0)
-        script_1 = self._build_default(order_seed=1)
-        assert script_0 != script_1
-
-    def test_supports_memit_algorithm(self):
-        """Should work with MEMIT as well as AlphaEdit."""
-        script = self._build_default(alg_name="MEMIT")
-        assert "--alg_name=MEMIT" in script
-
-    def test_contains_metadata_output(self):
-        """Script should write metadata to specified path."""
-        script = self._build_default(metadata_jsonl="/output/order.jsonl")
-        assert "/output/order.jsonl" in script
-
-    def test_shuffles_ds_data_attribute(self):
-        """Should shuffle ds.data (CounterFact's internal list)."""
-        script = self._build_default()
-        assert "ds.data" in script

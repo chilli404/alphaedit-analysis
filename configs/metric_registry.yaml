@@ -103,11 +103,6 @@ metrics:
     type: continuous
     description: "Fraction of available null-space directions consumed by edits so far"
 
-  projection_loss:
-    source: coupling_stress_runner
-    type: continuous
-    description: "||ΔW_raw - ΔW_proj||_F / ||ΔW_raw||_F — fraction removed by projection"
-
   projection_removed_fraction:
     source: plasticity_tracker
     type: continuous
