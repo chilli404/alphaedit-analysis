@@ -306,13 +306,14 @@ def main():
         all_records = json.load(f)
     print(f"  Records: {len(all_records)}")
 
-    # Build case_id → record mapping
-    record_by_id = {r["case_id"]: r for r in all_records}
+    # Build case_id → key index mapping
+    key_idx_by_id = {cid: i for i, cid in enumerate(saved_case_ids)}
 
-    # Align records with keys (same order as keys array)
-    records = [record_by_id[cid] for cid in saved_case_ids]
-    assert len(records) == len(keys), f"Mismatch: {len(records)} records vs {len(keys)} keys"
-    print(f"  Aligned: {len(records)} records with keys")
+    # Filter to records that have keys, preserving stream order
+    records = [r for r in all_records if r["case_id"] in key_idx_by_id]
+    key_indices = [key_idx_by_id[r["case_id"]] for r in records]
+    keys = keys[key_indices]
+    print(f"  Aligned: {len(records)} records with keys (from {len(saved_case_ids)} total keys)")
 
     # Spherical k-means clustering
     print(f"\n  Running spherical k-means (k={args.n_clusters})...")
