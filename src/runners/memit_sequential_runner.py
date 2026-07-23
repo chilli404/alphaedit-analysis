@@ -631,12 +631,10 @@ assert _eval_anchor in _eval_source, (
 # The full replacement: defines _mega_batch_eval inline, then calls it instead of the per-record loop.
 _mega_batch_eval_injection = '''    # === MEGA-BATCH EVAL: batched multi-token scoring (injected by memit_sequential_runner) ===
     def _mega_batch_eval(model, tok, records, case_result_template, num_edits, case_ids, exec_time, batch_size=8):
-        """Evaluate records with batched forward passes using full multi-token scoring.
-
-        Produces IDENTICAL results to per-record compute_rewrite_quality_counterfact
-        (same log-prob scoring, same argmax correctness) but batches the expensive
-        model forward pass across multiple records.
-        """
+        # Evaluate records with batched forward passes using full multi-token scoring.
+        # Produces IDENTICAL results to per-record compute_rewrite_quality_counterfact
+        # (same log-prob scoring, same argmax correctness) but batches the expensive
+        # model forward pass across multiple records.
         import torch as _mbe_torch
         import numpy as _mbe_np
         import json as _mbe_json
