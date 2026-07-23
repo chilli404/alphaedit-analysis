@@ -25,15 +25,13 @@ CHECKPOINT_BATCH="${2:-${CHECKPOINT_BATCH:-69}}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
 MODEL_NAME="${MODEL_NAME:-NousResearch/Meta-Llama-3-8B-Instruct}"
 HPARAMS_FNAME="${HPARAMS_FNAME:-Llama3-8B.json}"
-CHECKPOINT_DIR="${CHECKPOINT_DIR:-/s3-data/continual-learning/alphaedit/checkpoints/failure_curve}"
+CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-${HOME}/.cache/alphaedit_checkpoints}"
+RESULT_ROOT="${RESULT_ROOT:-$PROJECT_DIR/results}"
+CHECKPOINT_DIR="${CHECKPOINT_DIR:-$CHECKPOINT_ROOT/failure_curve}"
 
 # Output
 EDITS=$(( (CHECKPOINT_BATCH + 1) * 100 ))
-if [[ -d "/s3-data/continual-learning/alphaedit/results" ]]; then
-    OUTPUT_DIR="/s3-data/continual-learning/alphaedit/results/cache_ablation_behavioral/seed${SEED}/${EDITS}edits/AlphaEdit"
-else
-    OUTPUT_DIR="$PROJECT_DIR/results/cache_ablation_behavioral/seed${SEED}/${EDITS}edits/AlphaEdit"
-fi
+OUTPUT_DIR="$RESULT_ROOT/cache_ablation_behavioral/seed${SEED}/${EDITS}edits/AlphaEdit"
 
 echo "=========================================="
 echo "Cache Ablation — Behavioral Evaluation"

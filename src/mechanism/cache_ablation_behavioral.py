@@ -115,13 +115,18 @@ def main():
 
     # ─── Load model ───
     print(f"\n  Loading model...")
-    print(f"  HF_ENDPOINT = {os.environ.get('HF_ENDPOINT', 'NOT SET')}")
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "util"))
+    from model_download import download_model, _artifactory_reachable
+    if _artifactory_reachable():
+        model_path = download_model(args.model_name)
+    else:
+        model_path = args.model_name
     from transformers import AutoModelForCausalLM, AutoTokenizer
     token = os.environ.get("HF_TOKEN")
-    model = AutoModelForCausalLM.from_pretrained(args.model_name, token=token).cuda()
-    tok = AutoTokenizer.from_pretrained(args.model_name, token=token)
+    model = AutoModelForCausalLM.from_pretrained(model_path, token=token).cuda()
+    tok = AutoTokenizer.from_pretrained(model_path, token=token)
     tok.pad_token = tok.eos_token
-    print(f"  Model loaded: {args.model_name}")
+    print(f"  Model loaded: {model_path}")
 
     # ─── Load checkpoint ───
     print(f"\n  Loading checkpoint from {ckpt_dir}...")
@@ -141,9 +146,11 @@ def main():
     # ─── Load P ───
     import glob
     p_candidates = glob.glob(str(ckpt_base / "**" / "null_space_project*"), recursive=True)
-    p_candidates += glob.glob("/s3-data/continual-learning/alphaedit/stats/**/null_space_project*", recursive=True)
+    _stats_root = os.environ.get("STATS_ROOT", str(ALPHAEDIT_ROOT / "data" / "stats" / "Meta-Llama-3-8B-Instruct" / "wikipedia_stats"))
+    p_candidates += glob.glob(os.path.join(_stats_root, "**", "null_space_project*"), recursive=True)
     if not p_candidates:
         print("  ERROR: null_space_project.pt not found")
+        print(f"  Searched: {ckpt_base} and {_stats_root}")
         sys.exit(1)
     P = torch.load(p_candidates[0], map_location="cpu").float()
     print(f"  P loaded: shape={P.shape} from {p_candidates[0]}")

@@ -3,7 +3,7 @@
 MEMIT+SeqReg Lambda Sweep Batch Runner: Runs all calibration settings
 with a single model load, resetting state between each lambda combination.
 
-This is an optimization of running run_memit_sequential.sh 4 times
+This is an optimization of running the failure curve script 4 times
 independently (once per calibration setting), which loads the model 4 times.
 
 Calibration settings:
@@ -70,7 +70,11 @@ def run(args: argparse.Namespace) -> None:
 
     link_hparams()
 
-    model_name = resolve_model_path(args.model_name)
+    from model_download import download_model, _artifactory_reachable
+    if _artifactory_reachable():
+        model_name = download_model(args.model_name)
+    else:
+        model_name = args.model_name
 
     # Parse lambda pairs
     if args.lambda_pairs:

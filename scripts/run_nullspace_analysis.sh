@@ -52,6 +52,8 @@ cd "$PROJECT_DIR"
 # --- Checkpoint detection ---
 # Look for failure curve checkpoints (AlphaEdit only — MEMIT has no cache_c)
 CKPT_DIR=""
+CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-${HOME}/.cache/alphaedit_checkpoints}"
+
 if [[ "$FORCE_ONLINE" != "true" ]]; then
     # Priority 1: Explicit override
     if [[ -n "${CHECKPOINT_DIR:-}" ]]; then
@@ -61,17 +63,9 @@ if [[ "$FORCE_ONLINE" != "true" ]]; then
         fi
     fi
 
-    # Priority 2: S3 mount (SkyPilot clusters)
+    # Priority 2: CHECKPOINT_ROOT
     if [[ -z "$CKPT_DIR" ]]; then
-        candidate="/s3-data/continual-learning/alphaedit/checkpoints/failure_curve/AlphaEdit/seed${SEED}"
-        if [[ -d "$candidate" ]] && ls "$candidate"/batch_*/cache_c.pt &>/dev/null; then
-            CKPT_DIR="$candidate"
-        fi
-    fi
-
-    # Priority 3: Local cache
-    if [[ -z "$CKPT_DIR" ]]; then
-        candidate="$HOME/.cache/alphaedit_checkpoints/failure_curve/AlphaEdit/seed${SEED}"
+        candidate="$CHECKPOINT_ROOT/failure_curve/AlphaEdit/seed${SEED}"
         if [[ -d "$candidate" ]] && ls "$candidate"/batch_*/cache_c.pt &>/dev/null; then
             CKPT_DIR="$candidate"
         fi

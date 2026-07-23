@@ -41,6 +41,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "mechanism"))
 
+# Import model_download early to apply filelock patch before transformers loads
+import model_download  # noqa: F401 — patches filelock globally
+
 
 # ─── Key Extraction (reuses compute_keys.py logic) ──────────────────────────
 
@@ -288,10 +291,11 @@ def main():
     args = parser.parse_args()
 
     # Resolve paths
+    from paths import get_result_root
     if args.stream_dir:
         stream_dir = Path(args.stream_dir)
     else:
-        stream_dir = PROJECT_ROOT / "results" / "matched_ordering"
+        stream_dir = get_result_root() / "matched_ordering"
 
     if args.output_dir:
         out_dir = Path(args.output_dir)
@@ -299,11 +303,17 @@ def main():
         out_dir = stream_dir / "key_geometry"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    clust_path = stream_dir / "orderings" / f"clustered_seed{args.seed}.json"
-    disp_path = stream_dir / "orderings" / f"dispersed_seed{args.seed}.json"
+    # Try both naming conventions (key_clustered_* and clustered_*)
+    clust_path = stream_dir / "orderings" / f"key_clustered_seed{args.seed}.json"
+    disp_path = stream_dir / "orderings" / f"key_dispersed_seed{args.seed}.json"
+    if not clust_path.exists():
+        clust_path = stream_dir / "orderings" / f"clustered_seed{args.seed}.json"
+    if not disp_path.exists():
+        disp_path = stream_dir / "orderings" / f"dispersed_seed{args.seed}.json"
 
     if not clust_path.exists() or not disp_path.exists():
         print(f"ERROR: Stream files not found in {stream_dir}")
+        print(f"  Tried: key_clustered_seed{args.seed}.json and clustered_seed{args.seed}.json")
         sys.exit(1)
 
     # Load streams
@@ -339,17 +349,21 @@ def main():
     else:
         # Load model and extract keys
         print(f"\n  Loading model: {args.model}")
-        from model_download import resolve_model_path
-        model_id = resolve_model_path(args.model)
+        from model_download import download_model, _artifactory_reachable
+
+        if _artifactory_reachable():
+            model_path = download_model(args.model)
+        else:
+            model_path = args.model
 
         from transformers import AutoModelForCausalLM, AutoTokenizer
         token = os.environ.get("HF_TOKEN")
-        tokenizer = AutoTokenizer.from_pretrained(model_id, token=token)
+        tokenizer = AutoTokenizer.from_pretrained(model_path, token=token)
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
         model = AutoModelForCausalLM.from_pretrained(
-            model_id, token=token, torch_dtype=torch.float16, device_map=args.device
+            model_path, token=token, torch_dtype=torch.float16, device_map=args.device
         )
         model.eval()
         print(f"  Model loaded on {args.device}")
@@ -555,10 +569,16 @@ def main():
         json.dump(results, f, indent=2)
     print(f"\n  Saved: {out_path}")
 
-    # Save keys for reuse
+    # Save keys for reuse (write to /tmp first to avoid FUSE seek issues)
+    import shutil
+    import tempfile
     keys_path = out_dir / f"keys_seed{args.seed}_layer{args.layer}.npz"
     case_ids = np.array([r["case_id"] for r in dispersed[:len(all_keys)]], dtype=np.int32)
-    np.savez_compressed(keys_path, keys=all_keys, case_ids=case_ids, layer=np.array(args.layer))
+    with tempfile.NamedTemporaryFile(suffix=".npz", delete=False) as tmp:
+        tmp_path = tmp.name
+    np.savez_compressed(tmp_path, keys=all_keys, case_ids=case_ids, layer=np.array(args.layer))
+    shutil.copyfile(tmp_path, keys_path)
+    os.unlink(tmp_path)
     print(f"  Keys saved: {keys_path}")
 
 

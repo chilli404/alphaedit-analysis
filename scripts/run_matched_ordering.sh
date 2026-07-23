@@ -7,7 +7,7 @@ set -euo pipefail
 # streams. Designed for SkyPilot parallel execution.
 #
 # If all checkpoints already exist in the checkpoint directory, automatically
-# runs post-hoc evaluation via eval_seqreg_checkpoints.py instead of editing.
+# runs post-hoc evaluation via eval_matched_ordering.py instead of editing.
 #
 # Usage:
 #   bash scripts/run_matched_ordering.sh [SEED] [ALG] [ORDERING]
@@ -39,48 +39,27 @@ CUDA_DEVICE="${CUDA_DEVICE:-0}"
 DATASET_SIZE_LIMIT="${TARGET_EDITS:-5000}"
 SAVE_INTERVAL="${SAVE_INTERVAL:-10}"
 
-# Resolve stream path: prefer S3 mount, fall back to local
-S3_MATCHED="/s3-data/continual-learning/alphaedit/dsets/matched_ordering/orderings"
-S3_MATCHED_LEGACY="/s3-data/continual-learning/alphaedit/dsets/matched_ordering"
-LOCAL_MATCHED="$PROJECT_DIR/results/matched_ordering/orderings"
+# Resolve stream path: use RESULT_ROOT or project results dir
+RESULT_ROOT="${RESULT_ROOT:-$PROJECT_DIR/results}"
+STREAM_DIR="$RESULT_ROOT/matched_ordering/orderings"
+STREAM_FILE="${ORDERING}_seed${SEED}.json"
 
-if [[ -f "$S3_MATCHED/${ORDERING}_seed${SEED}.json" ]]; then
-    STREAM_PATH="$S3_MATCHED/${ORDERING}_seed${SEED}.json"
-elif [[ -f "$S3_MATCHED_LEGACY/${ORDERING}_seed${SEED}.json" ]]; then
-    STREAM_PATH="$S3_MATCHED_LEGACY/${ORDERING}_seed${SEED}.json"
-elif [[ -f "$LOCAL_MATCHED/${ORDERING}_seed${SEED}.json" ]]; then
-    STREAM_PATH="$LOCAL_MATCHED/${ORDERING}_seed${SEED}.json"
+if [[ -f "$STREAM_DIR/$STREAM_FILE" ]]; then
+    STREAM_PATH="$STREAM_DIR/$STREAM_FILE"
 else
     echo "ERROR: Stream file not found for ordering=$ORDERING seed=$SEED"
-    echo "  Tried: $S3_MATCHED/${ORDERING}_seed${SEED}.json"
-    echo "  Tried: $LOCAL_MATCHED/${ORDERING}_seed${SEED}.json"
+    echo "  Tried: $STREAM_DIR/$STREAM_FILE"
     echo ""
     echo "  Generate with: uv run python src/datasets/generate_orderings.py --seed $SEED"
     exit 1
 fi
 
-# Resolve checkpoint dir: prefer S3 for crash resilience
-# Convention: checkpoints/matched_ordering/{ALG}/{ORDERING}/seed{N}
-S3_CKPT="/s3-data/continual-learning/alphaedit/checkpoints/matched_ordering/${ALG}/${ORDERING}/seed${SEED}"
-LOCAL_CKPT="$HOME/.cache/alphaedit_checkpoints/matched_ordering/${ALG}/${ORDERING}/seed${SEED}"
+# Resolve checkpoint and results dirs from CHECKPOINT_ROOT / RESULT_ROOT
+CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-${HOME}/.cache/alphaedit_checkpoints}"
+CKPT_DIR="$CHECKPOINT_ROOT/matched_ordering/${ALG}/${ORDERING}/seed${SEED}"
+mkdir -p "$CKPT_DIR"
 
-if [[ -d "/s3-data/continual-learning/alphaedit" ]]; then
-    CKPT_DIR="$S3_CKPT"
-    mkdir -p "$CKPT_DIR"
-else
-    CKPT_DIR="$LOCAL_CKPT"
-    mkdir -p "$CKPT_DIR"
-fi
-
-# Results output (always to S3 if available)
-S3_RESULTS="/s3-data/continual-learning/alphaedit/results/matched_ordering/${ALG}/${ORDERING}/seed${SEED}"
-LOCAL_RESULTS="$PROJECT_DIR/results/matched_ordering/${ALG}/${ORDERING}/seed${SEED}"
-
-if [[ -d "/s3-data/continual-learning/alphaedit" ]]; then
-    RESULTS_DIR="$S3_RESULTS"
-else
-    RESULTS_DIR="$LOCAL_RESULTS"
-fi
+RESULTS_DIR="$RESULT_ROOT/matched_ordering/${ALG}/${ORDERING}/seed${SEED}"
 mkdir -p "$RESULTS_DIR"
 
 echo "=== Matched Ordering Experiment ==="
@@ -121,7 +100,7 @@ if [[ "$all_checkpoints_present" == "true" ]] && [[ ${#AVAILABLE_BATCHES[@]} -gt
     # Use the STREAM file as dataset — it contains the actual edited records in order.
     # Using raw multi_counterfact.json would evaluate the wrong facts since the stream
     # selects and reorders records from across the full 20K+ MCF dataset.
-    uv run python scripts/eval_seqreg_checkpoints.py \
+    uv run python scripts/eval_matched_ordering.py \
         --seed "$SEED" \
         --alg_name "$ALG" \
         --ordering "$ORDERING" \
@@ -203,15 +182,13 @@ else
     exit 1
 fi
 
-# Copy results to output dir (check hierarchical layout first, then flat legacy)
-_SEQREG_BASE="$PROJECT_DIR/results/memit_seqreg"
-_SEQREG_HIER="$_SEQREG_BASE/seed${SEED}/${DATASET_SIZE_LIMIT}edits/${ALG}"
-if [[ -d "$_SEQREG_HIER" ]]; then
-    cp -r "$_SEQREG_HIER"/log_seed${SEED}_lp*_ld*_*.jsonl "$RESULTS_DIR/" 2>/dev/null || true
-    cp -r "$_SEQREG_HIER"/metadata_seed${SEED}_*.json "$RESULTS_DIR/" 2>/dev/null || true
-elif [[ -d "$_SEQREG_BASE" ]]; then
-    cp -r "$_SEQREG_BASE"/log_seed${SEED}_lp*_ld*_*.jsonl "$RESULTS_DIR/" 2>/dev/null || true
-    cp -r "$_SEQREG_BASE"/metadata_seed${SEED}_*.json "$RESULTS_DIR/" 2>/dev/null || true
+# Copy results to S3 output dir if on cluster
+# memit_sequential_runner now writes directly to matched_ordering/ structure;
+# just sync to S3 results dir if available.
+_LOCAL_RESULTS="$PROJECT_DIR/results/matched_ordering/${ORDERING}/seed${SEED}/${DATASET_SIZE_LIMIT}edits"
+if [[ -d "/s3-data/continual-learning/alphaedit" ]] && [[ -d "$_LOCAL_RESULTS" ]]; then
+    mkdir -p "$RESULTS_DIR"
+    cp -r "$_LOCAL_RESULTS"/* "$RESULTS_DIR/" 2>/dev/null || true
 fi
 
 echo ""

@@ -58,6 +58,8 @@ cd "$PROJECT_DIR"
 find_checkpoints() {
     local alg_name="$1"
 
+    local ckpt_root="${CHECKPOINT_ROOT:-${HOME}/.cache/alphaedit_checkpoints}"
+
     # Priority 1: Explicit override
     if [[ -n "${CHECKPOINT_DIR:-}" ]]; then
         local candidate="${CHECKPOINT_DIR}/${alg_name}/seed${SEED}"
@@ -67,15 +69,8 @@ find_checkpoints() {
         fi
     fi
 
-    # Priority 2: S3 mount (SkyPilot clusters)
-    local candidate="/s3-data/continual-learning/alphaedit/checkpoints/${alg_name}/seed${SEED}"
-    if [[ -d "$candidate" ]] && ls "$candidate"/batch_*/model_weights.pt &>/dev/null; then
-        echo "$candidate"
-        return 0
-    fi
-
-    # Priority 3: Local cache
-    candidate="$HOME/.cache/alphaedit_checkpoints/${alg_name}/seed${SEED}"
+    # Priority 2: CHECKPOINT_ROOT
+    local candidate="$ckpt_root/${alg_name}/seed${SEED}"
     if [[ -d "$candidate" ]] && ls "$candidate"/batch_*/model_weights.pt &>/dev/null; then
         echo "$candidate"
         return 0

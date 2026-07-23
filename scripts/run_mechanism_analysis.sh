@@ -21,18 +21,16 @@ if [[ -f "$PROJECT_DIR/.env" ]]; then
 fi
 
 SEED="${1:?Usage: $0 <seed>}"
-CHECKPOINT_BASE="${CHECKPOINT_DIR:-/s3-data/continual-learning/alphaedit/checkpoints}/failure_curve/AlphaEdit/seed${SEED}"
+CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-${HOME}/.cache/alphaedit_checkpoints}"
+RESULT_ROOT="${RESULT_ROOT:-$PROJECT_DIR/results}"
+CHECKPOINT_BASE="${CHECKPOINT_DIR:-$CHECKPOINT_ROOT}/failure_curve/AlphaEdit/seed${SEED}"
 MODEL_NAME="${MODEL_NAME:-NousResearch/Meta-Llama-3-8B-Instruct}"
 HPARAMS_FNAME="${HPARAMS_FNAME:-Llama3-8B.json}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
 SKIP_BASE_MODEL="${SKIP_BASE_MODEL:-false}"
 
-# Output: write to S3 if available, else local
-if [[ -d "/s3-data/continual-learning/alphaedit/results" ]]; then
-    OUTPUT_DIR="/s3-data/continual-learning/alphaedit/results/mechanism_analysis/seed${SEED}"
-else
-    OUTPUT_DIR="$PROJECT_DIR/results/mechanism_analysis"
-fi
+# Output
+OUTPUT_DIR="$RESULT_ROOT/mechanism_analysis/seed${SEED}"
 
 # Batch indices: checkpoints are at batch_9, batch_19, ..., batch_99 (0-indexed)
 BATCH_INDICES="${BATCH_INDICES:-9 19 29 39 49 59 69 79 89 99}"
@@ -52,8 +50,7 @@ echo "=========================================="
 # Check checkpoint directory exists
 if [ ! -d "${CHECKPOINT_BASE}" ]; then
     echo "ERROR: Checkpoint directory not found: ${CHECKPOINT_BASE}"
-    echo "  Available S3 paths:"
-    ls /s3-data/continual-learning/alphaedit/checkpoints/failure_curve/AlphaEdit/ 2>/dev/null || echo "  (S3 not mounted)"
+    echo "  Set CHECKPOINT_ROOT or CHECKPOINT_DIR to the correct path."
     exit 1
 fi
 

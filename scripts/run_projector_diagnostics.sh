@@ -26,16 +26,14 @@ if [[ -f "$PROJECT_DIR/.env" ]]; then
     set -a; source "$PROJECT_DIR/.env"; set +a
 fi
 
-STATS_DIR="${1:-/s3-data/continual-learning/alphaedit/stats/llama3-8b-instruct}"
-PROJECTOR_PATH="${2:-/s3-data/continual-learning/alphaedit/stats/llama3-8b-instruct/null_space_project.pt}"
+RESULT_ROOT="${RESULT_ROOT:-$PROJECT_DIR/results}"
+STATS_ROOT="${STATS_ROOT:-$PROJECT_DIR/vendor/AlphaEdit/data/stats/Meta-Llama-3-8B-Instruct/wikipedia_stats}"
+STATS_DIR="${1:-$STATS_ROOT}"
+PROJECTOR_PATH="${2:-$STATS_DIR/null_space_project.pt}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
 
 # Output
-if [[ -d "/s3-data/continual-learning/alphaedit/results" ]]; then
-    OUTPUT_DIR="/s3-data/continual-learning/alphaedit/results/projector_diagnostics"
-else
-    OUTPUT_DIR="$PROJECT_DIR/results/projector_diagnostics"
-fi
+OUTPUT_DIR="$RESULT_ROOT/projector_diagnostics"
 
 echo "=========================================="
 echo "Projector Diagnostics"

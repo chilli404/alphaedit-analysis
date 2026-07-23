@@ -56,9 +56,32 @@ MARKERS = {
 }
 
 
-def load_alphaedit_failure_curve(seed: int) -> list[dict]:
-    """Load AlphaEdit per-case results from failure_curve_checkpointed."""
-    base = RESULTS / "failure_curve_checkpointed" / f"seed{seed}"
+def _color_for(method: str) -> str:
+    """Return color for method, falling back to MEMIT-Seq base for variants."""
+    if method in COLORS:
+        return COLORS[method]
+    if method.startswith("MEMIT-Seq"):
+        return COLORS["MEMIT-Seq"]
+    return "#9E9E9E"
+
+
+def _marker_for(method: str) -> str:
+    """Return marker for method, falling back to MEMIT-Seq base for variants."""
+    if method in MARKERS:
+        return MARKERS[method]
+    if method.startswith("MEMIT-Seq"):
+        return MARKERS["MEMIT-Seq"]
+    return "^"
+
+
+def _load_failure_curve(seed: int, alg_name: str, method_label: str, base_dir: Path | None = None) -> list[dict]:
+    """Load per-case results from failure_curve_checkpointed for any algorithm.
+
+    Scans: {base_dir}/seed{N}/{edits}edits/{alg_name}/run_000/*_edits-case_*.json
+    """
+    if base_dir is None:
+        base_dir = RESULTS / "failure_curve_checkpointed"
+    base = base_dir / f"seed{seed}"
     if not base.exists():
         return []
 
@@ -68,8 +91,7 @@ def load_alphaedit_failure_curve(seed: int) -> list[dict]:
             continue
         total_edits = int(edits_dir.name.replace("edits", ""))
 
-        # Find AlphaEdit run_000
-        run_dir = edits_dir / "AlphaEdit" / "run_000"
+        run_dir = edits_dir / alg_name / "run_000"
         if not run_dir.exists():
             continue
 
@@ -80,12 +102,17 @@ def load_alphaedit_failure_curve(seed: int) -> list[dict]:
         metrics = _aggregate_cases(case_files)
         if metrics:
             metrics["total_edits"] = total_edits
-            metrics["method"] = "AlphaEdit"
+            metrics["method"] = method_label
             metrics["seed"] = seed
             metrics["n_cases"] = len(case_files)
             rows.append(metrics)
 
     return rows
+
+
+def load_alphaedit_failure_curve(seed: int) -> list[dict]:
+    """Load AlphaEdit per-case results from failure_curve_checkpointed."""
+    return _load_failure_curve(seed, "AlphaEdit", "AlphaEdit")
 
 
 def load_poly2_results(seed: int) -> list[dict]:
@@ -121,59 +148,67 @@ def load_poly2_results(seed: int) -> list[dict]:
 
 
 def load_memit_seq_results(seed: int, lambda_prev: float = 1.0, lambda_delta: float = 0.0) -> list[dict]:
-    """Load MEMIT-Seq pre-aggregated eval results.
+    """Load MEMIT-Seq results from the unified failure_curve_checkpointed structure.
 
-    Checks two sources:
-      1. full_eval_seed{N}_lp{X}_ld{Y}.json (from eval_seqreg_checkpoints.py)
-      2. matched_ordering/MEMIT-Seq-lp{X}-ld{Y}-cache0/*/seed{N}/full_eval_seed{N}.json
+    Checks sources (in priority order):
+      1. failure_curve_checkpointed/seed{N}/{edits}edits/{variant}/run_000/ (per-case JSONs, unified)
+      2. failure_curve_checkpointed/seed{N}/{variant}/full_eval_seed{N}.json (pre-aggregated, legacy)
+      3. memit_seqreg/seed{N}/{edits}edits/{variant}/run_000/ (old results dir, legacy)
+      4. memit_seqreg/full_eval_seed{N}_lp{X}_ld{Y}.json (oldest legacy)
+
+    The method label uses the full variant name (e.g. "MEMIT-Seq-lp1.0-ld0.0-cache0")
+    so different configurations are distinguishable in plots.
     """
-    rows = []
-
-    # Source 1: memit_seqreg/full_eval_seed{N}_lp{X}_ld{Y}.json
-    eval_path = RESULTS / "memit_seqreg" / f"full_eval_seed{seed}_lp{lambda_prev}_ld{lambda_delta}.json"
-    if eval_path.exists():
-        with open(eval_path) as f:
-            data = json.load(f)
-        for key, entry in data.items():
-            if not key.endswith("_edits"):
-                continue
-            total_edits = entry.get("total_edits", int(key.replace("_edits", "")))
-            rows.append({
-                "total_edits": total_edits,
-                "method": "MEMIT-Seq",
-                "seed": seed,
-                "efficacy": entry["all_facts"]["efficacy"],
-                "paraphrase": entry["all_facts"].get("paraphrase", np.nan),
-                "neighborhood": entry["all_facts"].get("neighborhood", np.nan),
-                "first_1k_efficacy": entry.get("first_1k", {}).get("efficacy", np.nan),
-                "latest_1k_efficacy": entry.get("latest_1k", {}).get("efficacy", np.nan),
-                "n_cases": entry.get("n_evaluated", 0),
-            })
-
-    # Source 2: matched_ordering full evals (5K edits, various orderings — use key_dispersed as "hardest")
-    # Skip this if we already have data at 5000 from source 1
-    existing_edits = {r["total_edits"] for r in rows}
     variant = f"MEMIT-Seq-lp{lambda_prev}-ld{lambda_delta}-cache0"
-    for ordering in ["key_dispersed", "key_clustered"]:
-        mo_path = RESULTS / "matched_ordering" / variant / ordering / f"seed{seed}" / f"full_eval_seed{seed}.json"
-        if mo_path.exists() and 5000 not in existing_edits:
-            with open(mo_path) as f:
-                data = json.load(f)
-            # matched_ordering full_eval has a different structure — check both formats
-            if isinstance(data, dict) and "all_facts" in data:
-                rows.append({
-                    "total_edits": 5000,
-                    "method": "MEMIT-Seq",
-                    "seed": seed,
-                    "efficacy": data["all_facts"]["efficacy"],
-                    "paraphrase": data["all_facts"].get("paraphrase", np.nan),
-                    "neighborhood": data["all_facts"].get("neighborhood", np.nan),
-                    "n_cases": data.get("n_evaluated", 5000),
-                    "source": f"matched_ordering/{ordering}",
-                })
-                existing_edits.add(5000)
-                break
 
+    # Source 1: Unified per-case JSONs (same structure as AlphaEdit/MEMIT)
+    rows = _load_failure_curve(seed, variant, variant)
+    if rows:
+        return rows
+
+    # Source 2: Pre-aggregated full_eval JSON (legacy checkpoint eval output)
+    eval_path = RESULTS / "failure_curve_checkpointed" / f"seed{seed}" / variant / f"full_eval_seed{seed}.json"
+    if eval_path.exists():
+        rows = _load_full_eval_json(eval_path, seed, method_label=variant)
+        if rows:
+            return rows
+
+    # Source 3: Old memit_seqreg per-case layout
+    legacy_base = RESULTS / "memit_seqreg"
+    rows = _load_failure_curve(seed, variant, variant, base_dir=legacy_base)
+    if rows:
+        return rows
+
+    # Source 4: Oldest legacy pre-aggregated file
+    legacy_path = RESULTS / "memit_seqreg" / f"full_eval_seed{seed}_lp{lambda_prev}_ld{lambda_delta}.json"
+    if legacy_path.exists():
+        rows = _load_full_eval_json(legacy_path, seed, method_label=variant)
+        if rows:
+            return rows
+
+    return []
+
+
+def _load_full_eval_json(eval_path: Path, seed: int, method_label: str = "MEMIT-Seq") -> list[dict]:
+    """Load pre-aggregated full_eval JSON (legacy format) into row dicts."""
+    rows = []
+    with open(eval_path) as f:
+        data = json.load(f)
+    for key, entry in data.items():
+        if not key.endswith("_edits"):
+            continue
+        total_edits = entry.get("total_edits", int(key.replace("_edits", "")))
+        rows.append({
+            "total_edits": total_edits,
+            "method": method_label,
+            "seed": seed,
+            "efficacy": entry["all_facts"]["efficacy"],
+            "paraphrase": entry["all_facts"].get("paraphrase", np.nan),
+            "neighborhood": entry["all_facts"].get("neighborhood", np.nan),
+            "first_1k_efficacy": entry.get("first_1k", {}).get("efficacy", np.nan),
+            "latest_1k_efficacy": entry.get("latest_1k", {}).get("efficacy", np.nan),
+            "n_cases": entry.get("n_evaluated", 0),
+        })
     return rows
 
 
@@ -220,7 +255,16 @@ def plot_comparison(df: pd.DataFrame, output_dir: Path) -> None:
     if len(available) == 1:
         axes = [axes]
 
-    methods = [m for m in ["AlphaEdit", "AlphaEdit-Poly2", "MEMIT-Seq"] if m in df["method"].unique()]
+    # Stable ordering: AlphaEdit first, Poly2 second, then MEMIT-Seq variants sorted
+    all_methods = df["method"].unique().tolist()
+    ordered = []
+    for fixed in ["AlphaEdit", "AlphaEdit-Poly2"]:
+        if fixed in all_methods:
+            ordered.append(fixed)
+    for m in sorted(all_methods):
+        if m not in ordered:
+            ordered.append(m)
+    methods = ordered
 
     for ax, metric in zip(axes, available):
         for method in methods:
@@ -228,8 +272,8 @@ def plot_comparison(df: pd.DataFrame, output_dir: Path) -> None:
             if method_data.empty:
                 continue
 
-            color = COLORS[method]
-            marker = MARKERS[method]
+            color = _color_for(method)
+            marker = _marker_for(method)
 
             # Per-seed lines (thin)
             for seed in method_data["seed"].unique():
@@ -264,8 +308,9 @@ def plot_comparison(df: pd.DataFrame, output_dir: Path) -> None:
             ax.set_xticks(all_edits)
         ax.tick_params(axis="x", rotation=45)
 
+    method_str = " vs ".join(methods)
     fig.suptitle(
-        "Method Comparison: AlphaEdit vs Poly2 vs MEMIT-Seq\n"
+        f"Method Comparison: {method_str}\n"
         "(Llama-3-8B-Instruct, MultiCounterFact, 100-edit batches)",
         y=1.02, fontsize=12,
     )
@@ -281,15 +326,24 @@ def plot_efficacy_focused(df: pd.DataFrame, output_dir: Path) -> None:
     """Single-panel efficacy comparison with annotations."""
     fig, ax = plt.subplots(figsize=(8, 5))
 
-    methods = [m for m in ["AlphaEdit", "AlphaEdit-Poly2", "MEMIT-Seq"] if m in df["method"].unique()]
+    # Stable ordering: AlphaEdit first, Poly2 second, then MEMIT-Seq variants sorted
+    all_methods = df["method"].unique().tolist()
+    ordered = []
+    for fixed in ["AlphaEdit", "AlphaEdit-Poly2"]:
+        if fixed in all_methods:
+            ordered.append(fixed)
+    for m in sorted(all_methods):
+        if m not in ordered:
+            ordered.append(m)
+    methods = ordered
 
     for method in methods:
         method_data = df[df["method"] == method].copy()
         if method_data.empty:
             continue
 
-        color = COLORS[method]
-        marker = MARKERS[method]
+        color = _color_for(method)
+        marker = _marker_for(method)
 
         # Per-seed (thin)
         for seed in method_data["seed"].unique():
@@ -338,7 +392,15 @@ def plot_efficacy_focused(df: pd.DataFrame, output_dir: Path) -> None:
 
 def print_summary(df: pd.DataFrame) -> None:
     """Print comparison table."""
-    methods = [m for m in ["AlphaEdit", "AlphaEdit-Poly2", "MEMIT-Seq"] if m in df["method"].unique()]
+    all_methods = df["method"].unique().tolist()
+    ordered = []
+    for fixed in ["AlphaEdit", "AlphaEdit-Poly2"]:
+        if fixed in all_methods:
+            ordered.append(fixed)
+    for m in sorted(all_methods):
+        if m not in ordered:
+            ordered.append(m)
+    methods = ordered
 
     print("\n" + "=" * 80)
     print("METHOD COMPARISON SUMMARY")
@@ -364,33 +426,41 @@ def print_summary(df: pd.DataFrame) -> None:
             print(f"{int(edits):>7} | {int(row['n_cases']):>5} | {eff} | {par} | {nei}")
 
     # Pairwise comparison at common checkpoints
-    print(f"\n{'─' * 50}")
-    print("  Δ Efficacy (Poly2 − AlphaEdit) and (MEMIT-Seq − AlphaEdit)")
-    print(f"{'─' * 50}")
-
     ae = df[df["method"] == "AlphaEdit"].groupby("total_edits")["efficacy"].mean()
     poly2 = df[df["method"] == "AlphaEdit-Poly2"].groupby("total_edits")["efficacy"].mean()
-    seq = df[df["method"] == "MEMIT-Seq"].groupby("total_edits")["efficacy"].mean()
+    # Find all MEMIT-Seq variants
+    seq_methods = [m for m in methods if m.startswith("MEMIT-Seq")]
 
-    all_edits = sorted(set(ae.index) | set(poly2.index) | set(seq.index))
+    if ae.empty:
+        print("\n" + "=" * 80)
+        return
 
-    print(f"{'Edits':>7} | {'AE':>7} | {'Poly2':>7} | {'Δ P-AE':>7} | {'Seq':>7} | {'Δ S-AE':>7}")
-    print(f"{'-'*7}-+-{'-'*7}-+-{'-'*7}-+-{'-'*7}-+-{'-'*7}-+-{'-'*7}")
+    for seq_name in seq_methods:
+        seq = df[df["method"] == seq_name].groupby("total_edits")["efficacy"].mean()
 
-    for edits in all_edits:
-        ae_val = ae.get(edits, np.nan)
-        p2_val = poly2.get(edits, np.nan)
-        sq_val = seq.get(edits, np.nan)
-        d_p = p2_val - ae_val if not (np.isnan(p2_val) or np.isnan(ae_val)) else np.nan
-        d_s = sq_val - ae_val if not (np.isnan(sq_val) or np.isnan(ae_val)) else np.nan
+        print(f"\n{'─' * 60}")
+        print(f"  Δ Efficacy (Poly2 − AlphaEdit) and ({seq_name} − AlphaEdit)")
+        print(f"{'─' * 60}")
 
-        ae_s = f"{ae_val:.4f}" if not np.isnan(ae_val) else "    —"
-        p2_s = f"{p2_val:.4f}" if not np.isnan(p2_val) else "    —"
-        sq_s = f"{sq_val:.4f}" if not np.isnan(sq_val) else "    —"
-        dp_s = f"{d_p:+.4f}" if not np.isnan(d_p) else "    —"
-        ds_s = f"{d_s:+.4f}" if not np.isnan(d_s) else "    —"
+        all_edits = sorted(set(ae.index) | set(poly2.index) | set(seq.index))
 
-        print(f"{int(edits):>7} | {ae_s} | {p2_s} | {dp_s} | {sq_s} | {ds_s}")
+        print(f"{'Edits':>7} | {'AE':>7} | {'Poly2':>7} | {'Δ P-AE':>7} | {'Seq':>7} | {'Δ S-AE':>7}")
+        print(f"{'-'*7}-+-{'-'*7}-+-{'-'*7}-+-{'-'*7}-+-{'-'*7}-+-{'-'*7}")
+
+        for edits in all_edits:
+            ae_val = ae.get(edits, np.nan)
+            p2_val = poly2.get(edits, np.nan)
+            sq_val = seq.get(edits, np.nan)
+            d_p = p2_val - ae_val if not (np.isnan(p2_val) or np.isnan(ae_val)) else np.nan
+            d_s = sq_val - ae_val if not (np.isnan(sq_val) or np.isnan(ae_val)) else np.nan
+
+            ae_s = f"{ae_val:.4f}" if not np.isnan(ae_val) else "    —"
+            p2_s = f"{p2_val:.4f}" if not np.isnan(p2_val) else "    —"
+            sq_s = f"{sq_val:.4f}" if not np.isnan(sq_val) else "    —"
+            dp_s = f"{d_p:+.4f}" if not np.isnan(d_p) else "    —"
+            ds_s = f"{d_s:+.4f}" if not np.isnan(d_s) else "    —"
+
+            print(f"{int(edits):>7} | {ae_s} | {p2_s} | {dp_s} | {sq_s} | {ds_s}")
 
     print("\n" + "=" * 80)
 
@@ -402,16 +472,19 @@ def main():
     parser.add_argument("--output_dir", type=Path,
                         default=Path("results/figures/method_comparison"),
                         help="Output directory for figures")
-    parser.add_argument("--lambda_prev", type=float, default=1.0,
-                        help="MEMIT-Seq lambda_prev (default: 1.0)")
-    parser.add_argument("--lambda_delta", type=float, default=0.0,
-                        help="MEMIT-Seq lambda_delta (default: 0.0)")
+    parser.add_argument("--lambda_prev", type=float, nargs="+", default=[1.0],
+                        help="MEMIT-Seq lambda_prev values (default: 1.0)")
+    parser.add_argument("--lambda_delta", type=float, nargs="+", default=[0.0],
+                        help="MEMIT-Seq lambda_delta values (default: 0.0)")
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Build all (lp, ld) pairs to load
+    seq_variants = [(lp, ld) for lp in args.lambda_prev for ld in args.lambda_delta]
+
     print("=== Method Comparison ===\n")
     print(f"Seeds: {args.seeds}")
-    print(f"MEMIT-Seq params: λ_prev={args.lambda_prev}, λ_delta={args.lambda_delta}")
+    print(f"MEMIT-Seq variants: {[f'lp{lp}-ld{ld}' for lp, ld in seq_variants]}")
     print(f"Output: {args.output_dir}\n")
 
     # Load all data
@@ -428,9 +501,11 @@ def main():
         print(f"  AlphaEdit-Poly2: {len(poly2_rows)} checkpoints")
         all_rows.extend(poly2_rows)
 
-        seq_rows = load_memit_seq_results(seed, args.lambda_prev, args.lambda_delta)
-        print(f"  MEMIT-Seq: {len(seq_rows)} checkpoints")
-        all_rows.extend(seq_rows)
+        for lp, ld in seq_variants:
+            variant_name = f"MEMIT-Seq-lp{lp}-ld{ld}-cache0"
+            seq_rows = load_memit_seq_results(seed, lp, ld)
+            print(f"  {variant_name}: {len(seq_rows)} checkpoints")
+            all_rows.extend(seq_rows)
 
     if not all_rows:
         print("\nERROR: No data found.")

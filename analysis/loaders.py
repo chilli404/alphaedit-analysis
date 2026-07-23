@@ -703,6 +703,62 @@ def load_matched_ordering_results(
     return records
 
 
+def load_matched_ordering_full_eval(
+    seed: int,
+    ordering: str,
+    alg: str = "AlphaEdit",
+) -> Optional[Dict]:
+    """Load full checkpoint evaluation for a matched ordering experiment.
+
+    Layout: matched_ordering/{ALG}/{ORDERING}/seed{SEED}/full_eval_seed{SEED}.json
+
+    Returns dict keyed by "{N}_edits" with per-checkpoint metrics:
+      all_facts, first_1k, latest_1k, latest_100, retention_auc, cohort_metrics.
+    """
+    path = RESULTS / "matched_ordering" / alg / ordering / f"seed{seed}" / f"full_eval_seed{seed}.json"
+    if not path.exists():
+        return None
+    with open(path) as f:
+        return json.load(f)
+
+
+def load_matched_ordering_all_evals(
+    seeds: List[int],
+    orderings: List[str] = ("key_clustered", "key_dispersed"),
+    algs: List[str] = ("AlphaEdit", "MEMIT-Seq-lp1.0-ld0.0-cache0"),
+) -> List[Dict]:
+    """Load all matched ordering full_eval results into flat row format.
+
+    Returns list of dicts with: seed, ordering, method, total_edits,
+    efficacy, paraphrase, neighborhood, first_1k_efficacy, latest_1k_efficacy,
+    retention_auc.
+    """
+    rows = []
+    for seed in seeds:
+        for alg in algs:
+            for ordering in orderings:
+                data = load_matched_ordering_full_eval(seed, ordering, alg)
+                if data is None:
+                    continue
+                for key, entry in data.items():
+                    if not key.endswith("_edits"):
+                        continue
+                    total_edits = entry.get("total_edits", int(key.replace("_edits", "")))
+                    rows.append({
+                        "seed": seed,
+                        "ordering": ordering,
+                        "method": alg,
+                        "total_edits": total_edits,
+                        "efficacy": entry["all_facts"]["efficacy"],
+                        "paraphrase": entry["all_facts"].get("paraphrase", np.nan),
+                        "neighborhood": entry["all_facts"].get("neighborhood", np.nan),
+                        "first_1k_efficacy": entry.get("first_1k", {}).get("efficacy", np.nan),
+                        "latest_1k_efficacy": entry.get("latest_1k", {}).get("efficacy", np.nan),
+                        "retention_auc": entry.get("retention_auc", np.nan),
+                    })
+    return rows
+
+
 # ─── Discovery ───────────────────────────────────────────────────────────────
 
 

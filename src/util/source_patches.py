@@ -29,10 +29,13 @@ P_COMPUTE_CACHED = """\
             for i, layer in enumerate(hparams.layers):
                 P[i,:,:] = get_project(model,tok,layer,hparams)
             torch.save(P, "null_space_project.pt")
-            _s3_p_cache = Path("/s3-data/continual-learning/alphaedit/stats/llama3-8b-instruct/null_space_project.pt")
-            if _s3_p_cache.parent.exists():
-                torch.save(P, str(_s3_p_cache))
-                print(f"Computed and cached null-space projection (also persisted to S3)")
+            import os as _os
+            _stats_root = Path(_os.environ.get("STATS_ROOT", ""))
+            if not _stats_root.is_dir():
+                _stats_root = Path(_os.environ.get("CHECKPOINT_ROOT", "")).parent / "stats" / "llama3-8b-instruct"
+            if _stats_root.is_dir():
+                torch.save(P, str(_stats_root / "null_space_project.pt"))
+                print(f"Computed and cached null-space projection (persisted to {_stats_root})")
             else:
                 print(f"Computed and cached null-space projection to null_space_project.pt")"""
 

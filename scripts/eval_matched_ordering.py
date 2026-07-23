@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
-Post-hoc evaluation of MEMIT+SeqReg checkpoints using the SAME protocol as AlphaEdit.
+Post-hoc evaluation of matched ordering checkpoints.
 
 Loads model weights from each saved checkpoint and evaluates ALL edited facts
-(not just the last batch). Produces the decisive comparison table:
+from the stream file (not just the last batch). Works with any algorithm
+(AlphaEdit, MEMIT-Seq, etc.) that saves checkpoints during matched ordering runs.
+
+Produces the decisive comparison table:
 
     Method    Checkpoint    All facts    First 1K    Latest 1K    Locality
 
@@ -11,9 +14,9 @@ Checkpoints are at batches 9, 19, 29, 39, 49 (= 1K, 2K, 3K, 4K, 5K edits).
 We evaluate at 2K (batch 19), 3K (batch 29), and 5K (batch 49).
 
 Usage:
-    python scripts/eval_seqreg_checkpoints.py --seed 42
-    python scripts/eval_seqreg_checkpoints.py --seed 42 --checkpoints 19 29 49
-    python scripts/eval_seqreg_checkpoints.py --seed 42 --checkpoints 29  # just 3K
+    python scripts/eval_matched_ordering.py --seed 42 --alg_name AlphaEdit --ordering key_clustered
+    python scripts/eval_matched_ordering.py --seed 42 --checkpoints 19 29 49
+    python scripts/eval_matched_ordering.py --seed 42 --checkpoints 29  # just 3K
 """
 
 import argparse

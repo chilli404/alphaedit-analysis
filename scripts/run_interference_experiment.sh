@@ -174,12 +174,17 @@ case "$PHASE" in
 
     multilayer_keys)
         echo "--- Extract Keys for Layers 4-8 (GPU) ---"
+        # Force FUSE mount to list orderings directory
+        STREAM_DIR="${RESULT_ROOT:-$(uv run python -c 'import sys; sys.path.insert(0,"src/util"); from paths import get_result_root; print(get_result_root())')}/matched_ordering"
+        echo "  Stream dir: $STREAM_DIR"
+        ls "$STREAM_DIR/orderings/" || true
         for LAYER in 4 5 6 7 8; do
             echo ""
             echo "=== Layer $LAYER ==="
             uv run python analysis/matched_ordering_key_geometry.py \
                 --seed "$SEED" \
-                --layer "$LAYER"
+                --layer "$LAYER" \
+                --stream_dir "$STREAM_DIR"
         done
         ;;
 
@@ -197,13 +202,19 @@ case "$PHASE" in
         echo "--- All Multi-Layer GPU Work (keys + base weights) ---"
         echo ""
 
+        # Force FUSE mount to list orderings directory
+        STREAM_DIR="${RESULT_ROOT:-$(uv run python -c 'import sys; sys.path.insert(0,"src/util"); from paths import get_result_root; print(get_result_root())')}/matched_ordering"
+        echo "  Stream dir: $STREAM_DIR"
+        ls "$STREAM_DIR/orderings/" || true
+
         echo "=== Extract Keys for Layers 4-8 ==="
         for LAYER in 4 5 6 7 8; do
             echo ""
             echo "  Layer $LAYER..."
             uv run python analysis/matched_ordering_key_geometry.py \
                 --seed "$SEED" \
-                --layer "$LAYER"
+                --layer "$LAYER" \
+                --stream_dir "$STREAM_DIR"
         done
 
         echo ""

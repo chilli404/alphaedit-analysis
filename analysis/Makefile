@@ -20,9 +20,9 @@ APPENDIX := ../results/figures/appendix
 KEYS := ../results/key_vectors
 MATCHED := ../results/matched_ordering
 
-.PHONY: all fig1 fig2 fig5 interference tables appendix check clean validate_ordering
+.PHONY: all fig1 fig2 fig5 interference mechanism tables appendix check clean validate_ordering
 
-all: fig1 fig2 interference fig5 tables
+all: fig1 fig2 interference fig5 mechanism tables
 
 fig1:
 	@echo "── Figure 1: Reproduction & Long-Horizon ──"
@@ -39,6 +39,10 @@ interference:
 fig5: interference
 	@echo "── Figure 5: Per-Edit Interference ──"
 	$(PYTHON) -m analysis.fig5_interference --output-dir $(OUTPUT)
+
+mechanism:
+	@echo "── Ordering Mechanism (Interference Distillation) ──"
+	$(PYTHON) -m analysis.distill_interference --output-dir $(OUTPUT)
 
 tables:
 	@echo "── Tables & Paper Numbers ──"

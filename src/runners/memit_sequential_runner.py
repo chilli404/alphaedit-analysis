@@ -140,6 +140,7 @@ def build_sequential_script(
     output_jsonl: str,
     debug_freeze_batch: int | None,
     fast_checkpoint: bool = False,
+    eval_at_checkpoints_only: bool = False,
     order_id: int = 0,
     save_interval: int = 10,
     checkpoint_dir: str = "",
@@ -322,6 +323,7 @@ _ckpt_save_interval = {save_interval}
 _ckpt_dir = "{checkpoint_dir}"
 _ckpt_start_batch = {start_from_batch}
 _ckpt_num_edits = {num_edits}
+_ckpt_eval_at_checkpoints_only = {eval_at_checkpoints_only}
 
 def _ckpt_save(cnt, model, hparams):
     \"\"\"Save model weights, prev_cache, batch_idx, and log at checkpoint boundary.\"\"\"
@@ -600,6 +602,22 @@ _ckpt_save_hook = '''        # === CHECKPOINT: save at interval boundaries (inje
 _debug_code = {repr(debug_freeze_code)}
 _eval_source = _eval_source.replace(_post_anchor, _post_anchor + "\\n" + _batch_hook + _ckpt_save_hook + _debug_code, 1)
 
+# Inject CHECKPOINT-ONLY EVAL guard (skip evaluation for non-checkpoint batches)
+_eval_start_anchor = '    # torch.save(hs, "post_edit_hs_memit.pt")\\n    start = time()'
+assert _eval_start_anchor in _eval_source, (
+    "Evaluation start anchor not found in evaluate.py. "
+    "Upstream code has changed from pinned commit b84624f."
+)
+_checkpoint_eval_skip = '''    # torch.save(hs, "post_edit_hs_memit.pt")
+    # === MEMIT+SeqReg: skip evaluation if last batch is not a checkpoint boundary (injected) ===
+    _do_final_eval = True
+    if _ckpt_eval_at_checkpoints_only and not _ckpt_should_save(cnt - 1):
+        _do_final_eval = False
+        print(f"  [CHECKPOINT] Skipping final evaluation (batch {{cnt-1}} not at checkpoint boundary)")
+    # === END checkpoint eval skip ===
+    start = time()'''
+_eval_source = _eval_source.replace(_eval_start_anchor, _checkpoint_eval_skip, 1)
+
 # Inject FAST EVAL guard in evaluation loop (skip records not in current batch)
 _eval_anchor = '    for record in ds:\\n        out_file = Path(case_result_template.format(num_edits, record["case_id"]))'
 assert _eval_anchor in _eval_source, (
@@ -607,6 +625,9 @@ assert _eval_anchor in _eval_source, (
     "Upstream code has changed from pinned commit b84624f."
 )
 _fast_eval_injection = '''    for record in ds:
+        # === MEMIT+SeqReg: skip entire evaluation if _do_final_eval is False (injected) ===
+        if not _do_final_eval:
+            break
         # === MEMIT+SeqReg: fast mode - skip evaluating non-batch records (injected) ===
         if _memit_fast_mode and record["case_id"] not in case_ids:
             continue
@@ -617,6 +638,8 @@ _eval_source = _eval_source.replace(_eval_anchor, _fast_eval_injection, 1)
 print("[SeqReg] evaluate.py patched successfully")
 if {fast_checkpoint}:
     print("  Fast checkpoint mode: ENABLED (only evaluate edited batch)")
+if {eval_at_checkpoints_only}:
+    print("  Eval at checkpoints only: ENABLED (milestone mode)")
 
 # 7. Execute patched evaluate.py
 exec(compile(_eval_source, "experiments/evaluate.py", "exec"), {{
@@ -636,6 +659,7 @@ exec(compile(_eval_source, "experiments/evaluate.py", "exec"), {{
     "_ckpt_start_batch": _ckpt_start_batch,
     "_ckpt_save_interval": _ckpt_save_interval,
     "_ckpt_dir": _ckpt_dir,
+    "_ckpt_eval_at_checkpoints_only": _ckpt_eval_at_checkpoints_only,
     "_ckpt_save": _ckpt_save,
     "_ckpt_load": _ckpt_load,
     "_ckpt_should_skip": _ckpt_should_skip,
@@ -697,12 +721,25 @@ def run(args: argparse.Namespace) -> None:
     cache_max = None if args.cache_max == "none" else int(args.cache_max)
 
     # Output directory
+    # evaluate.py appends {dir_name}/run_000/ to RESULTS_DIR, so we set results_dir
+    # to the level ABOVE where variant_name gets appended.
     cache_max_str = str(cache_max) if cache_max is not None else "0"
     variant_name = f"MEMIT-Seq-lp{args.lambda_prev}-ld{args.lambda_delta}-cache{cache_max_str}"
-    results_dir = (
-        get_result_root() / "memit_seqreg"
-        / f"seed{args.seed}" / f"{args.dataset_size_limit}edits" / variant_name
-    )
+    ordering = getattr(args, 'ordering', None)
+    if ordering:
+        # Matched ordering: evaluate.py writes to {results_dir}/{variant}/run_000/
+        # Final: results/matched_ordering/{ordering}/seed{N}/{edits}edits/{variant}/run_000/
+        results_dir = (
+            get_result_root() / "matched_ordering" / ordering
+            / f"seed{args.seed}" / f"{args.dataset_size_limit}edits"
+        )
+    else:
+        # Standard failure curve: evaluate.py writes to {results_dir}/{variant}/run_000/
+        # Final: results/failure_curve_checkpointed/seed{N}/{edits}edits/{variant}/run_000/
+        results_dir = (
+            get_result_root() / "failure_curve_checkpointed"
+            / f"seed{args.seed}" / f"{args.dataset_size_limit}edits"
+        )
     results_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -723,9 +760,10 @@ def run(args: argparse.Namespace) -> None:
         if latest:
             start_from_batch = latest[0] + 1
             if start_from_batch >= total_batches:
-                print(f"  Checkpoint at batch {latest[0]} already covers all {total_batches} batches. Nothing to do.")
-                return
-            print(f"  Auto-detected: resume from batch {start_from_batch} (checkpoint at batch {latest[0]})")
+                start_from_batch = total_batches
+                print(f"  Auto-detected: checkpoint at batch {latest[0]} covers all {total_batches} batches. Will run eval only.")
+            else:
+                print(f"  Auto-detected: resume from batch {start_from_batch} (checkpoint at batch {latest[0]})")
         else:
             start_from_batch = 0
             print("  No existing checkpoints found. Starting from batch 0.")
@@ -748,12 +786,13 @@ def run(args: argparse.Namespace) -> None:
         output_jsonl=str(output_jsonl),
         debug_freeze_batch=args.debug_freeze_batch,
         fast_checkpoint=args.fast_checkpoint,
+        eval_at_checkpoints_only=args.eval_at_checkpoints_only,
         order_id=args.order_id,
         save_interval=args.save_interval,
         checkpoint_dir=str(ckpt_dir),
         start_from_batch=start_from_batch,
         dataset_override=args.dataset_override,
-        eval_results_dir=str(results_dir.parent),
+        eval_results_dir=str(results_dir),
         variant_name=variant_name,
     )
 
@@ -777,7 +816,13 @@ def run(args: argparse.Namespace) -> None:
     print(f"  Resume from:    batch {start_from_batch} ({start_from_batch * args.num_edits} edits)")
     print(f"  Save interval:  every {args.save_interval} batches")
     print(f"  Checkpoint dir: {ckpt_dir}")
-    print(f"  Fast checkpoint: {'YES - only evaluate edited batch' if args.fast_checkpoint else 'NO - full dataset evaluation'}")
+    if args.eval_at_checkpoints_only:
+        eval_mode = f"Milestone only (every {args.save_interval} batches)"
+    elif args.fast_checkpoint:
+        eval_mode = "Fast (edited batch only)"
+    else:
+        eval_mode = "Full (all facts every batch)"
+    print(f"  Evaluation:     {eval_mode}")
     print(f"  CUDA:           device {args.cuda_device}")
     print(f"  Model:          {args.model_name}")
     if args.dataset_override:
@@ -870,8 +915,11 @@ def main():
     # Debug and performance
     parser.add_argument("--debug_freeze_batch", type=int, default=None,
                         help="Run same-state diagnostic at this batch (tests λ_prev effect)")
-    parser.add_argument("--fast_checkpoint", action="store_true",
+    eval_group = parser.add_mutually_exclusive_group()
+    eval_group.add_argument("--fast_checkpoint", action="store_true",
                         help="Fast checkpoint mode: only evaluate edited batch, not entire dataset (much faster)")
+    eval_group.add_argument("--eval_at_checkpoints_only", action="store_true",
+                        help="Milestone mode: evaluate full dataset only at checkpoint boundaries (RECOMMENDED for papers)")
 
     # Dataset override (for coupling streams, etc.)
     parser.add_argument("--dataset_override", type=str, default=None,

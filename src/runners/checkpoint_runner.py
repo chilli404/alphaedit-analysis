@@ -169,6 +169,7 @@ def build_checkpoint_script(
     order_id: int = 0,
     results_dir: str | None = None,
     result_root: str | None = None,
+    dir_name: str | None = None,
 ) -> str:
     """
     Build an inline Python script that:
@@ -212,6 +213,18 @@ def build_checkpoint_script(
         )
     else:
         results_dir_injection = ""
+
+    # Build optional dir_name override (for MEMIT-Seq: passes MEMIT to ALG_DICT but uses variant as dir_name)
+    if dir_name:
+        results_dir_injection += (
+            f'\nsource = source.replace(\n'
+            f'    \'dir_name=args.alg_name,\',\n'
+            f'    \'dir_name="{dir_name}",\',\n'
+            f'    1,\n'
+            f')\n'
+            f'print(f"  [DIR_NAME] Overridden to: {dir_name}")\n'
+        )
+
 
     script = textwrap.dedent(f"""\
 import os, sys, random, json
@@ -651,10 +664,18 @@ def run(args: argparse.Namespace) -> None:
             start_from_batch = 0
             print("  No existing checkpoints found. Starting from batch 0.")
 
+    # For MEMIT-Seq variants, pass MEMIT as the algorithm (for ALG_DICT lookup)
+    # but keep the full variant name for dir_name (results directory naming)
+    eval_alg_name = args.alg_name
+    dir_name_override = None
+    if args.alg_name.startswith("MEMIT-Seq"):
+        eval_alg_name = "MEMIT"
+        dir_name_override = args.alg_name
+
     script = build_checkpoint_script(
         seed=args.seed,
         cuda_device=args.cuda_device,
-        alg_name=args.alg_name,
+        alg_name=eval_alg_name,
         model_name=model_name,
         hparams_fname=args.hparams_fname,
         ds_name=args.ds_name,
@@ -670,6 +691,7 @@ def run(args: argparse.Namespace) -> None:
         order_id=args.order_id,
         results_dir=str(results_dir_override) if results_dir_override else None,
         result_root=str(get_result_root()),
+        dir_name=dir_name_override,
     )
 
     # Environment
@@ -784,7 +806,8 @@ def main():
     parser.add_argument("--cuda_device", default="0")
 
     # Experiment parameters
-    parser.add_argument("--alg_name", required=True, choices=["AlphaEdit", "MEMIT"])
+    parser.add_argument("--alg_name", required=True,
+                        help="Algorithm name: AlphaEdit, MEMIT, or MEMIT-Seq-lp{X}-ld{Y}-cache{Z}")
     parser.add_argument("--model_name", default=os.environ.get("MODEL_NAME", "meta-llama/Meta-Llama-3-8B-Instruct"))
     parser.add_argument("--hparams_fname", default="Llama3-8B.json")
     parser.add_argument("--ds_name", default="mcf", choices=["mcf", "cf", "zsre"])

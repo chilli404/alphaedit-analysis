@@ -57,15 +57,29 @@ The YAML `run:` block expects these env vars (passed via `--env`):
 - `LAMBDA_PREV` — For MEMIT+SeqReg: previous-key regularization strength (λ_prev in Eq. 12)
 - `LAMBDA_DELTA` — For MEMIT+SeqReg: ridge regularization strength (λ_delta in Eq. 12)
 
+### Path Environment Variables
+
+All experiment scripts resolve data/checkpoint/results paths via these env vars:
+
+| Variable | Default (local) | SkyPilot (set by YAML) | Purpose |
+|----------|-----------------|------------------------|---------|
+| `RESULT_ROOT` | `$PROJECT_DIR/results` | `/s3-data/continual-learning/alphaedit/results` | All experiment outputs |
+| `CHECKPOINT_ROOT` | `~/.cache/alphaedit_checkpoints` | `/s3-data/continual-learning/alphaedit/checkpoints` | Checkpoint storage & resume |
+| `STATS_ROOT` | `vendor/AlphaEdit/data/stats/.../wikipedia_stats` | (set by `link_stats.sh`) | Covariance stats & cached P matrix |
+
+Scripts never hardcode S3 paths directly. The YAML sets these env vars to S3 paths; locally they default to project-relative or `~/.cache` paths. This means the same scripts work identically on local machines and SkyPilot clusters.
+
 ### S3 Mounting
 
-Within SkyPilot clusters, **S3 is already FUSE-mounted at `/s3-data`**. This means:
-- **Input data** is read from:
-  - `/s3-data/continual-learning/alphaedit/stats/` (covariance statistics)
-  - `/s3-data/continual-learning/alphaedit/dsets/` (datasets)
-- **Output results** are copied to:
-  - `/s3-data/continual-learning/alphaedit/results/${EXPERIMENT_NAME}/seed${SEED}/`
-- No explicit `aws s3 cp` needed — standard filesystem operations (`cp -r`, `ln -s`) work directly.
+Within SkyPilot clusters, **S3 is already FUSE-mounted at `/s3-data`**. The YAML `run:` block sets:
+```bash
+export RESULT_ROOT="/s3-data/continual-learning/alphaedit/results"
+export CHECKPOINT_ROOT="/s3-data/continual-learning/alphaedit/checkpoints"
+```
+
+Additionally, `link_stats.sh` and `link_dsets.sh` symlink standard datasets and covariance statistics from `/s3-data/.../stats/` and `/s3-data/.../dsets/` into `vendor/AlphaEdit/data/`.
+
+No explicit `aws s3 cp` needed — standard filesystem operations (`cp -r`, `ln -s`) work directly on the FUSE mount.
 
 ### The Launcher (`sky/sky_launch.sh`)
 
@@ -173,7 +187,7 @@ Enables failure curve experiments (0→10000 edits) to survive 8-hour cluster li
 - **Fast** (`--fast_checkpoint`): Evaluate only edited batch facts (fast, partial preservation measurement)
 - **Milestone** (`--eval_at_checkpoints_only`): Evaluate all facts only at checkpoint boundaries (balanced, **RECOMMENDED FOR PAPERS**)
 
-Checkpoints saved to: `/s3-data/.../checkpoints/{alg_name}/seed{seed}/batch_{N}/` (falls back to `~/.cache/alphaedit_checkpoints/`)
+Checkpoints saved to: `$CHECKPOINT_ROOT/{alg_name}/seed{seed}/batch_{N}/` (defaults to `~/.cache/alphaedit_checkpoints/` locally, S3 on clusters)
 
 Example: With `--save_interval 10` and `--eval_at_checkpoints_only`, saves and evaluates at batches 10, 20, 30, 40, 50 (every 1000 edits).
 
@@ -256,6 +270,8 @@ sky/sky_launch.sh ──────────→  sky launch/exec
                                   │
                                   ▼
                               run:
+                                export RESULT_ROOT=/s3-data/.../results
+                                export CHECKPOINT_ROOT=/s3-data/.../checkpoints
                                 link_stats.sh  ← /s3-data/.../stats/
                                 link_dsets.sh  ← /s3-data/.../dsets/
                                 patch vendor code (sed)
@@ -271,11 +287,24 @@ sky/sky_launch.sh ──────────→  sky launch/exec
                               vendor/AlphaEdit/experiments/evaluate.py (injected)
                                   │
                                   ▼
-                              Results written to results/ and vendor/AlphaEdit/results/
-                                  │
-                                  ▼
-                              cp -r results/ → /s3-data/.../results/${EXPERIMENT_NAME}/seed${SEED}/
+                              Results written to $RESULT_ROOT/...
+                              Checkpoints written to $CHECKPOINT_ROOT/...
 ```
+
+### Path Resolution Convention
+
+All scripts follow the same pattern — no hardcoded S3 paths:
+
+```bash
+CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-${HOME}/.cache/alphaedit_checkpoints}"
+RESULT_ROOT="${RESULT_ROOT:-$PROJECT_DIR/results}"
+```
+
+| Context | RESULT_ROOT | CHECKPOINT_ROOT |
+|---------|-------------|-----------------|
+| Local dev | `./results` | `~/.cache/alphaedit_checkpoints` |
+| SkyPilot cluster | `/s3-data/.../results` | `/s3-data/.../checkpoints` |
+| Custom | Any path via env var | Any path via env var |
 
 ---
 
@@ -323,12 +352,13 @@ ls results/
 ```
 
 ### Retrieve results
-Results auto-sync to S3 at job completion. From any machine with S3 access:
+On SkyPilot, results write directly to `$RESULT_ROOT` (S3 FUSE mount) during execution. From any machine with S3 access:
 ```bash
 ls /s3-data/continual-learning/alphaedit/results/
 # or
 aws s3 ls s3://<bucket>/continual-learning/alphaedit/results/
 ```
+Locally, results are at `./results/` (or wherever `RESULT_ROOT` points).
 
 ### Run failure curve with checkpoints
 
@@ -365,6 +395,40 @@ DEBUG_BATCH=5 bash scripts/run_memit_sequential.sh 42 1 1
 # On SkyPilot
 FAST_CHECKPOINT=true LAMBDA_PREV=1 LAMBDA_DELTA=1 bash sky/sky_launch.sh memit_sequential 42
 ```
+
+### Run matched ordering experiments
+```bash
+# Generate ordering streams (required first)
+uv run python src/datasets/generate_orderings.py --seed 2024
+
+# Local: edit run (AlphaEdit, key_clustered, seed 2024)
+bash scripts/run_matched_ordering.sh 2024 AlphaEdit key_clustered
+
+# Local: MEMIT-Seq (full-history, no regularization)
+bash scripts/run_matched_ordering.sh 2024 MEMIT-Seq-lp1.0-ld0.0-cache0 key_dispersed
+
+# Local: eval-only (auto-detects if all checkpoints present)
+bash scripts/run_matched_ordering.sh 2024 AlphaEdit key_clustered
+
+# Direct eval script (explicit checkpoint control)
+uv run python scripts/eval_seqreg_checkpoints.py \
+    --seed 2024 --alg_name AlphaEdit --ordering key_clustered \
+    --checkpoint_dir ~/.cache/alphaedit_checkpoints/matched_ordering/AlphaEdit/key_clustered/seed2024 \
+    --checkpoints 19 29 49 --num_edits 100 \
+    --dataset_path results/matched_ordering/orderings/key_clustered_seed2024.json
+
+# On SkyPilot (launches 2 clusters per algorithm: one per ordering)
+ALG_NAME=AlphaEdit ORDERING=key_clustered bash sky/sky_launch.sh matched_ordering 2024
+ALG_NAME=AlphaEdit ORDERING=key_dispersed bash sky/sky_launch.sh matched_ordering 2024
+
+# Or launch all 4 combinations at once (2 algs × 2 orderings)
+bash sky/sky_launch.sh matched_ordering 2024
+```
+
+**Matched ordering paths:**
+- Streams: `$RESULT_ROOT/matched_ordering/orderings/{ORDERING}_seed{SEED}.json`
+- Checkpoints: `$CHECKPOINT_ROOT/matched_ordering/{ALG}/{ORDERING}/seed{SEED}/batch_{N}/`
+- Results: `$RESULT_ROOT/matched_ordering/{ALG}/{ORDERING}/seed{SEED}/full_eval_seed{SEED}.json`
 
 ### Tear down all clusters
 ```bash

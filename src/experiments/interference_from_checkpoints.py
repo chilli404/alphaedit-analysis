@@ -540,7 +540,7 @@ def run_percase_eval(
     """
     # Import model_download first — patches filelock to prevent hangs
     sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
-    from model_download import resolve_model_path
+    from model_download import download_model, _artifactory_reachable
 
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -549,7 +549,9 @@ def run_percase_eval(
     print("PER-CASE BEHAVIORAL EVALUATION (GPU)")
     print("=" * 70)
 
-    model_name = resolve_model_path(model_name)
+    if _artifactory_reachable():
+        model_name = download_model(model_name)
+    print(f"  Model: {model_name}")
 
     conditions = [
         ("AlphaEdit", "key_clustered"),
@@ -685,7 +687,7 @@ def _test_batch_prediction(
 ) -> List[bool]:
     """
     Full multi-token evaluation: checks argmax correctness at each target token position.
-    Matches vendor evaluate.py / eval_seqreg_checkpoints.py test_batch_prediction exactly.
+    Matches vendor evaluate.py test_batch_prediction exactly.
     """
     import torch
 
