@@ -55,6 +55,7 @@ cd "$PROJECT_DIR"
 
 # --- Checkpoint detection helper ---
 # Returns the checkpoint directory for a given algorithm if valid checkpoints exist.
+# Handles both standard algorithms (AlphaEdit, MEMIT) and MEMIT-Seq variants.
 find_checkpoints() {
     local alg_name="$1"
 
@@ -69,8 +70,25 @@ find_checkpoints() {
         fi
     fi
 
-    # Priority 2: CHECKPOINT_ROOT
-    local candidate="$ckpt_root/${alg_name}/seed${SEED}"
+    # Priority 2: MEMIT-Seq variants live under failure_curve/
+    if [[ "$alg_name" == MEMIT-Seq* ]]; then
+        local candidate="$ckpt_root/failure_curve/${alg_name}/seed${SEED}"
+        if [[ -d "$candidate" ]] && ls "$candidate"/batch_*/model_weights.pt &>/dev/null; then
+            echo "$candidate"
+            return 0
+        fi
+        return 1
+    fi
+
+    # Priority 3: failure_curve/{alg}/seed{N} (standard algorithms)
+    local candidate="$ckpt_root/failure_curve/${alg_name}/seed${SEED}"
+    if [[ -d "$candidate" ]] && ls "$candidate"/batch_*/model_weights.pt &>/dev/null; then
+        echo "$candidate"
+        return 0
+    fi
+
+    # Priority 4: flat layout {alg}/seed{N}
+    candidate="$ckpt_root/${alg_name}/seed${SEED}"
     if [[ -d "$candidate" ]] && ls "$candidate"/batch_*/model_weights.pt &>/dev/null; then
         echo "$candidate"
         return 0
@@ -155,12 +173,30 @@ case "$ALG" in
     MEMIT)
         run_probe "MEMIT"
         ;;
+    MEMIT-Seq*)
+        # Any MEMIT-Seq variant: MEMIT-Seq-lp1.0-ld1.0-cache0, etc.
+        run_probe "$ALG"
+        ;;
     both)
         run_probe "AlphaEdit"
         run_probe "MEMIT"
         ;;
+    all)
+        # Run AlphaEdit, MEMIT, and all MEMIT-Seq variants with discovered checkpoints
+        run_probe "AlphaEdit"
+        run_probe "MEMIT"
+        _ckpt_root="${CHECKPOINT_ROOT:-${HOME}/.cache/alphaedit_checkpoints}"
+        for variant_dir in "$_ckpt_root"/failure_curve/MEMIT-Seq*/seed${SEED}; do
+            if [[ -d "$variant_dir" ]] && ls "$variant_dir"/batch_*/model_weights.pt &>/dev/null; then
+                _variant_name="$(basename "$(dirname "$variant_dir")")"
+                echo "  Auto-detected MEMIT-Seq variant: $_variant_name"
+                run_probe "$_variant_name"
+            fi
+        done
+        ;;
     *)
-        echo "ERROR: Unknown algorithm '$ALG'. Use: AlphaEdit, MEMIT, or both"
+        echo "ERROR: Unknown algorithm '$ALG'."
+        echo "  Use: AlphaEdit, MEMIT, MEMIT-Seq-lp{X}-ld{Y}-cache{Z}, both, or all"
         exit 1
         ;;
 esac

@@ -28,7 +28,9 @@ Usage:
 import argparse
 import json
 import os
+import shutil
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,11 +55,32 @@ from paths import get_project_root, get_result_root, get_checkpoint_root
 
 
 def resolve_checkpoint_dir(explicit_dir: str | None, alg_name: str, seed: int) -> Path:
-    """Resolve checkpoint directory using CHECKPOINT_ROOT env var."""
+    """Resolve checkpoint directory using CHECKPOINT_ROOT env var.
+
+    For MEMIT-Seq variants (e.g. MEMIT-Seq-lp1.0-ld1.0-cache0), checkpoints
+    live at: {CHECKPOINT_ROOT}/failure_curve/{variant}/seed{N}/
+    For standard algorithms (AlphaEdit, MEMIT): {CHECKPOINT_ROOT}/{alg}/seed{N}/
+    """
     if explicit_dir:
         return Path(explicit_dir)
 
-    return get_checkpoint_root() / "failure_curve" / alg_name / f"seed{seed}"
+    ckpt_root = get_checkpoint_root()
+
+    # MEMIT-Seq variants always live under failure_curve/
+    if alg_name.startswith("MEMIT-Seq"):
+        return ckpt_root / "failure_curve" / alg_name / f"seed{seed}"
+
+    # Standard algorithms: try failure_curve/ first, then flat layout
+    fc_path = ckpt_root / "failure_curve" / alg_name / f"seed{seed}"
+    if fc_path.exists():
+        return fc_path
+
+    flat_path = ckpt_root / alg_name / f"seed{seed}"
+    if flat_path.exists():
+        return flat_path
+
+    # Default to failure_curve convention
+    return fc_path
 
 
 def find_all_checkpoints(ckpt_dir: Path) -> list[tuple[int, Path]]:
@@ -85,12 +108,32 @@ def find_all_checkpoints(ckpt_dir: Path) -> list[tuple[int, Path]]:
 
 
 def apply_checkpoint_weights(model, weights_path: Path) -> int:
-    """Apply checkpoint layer weights to model. Returns count of loaded params."""
-    layer_weights = torch.load(
-        str(weights_path),
-        map_location="cuda",
-        weights_only=True,
-    )
+    """Apply checkpoint layer weights to model. Returns count of loaded params.
+
+    Copies checkpoint to local /tmp before loading to avoid S3 FUSE read
+    failures on large files (torch.load needs reliable random access).
+    """
+
+    # Copy to local disk if on a FUSE mount (heuristic: path starts with /s3-)
+    source = Path(weights_path)
+    if str(source).startswith("/s3"):
+        local_copy = Path(tempfile.mktemp(suffix=".pt", prefix="ckpt_"))
+        shutil.copy2(str(source), str(local_copy))
+        load_path = str(local_copy)
+    else:
+        local_copy = None
+        load_path = str(source)
+
+    try:
+        layer_weights = torch.load(
+            load_path,
+            map_location="cuda",
+            weights_only=True,
+        )
+    finally:
+        if local_copy is not None:
+            local_copy.unlink(missing_ok=True)
+
     param_dict = dict(model.named_parameters())
     loaded = 0
     for param_name, param_data in layer_weights.items():
@@ -129,11 +172,14 @@ def run_offline_probes(
     base_state = {}
     # Only save params that checkpoints modify (edited layers)
     # Determine which params are in the first checkpoint
-    first_weights = torch.load(
-        str(checkpoints[0][1] / "model_weights.pt"),
-        map_location="cpu",
-        weights_only=True,
-    )
+    first_ckpt_path = checkpoints[0][1] / "model_weights.pt"
+    if str(first_ckpt_path).startswith("/s3"):
+        _tmp = Path(tempfile.mktemp(suffix=".pt", prefix="ckpt_init_"))
+        shutil.copy2(str(first_ckpt_path), str(_tmp))
+        first_weights = torch.load(str(_tmp), map_location="cpu", weights_only=True)
+        _tmp.unlink(missing_ok=True)
+    else:
+        first_weights = torch.load(str(first_ckpt_path), map_location="cpu", weights_only=True)
     param_dict = dict(model.named_parameters())
     for param_name in first_weights.keys():
         if param_name in param_dict:
@@ -143,9 +189,6 @@ def run_offline_probes(
 
     # Write to a local temp file, then copy to final destination.
     # S3 FUSE mounts do not support repeated append-mode writes reliably.
-    import tempfile
-    import shutil
-
     local_tmp = Path(tempfile.mktemp(suffix=".jsonl", prefix="capability_probe_"))
     print(f"  Writing to local temp: {local_tmp}")
     print(f"  Final destination:     {output_jsonl}")
@@ -195,8 +238,12 @@ def run_offline_probes(
         for param_name, base_data in base_state.items():
             param_dict[param_name].data.copy_(base_data)
 
-        # Apply this checkpoint's weights
-        loaded = apply_checkpoint_weights(model, batch_dir / "model_weights.pt")
+        # Apply this checkpoint's weights (skip if corrupted)
+        try:
+            loaded = apply_checkpoint_weights(model, batch_dir / "model_weights.pt")
+        except (RuntimeError, OSError) as e:
+            print(f"\n  [SKIP] Batch {batch_idx} ({total_edits} edits): checkpoint unreadable — {e}")
+            continue
 
         # Run probe
         print(f"\n  [PROBE] Batch {batch_idx} ({total_edits} edits, {loaded} params loaded)...")
@@ -232,8 +279,9 @@ def run_offline_probes(
         param_dict[param_name].data.copy_(base_data)
 
     # Copy local temp to final output (works on S3 FUSE as a single write)
+    # Use shutil.copyfile — FUSE rejects chmod/utime (copy/copy2 both fail)
     output_jsonl.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(str(local_tmp), str(output_jsonl))
+    shutil.copyfile(str(local_tmp), str(output_jsonl))
     local_tmp.unlink()
     print(f"\n  Results written to: {output_jsonl}")
 
@@ -246,8 +294,8 @@ def main():
     )
     parser.add_argument("--seed", type=int, required=True,
                         help="Seed used for the failure curve run")
-    parser.add_argument("--alg_name", required=True, choices=["AlphaEdit", "MEMIT"],
-                        help="Algorithm whose checkpoints to probe")
+    parser.add_argument("--alg_name", required=True,
+                        help="Algorithm whose checkpoints to probe (AlphaEdit, MEMIT, or MEMIT-Seq-lp{X}-ld{Y}-cache{Z})")
     parser.add_argument("--checkpoint_dir", type=str, default=None,
                         help="Explicit checkpoint directory (default: auto-resolve)")
     parser.add_argument("--model_name",

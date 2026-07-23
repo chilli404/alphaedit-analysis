@@ -46,9 +46,36 @@ echo ""
 
 cd "$PROJECT_DIR"
 
+resolve_ckpt_dir() {
+    # MEMIT-Seq variants: always under failure_curve/{variant}/seed{N}
+    # Standard algorithms: try failure_curve/ first, then flat layout
+    local alg_name="$1"
+
+    if [[ "$alg_name" == MEMIT-Seq* ]]; then
+        echo "$CHECKPOINT_ROOT/failure_curve/${alg_name}/seed${SEED}"
+        return
+    fi
+
+    local fc_path="$CHECKPOINT_ROOT/failure_curve/${alg_name}/seed${SEED}"
+    if [[ -d "$fc_path" ]]; then
+        echo "$fc_path"
+        return
+    fi
+
+    local flat_path="$CHECKPOINT_ROOT/${alg_name}/seed${SEED}"
+    if [[ -d "$flat_path" ]]; then
+        echo "$flat_path"
+        return
+    fi
+
+    # Default to failure_curve convention
+    echo "$fc_path"
+}
+
 run_offline() {
     local alg_name="$1"
-    local ckpt_dir="$CHECKPOINT_ROOT/failure_curve/${alg_name}/seed${SEED}"
+    local ckpt_dir
+    ckpt_dir="$(resolve_ckpt_dir "$alg_name")"
 
     if [[ ! -d "$ckpt_dir" ]]; then
         echo "ERROR: No checkpoints found at: $ckpt_dir"
@@ -89,12 +116,29 @@ case "$ALG" in
     MEMIT)
         run_offline "MEMIT"
         ;;
+    MEMIT-Seq*)
+        # Any MEMIT-Seq variant: MEMIT-Seq-lp1.0-ld0.0-cache0, etc.
+        run_offline "$ALG"
+        ;;
     both)
         run_offline "AlphaEdit"
         run_offline "MEMIT"
         ;;
+    all)
+        # Run AlphaEdit, MEMIT, and all discovered MEMIT-Seq variants
+        run_offline "AlphaEdit"
+        run_offline "MEMIT"
+        for variant_dir in "$CHECKPOINT_ROOT"/failure_curve/MEMIT-Seq*/seed${SEED}; do
+            if [[ -d "$variant_dir" ]] && ls "$variant_dir"/batch_*/model_weights.pt &>/dev/null; then
+                _variant_name="$(basename "$(dirname "$variant_dir")")"
+                echo "  Auto-detected MEMIT-Seq variant: $_variant_name"
+                run_offline "$_variant_name"
+            fi
+        done
+        ;;
     *)
-        echo "ERROR: Unknown algorithm '$ALG'. Use: AlphaEdit, MEMIT, or both"
+        echo "ERROR: Unknown algorithm '$ALG'."
+        echo "  Use: AlphaEdit, MEMIT, MEMIT-Seq-lp{X}-ld{Y}-cache{Z}, both, or all"
         exit 1
         ;;
 esac

@@ -260,6 +260,16 @@ def run(args: argparse.Namespace) -> None:
         print(f"ERROR: AlphaEdit not found at {alphaedit_root}")
         sys.exit(1)
 
+    # Online mode only supports algorithms that vendor evaluate.py can dispatch to.
+    # MEMIT-Seq variants require the offline probe (they need dual source injection).
+    if args.alg_name.startswith("MEMIT-Seq"):
+        print(f"ERROR: Online probing is not supported for '{args.alg_name}'.")
+        print("  MEMIT-Seq requires existing checkpoints. Use the offline probe instead:")
+        print(f"    python src/mechanism/capability_probe_offline.py --seed {args.seed} --alg_name {args.alg_name}")
+        print("  Or via the shell script (auto-detects checkpoints):")
+        print(f"    bash scripts/run_capability_probe.sh {args.seed} {args.alg_name}")
+        sys.exit(1)
+
     link_hparams()
     patch_evaluate_file(alphaedit_root)
 
@@ -320,7 +330,8 @@ def main():
     )
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--cuda_device", default="0")
-    parser.add_argument("--alg_name", required=True, choices=["AlphaEdit", "MEMIT", "ROME"])
+    parser.add_argument("--alg_name", required=True,
+                        help="Algorithm name (AlphaEdit, MEMIT, ROME, or MEMIT-Seq-lp{X}-ld{Y}-cache{Z})")
     parser.add_argument("--model_name", default=os.environ.get("MODEL_NAME", "meta-llama/Meta-Llama-3-8B-Instruct"))
     parser.add_argument("--hparams_fname", default="Llama3-8B.json")
     parser.add_argument("--ds_name", default="mcf", choices=["mcf", "cf", "zsre"])

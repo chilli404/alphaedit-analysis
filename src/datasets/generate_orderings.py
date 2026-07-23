@@ -365,6 +365,7 @@ def main():
         data_dir = Path(args.data_dir)
     else:
         candidates = [
+            PROJECT_ROOT / "data" / "dsets",
             PROJECT_ROOT / "vendor" / "AlphaEdit" / "data",
             Path("/s3-data/continual-learning/alphaedit/dsets"),
             Path.home() / "Projects" / "alphaedit-analysis" / "vendor" / "AlphaEdit" / "data",
