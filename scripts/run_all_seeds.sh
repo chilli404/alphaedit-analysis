@@ -75,14 +75,8 @@ case "$EXPERIMENT" in
     failure_curve)
         run_with_seeds "$EXT_SEEDS" "run_failure_curve_checkpointed.sh"
         ;;
-    second_model)
-        run_with_seeds "$EXT_SEEDS" "run_second_model.sh"
-        ;;
-    nullspace)
-        run_with_seeds "$EXT_SEEDS" "run_nullspace_analysis.sh"
-        ;;
     capability)
-        run_with_seeds "$EXT_SEEDS" "run_capability_probe.sh"
+        run_with_seeds "$EXT_SEEDS" "run_capability_probe_offline.sh"
         ;;
     all)
         # Core reproduction: 5 seeds
@@ -93,13 +87,11 @@ case "$EXPERIMENT" in
         # Extensions: 3 seeds
         run_with_seeds "$EXT_SEEDS" \
             "run_failure_curve_checkpointed.sh" \
-            "run_second_model.sh" \
-            "run_nullspace_analysis.sh" \
-            "run_capability_probe.sh"
+            "run_capability_probe_offline.sh"
         ;;
     *)
         echo "ERROR: Unknown experiment '$EXPERIMENT'"
-        echo "Valid options: mve1, mve2, mve3, failure_curve, second_model, nullspace, capability, mve, all"
+        echo "Valid options: mve1, mve2, mve3, failure_curve, capability, mve, all"
         exit 1
         ;;
 esac

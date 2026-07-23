@@ -141,35 +141,6 @@ high_priority_experiments:
     success_criterion: >
       Paired comparison against AlphaEdit at each edit count level.
 
-  second_model_alphaedit:
-    description: >
-      Reproduce AlphaEdit on Mistral-7B-Instruct to demonstrate that
-      findings generalize beyond the single model tested in the original paper.
-    model_name: "mistralai/Mistral-7B-Instruct-v0.3"
-    hparams_fname: "Mistral-7B.json"
-    alg_name: "AlphaEdit"
-    ds_name: "mcf"
-    dataset_size_limit: 2000
-    num_edits: 100
-    downstream_eval_steps: 5
-    conserve_memory: true
-    success_criterion: >
-      AlphaEdit shows a consistent directional advantage over MEMIT on
-      Mistral-7B, confirming the method generalizes across LLMs.
-
-  second_model_memit:
-    description: "MEMIT baseline on Mistral-7B for comparison"
-    model_name: "mistralai/Mistral-7B-Instruct-v0.3"
-    hparams_fname: "Mistral-7B.json"
-    alg_name: "MEMIT"
-    ds_name: "mcf"
-    dataset_size_limit: 2000
-    num_edits: 100
-    downstream_eval_steps: 5
-    conserve_memory: true
-    success_criterion: >
-      Establishes the MEMIT baseline on the second model.
-
   capability_probe:
     description: >
       General capability preservation measurement. Computes perplexity on
@@ -189,39 +160,15 @@ high_priority_experiments:
       preserves unrelated knowledge, its perplexity should remain closer
       to the unedited baseline than MEMIT's.
 
-  nullspace_rank_consumption:
-    description: >
-      Mechanistic analysis: tracks how the null-space is consumed as
-      sequential edits accumulate. Records the rank of the accumulated
-      covariance cache (cache_c) relative to the initial null-space
-      dimensions at each layer. Produces figures showing:
-      (a) rank growth curves per layer,
-      (b) consumption ratio timeline approaching saturation,
-      (c) per-layer heatmap revealing which layers saturate first,
-      (d) spectral decay of cache_c singular values.
-      This provides the mechanistic explanation for why AlphaEdit
-      eventually degrades, complementing the failure characterization curve.
-    alg_name: "AlphaEdit"
-    model_name: "meta-llama/Meta-Llama-3-8B-Instruct"
-    hparams_fname: "Llama3-8B.json"
-    ds_name: "mcf"
-    dataset_size_limit: 2000
-    num_edits: 100
-    downstream_eval_steps: 5
-    conserve_memory: true
-    success_criterion: >
-      Demonstrates a clear relationship between consumption ratio
-      and metric degradation. Identifies which layers saturate first.
-      Estimates the operational edit count limit for practitioners.
-
   cache_mitigation_sweep:
     description: >
-      Tests 3 simple mitigations for null-space saturation:
+      Tests whether modifying accumulated preservation constraints changes
+      the plasticity-retention tradeoff at long horizons:
       (1) SVD truncation of cache_c every K batches (keep top-r SVs),
       (2) Exponential decay (cache_c *= factor each batch),
       (3) Periodic full reset of cache_c every K batches.
-      Identifies whether simple interventions can extend AlphaEdit's
-      operational range beyond its natural saturation point.
+      Identifies whether simple interventions to the covariance cache
+      extend AlphaEdit's operational range.
     alg_name: "AlphaEdit"
     ds_name: "mcf"
     dataset_size_limit: 2000
@@ -236,7 +183,7 @@ high_priority_experiments:
       At least one mitigation strategy maintains efficacy/generalization
       while improving specificity at high edit counts (>1000 edits).
       Even negative results are publishable if they demonstrate that
-      simple cache management is insufficient to overcome saturation.
+      simple cache management does not alter the tradeoff.
 
 # Expanded experiments (run after MVE + high-priority are complete)
 expanded_experiments:

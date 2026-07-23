@@ -7,9 +7,8 @@ Enables long-running failure curve experiments (2000→10000 edits) to survive
 resuming from checkpoints in subsequent cluster runs.
 
 Implementation approach:
-  Same source-injection pattern as nullspace_tracker.py — injects checkpoint
-  save/load/skip logic into evaluate.py at known anchor points (pinned commit
-  b84624f).
+  Source-injection pattern — injects checkpoint save/load/skip logic into
+  evaluate.py at known anchor points (pinned commit b84624f).
 
 Injection points:
   1. BEFORE the main edit loop: load checkpoint (restore model weights + cache_c)

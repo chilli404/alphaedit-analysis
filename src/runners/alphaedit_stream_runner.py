@@ -4,7 +4,7 @@ AlphaEdit Stream Runner: Runs AlphaEdit on a pre-generated edit stream with
 inline mechanism measurement (cache eigenspectrum, projection loss) and
 checkpointing.
 
-Architecture (dual source injection, following plasticity_tracker.py):
+Architecture (dual source injection):
   1. Patch AlphaEdit_main.py: inject cache eigenspectrum measurement after
      cache_c update + projection measurement after solve
   2. Patch evaluate.py: dataset override, batch recording, milestone eval,

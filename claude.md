@@ -91,7 +91,7 @@ bash sky/sky_launch.sh failure_curve_ckpt 42   # Checkpointed failure curve
 bash sky/sky_launch.sh memit_sequential 42     # MEMIT+PrevKeyReg+Ridge
 ```
 
-Valid experiment names: `mve1`, `mve2`, `mve3`, `failure_curve_ckpt`, `second_model`, `nullspace`, `capability_probe`, `memit_sequential`, `matched_ordering`, `mve`, `all`
+Valid experiment names: `mve1`, `mve2`, `mve3`, `failure_curve_ckpt`, `capability_probe`, `capability_probe_offline`, `memit_sequential`, `matched_ordering`, `mve`, `all`
 
 Creates clusters named `ae-{experiment}-s{seed}` (e.g., `ae-mve1_alphaedit_mcf-s42`). If the cluster already exists, it uses `sky exec` (reuses existing cluster) instead of `sky launch` (creates new cluster). All jobs use `--detach-run` for asynchronous execution.
 
@@ -151,7 +151,6 @@ bash scripts/run_mve1_alphaedit_mcf.sh 42
 |--------|---------|
 | `scripts/run_failure_curve_checkpointed.sh` | Checkpointed failure curve at [3000, 5000, 7000, 9000, 10000] edits — finds where AlphaEdit's null-space advantage disappears |
 | `scripts/run_failure_curve_checkpointed.sh` | Checkpoint-based failure curve with 3 evaluation modes: normal (full eval every batch), fast (edited batch only), milestone (full eval at checkpoints only - RECOMMENDED) |
-| `scripts/run_nullspace_analysis.sh` | Tracks null-space rank consumption per layer per batch via SVD |
 | `scripts/run_matched_ordering.sh` | Matched ordering: clustered vs dispersed key geometry under controlled 5K-edit streams |
 | `scripts/run_capability_probe.sh` | Measures WikiText perplexity + few-shot MMLU at intervals to detect general capability damage |
 | `scripts/run_memit_sequential.sh` | MEMIT+SeqReg: Non-projected analogue of AlphaEdit Eq. 12 — tests if sequential regularization can match null-space projection |
@@ -223,7 +222,6 @@ lhs = α·C₀ + K_new@K_new^T + λ_prev·K_prev@K_prev^T + λ_delta·I
 | File | Purpose |
 |------|---------|
 | `src/seeded_runner.py` | Main wrapper: sets all RNG seeds (Python, NumPy, PyTorch, CUDA), patches CUDA device lines, launches experiment via source injection |
-| `src/nullspace_tracker.py` | Injects SVD tracking of the projection matrix P and covariance cache at each edit batch |
 | `src/alphaedit_stream_runner.py` | Generic AlphaEdit stream editor with mechanism measurement and checkpointing (used by matched ordering) |
 | `src/capability_probe_runner.py` | Hooks into GLUEEval to run perplexity/MMLU probes at configurable intervals |
 | `src/checkpoint_runner.py` | Injects checkpoint save/load/skip into evaluate.py for resumable long experiments (failure curve) |

@@ -141,8 +141,14 @@ def run_offline_probes(
     del first_weights
     print(f"  Saved {len(base_state)} base parameter tensors")
 
-    # Ensure output directory exists
-    output_jsonl.parent.mkdir(parents=True, exist_ok=True)
+    # Write to a local temp file, then copy to final destination.
+    # S3 FUSE mounts do not support repeated append-mode writes reliably.
+    import tempfile
+    import shutil
+
+    local_tmp = Path(tempfile.mktemp(suffix=".jsonl", prefix="capability_probe_"))
+    print(f"  Writing to local temp: {local_tmp}")
+    print(f"  Final destination:     {output_jsonl}")
 
     # Build shared metadata for all records
     model_dtype = str(next(model.parameters()).dtype)
@@ -175,7 +181,7 @@ def run_offline_probes(
     print(f"         Perplexity: {ppl_result['mean_perplexity']:.2f} ({elapsed:.1f}s)")
 
     records = [baseline_record]
-    with open(output_jsonl, "a") as f:
+    with open(local_tmp, "a") as f:
         f.write(json.dumps(baseline_record) + "\n")
 
     # Process each checkpoint
@@ -218,12 +224,18 @@ def run_offline_probes(
         print(f"         {ppl_str}{mmlu_str} ({elapsed:.1f}s)")
 
         records.append(record)
-        with open(output_jsonl, "a") as f:
+        with open(local_tmp, "a") as f:
             f.write(json.dumps(record) + "\n")
 
     # Restore base weights at the end
     for param_name, base_data in base_state.items():
         param_dict[param_name].data.copy_(base_data)
+
+    # Copy local temp to final output (works on S3 FUSE as a single write)
+    output_jsonl.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(str(local_tmp), str(output_jsonl))
+    local_tmp.unlink()
+    print(f"\n  Results written to: {output_jsonl}")
 
     return records
 

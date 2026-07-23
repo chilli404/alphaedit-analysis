@@ -93,21 +93,6 @@ metrics:
     type: continuous
     description: "Stable rank of covariance cache (||A||_F^2 / ||A||_2^2)"
 
-  cache_numerical_rank:
-    source: nullspace_tracker
-    type: integer
-    description: "Numerical rank of cache_c (count of singular values above threshold)"
-
-  nullspace_consumption_ratio:
-    source: nullspace_tracker
-    type: continuous
-    description: "Fraction of available null-space directions consumed by edits so far"
-
-  projection_removed_fraction:
-    source: plasticity_tracker
-    type: continuous
-    description: "Same as projection_loss but from plasticity tracker context"
-
   weight_drift_frobenius:
     source: mechanism_analyzer
     type: continuous

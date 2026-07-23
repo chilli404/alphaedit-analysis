@@ -2,8 +2,8 @@
 """
 Cache Mitigation Runner for AlphaEdit.
 
-Tests whether simple cache_c management strategies can extend AlphaEdit's
-operational range beyond its natural null-space saturation point.
+Tests whether modifying accumulated preservation constraints (cache_c)
+changes the plasticity-retention tradeoff at long edit horizons.
 
 Three mitigation strategies:
   1. SVD truncation: Every K batches, keep only top-r singular vectors of cache_c
@@ -11,9 +11,9 @@ Three mitigation strategies:
   3. Periodic reset: Every K batches, zero out cache_c entirely
 
 Implementation approach:
-  Same source-injection pattern as nullspace_tracker.py — injects mitigation
-  code into evaluate.py at the POST_EDIT_ANCHOR (after cache_c is updated,
-  before the next batch begins). Pinned to commit b84624f.
+  Source-injection pattern — injects mitigation code into evaluate.py at
+  the POST_EDIT_ANCHOR (after cache_c is updated, before the next batch
+  begins). Pinned to commit b84624f.
 
 Output: Standard AlphaEdit result JSONs + mitigation metadata JSONL.
 

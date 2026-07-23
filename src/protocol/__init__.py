@@ -1,7 +1,7 @@
 """Sequential-Memory Evaluation Protocol.
 
 A reusable evaluation framework for sequential knowledge editing methods.
-Reports 8 metrics that capture the divergence between current plasticity
+Reports 8 metrics that capture the divergence between current editing success
 and accumulated retention — information hidden by aggregate efficacy.
 
 Usage:
