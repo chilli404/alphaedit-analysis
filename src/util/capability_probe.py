@@ -36,9 +36,11 @@ from torch.nn import functional as F
 
 # Number of WikiText-103 samples for perplexity (balances accuracy vs speed)
 WIKITEXT_N_SAMPLES = 200
-WIKITEXT_MAX_LENGTH = 512  # tokens per sample (sliding window stride)
+WIKITEXT_MAX_LENGTH = 512  # tokens per sample (truncated)
 MMLU_N_SHOTS = 5
 MMLU_N_QUESTIONS = 50  # per category
+PROBE_DTYPE = torch.float16  # Consistent dtype across all checkpoints
+PROBE_VERSION = "1.1.0"  # Bump on protocol changes
 
 
 def compute_perplexity(
@@ -49,7 +51,11 @@ def compute_perplexity(
     batch_size: int = 4,
 ) -> dict:
     """
-    Compute perplexity on a list of text passages using a sliding window.
+    Compute corpus-level perplexity on a list of text passages.
+
+    Each passage is truncated to max_length tokens. Perplexity is computed as
+    exp(total_NLL / total_tokens), weighting each token equally (standard
+    definition).
 
     Returns dict with: mean_perplexity, std_perplexity, n_samples, n_tokens
     """
@@ -262,6 +268,10 @@ def compute_mmlu_accuracy(
                 else:
                     choice_logits.append(float("-inf"))
 
+            # Guard: if all choice logits are -inf, mark invalid and skip
+            if all(v == float("-inf") for v in choice_logits):
+                continue
+
             predicted = choices[np.argmax(choice_logits)]
             answer_idx = item.get("answer", item.get("target", 0))
             if isinstance(answer_idx, int):
@@ -317,6 +327,8 @@ def run_capability_probe(
     tokenizer,
     edit_count: int = 0,
     compute_mmlu: bool = True,
+    seed: int | None = None,
+    checkpoint_path: str | None = None,
 ) -> dict:
     """
     Run the full capability probe on the current model state.
@@ -328,13 +340,28 @@ def run_capability_probe(
         tokenizer: The tokenizer
         edit_count: How many edits have been applied so far
         compute_mmlu: Whether to run MMLU (slower but more informative)
+        seed: Experiment seed (for metadata)
+        checkpoint_path: Path to checkpoint being probed (for metadata)
 
     Returns:
-        Dict with perplexity and optionally MMLU scores
+        Dict with perplexity and optionally MMLU scores, plus metadata
     """
+    # Detect actual model dtype
+    model_dtype = str(next(model.parameters()).dtype)
+
     result = {
         "edit_count": edit_count,
-        "timestamp": time.time(),
+        "timestamp_utc": time.time(),
+        "metadata": {
+            "probe_version": PROBE_VERSION,
+            "model_dtype": model_dtype,
+            "wikitext_split": "test",
+            "wikitext_dataset": "wikitext-103-raw-v1",
+            "wikitext_n_samples": WIKITEXT_N_SAMPLES,
+            "wikitext_max_length": WIKITEXT_MAX_LENGTH,
+            "seed": seed,
+            "checkpoint_path": checkpoint_path,
+        },
     }
 
     # 1. Perplexity on WikiText-103 test set
@@ -366,9 +393,10 @@ def main():
 
     model_path = resolve_model_path(args.model_name)
     print(f"Loading model: {model_path}")
+    print(f"  Dtype: {PROBE_DTYPE}")
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     model = AutoModelForCausalLM.from_pretrained(
-        model_path, torch_dtype=torch.float16, device_map="auto"
+        model_path, torch_dtype=PROBE_DTYPE, device_map="auto"
     )
 
     print("Running capability probe (baseline, no edits)...")

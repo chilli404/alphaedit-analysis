@@ -16,15 +16,14 @@ results/
 ├── comparison_ordered/
 │   └── seed{N}/
 │       └── {E}edits/
-│           ├── order{0-9}/{Alg}/run_000/*_edits-case_*.json
-│           └── (legacy) {Alg}/run_000/*_edits-case_*.json
+│           └── order{0-9}/{Alg}/run_000/*_edits-case_*.json
 ├── polykernel_editor/
 │   └── seed{N}/
 │       └── {E}edits/
-│           ├── {Alg}-{kernel}/run_000/*_edits-case_*.json
-│           ├── eval_{E}/                         # flat eval dir (10k)
-│           ├── log_{Alg}_seed{N}_{kernel}_*.jsonl
-│           └── metadata_{Alg}_seed{N}_{kernel}.json
+│           └── {Alg}-{kernel}/
+│               ├── run_000/*_edits-case_*.json
+│               ├── log_{Alg}_seed{N}_{kernel}_*.jsonl
+│               └── metadata_{Alg}_seed{N}_{kernel}.json
 ├── memit_seqreg/
 │   ├── full_eval_seed{N}_lp{X}_ld{Y}.json
 │   ├── log_seed{N}_lp{X}_ld{Y}_*.jsonl
@@ -257,21 +256,11 @@ def load_comparison_ordered(
 
     results = []
 
-    # All orderings live in order0/, order1/, ... subdirectories.
-    # Legacy fallback: if order0/ doesn't exist but AlphaEdit/ does at base level,
-    # treat base as order0.
     order_dirs = []
     for i in range(10):
         d = base / f"order{i}"
         if d.exists():
             order_dirs.append((str(i), d))
-    # Fallback: base directory has AlphaEdit/MEMIT directly (legacy layout)
-    if not order_dirs and (base / "AlphaEdit").exists():
-        order_dirs.append(("0", base))
-        for i in range(1, 10):
-            d = base / f"order{i}"
-            if d.exists():
-                order_dirs.append((str(i), d))
 
     for order_id, d in order_dirs:
         for alg in ("AlphaEdit", "MEMIT"):
@@ -331,8 +320,6 @@ def load_polykernel_metrics(
 
     Layout: polykernel_editor/seed{N}/{E}edits/{Alg}-{kernel}/run_000/
 
-    Also checks eval_{E}/ flat directory (used for 10k evals).
-
     Args:
         seed: Random seed.
         edits: Edit count (2000, 10000).
@@ -343,19 +330,10 @@ def load_polykernel_metrics(
     if not base.exists():
         return None
 
-    # Primary: {Alg}-{kernel}/run_000/
     run_dir = base / f"{alg}-{kernel}" / "run_000"
-    if run_dir.exists():
-        result = _aggregate_case_files(run_dir)
-        if result is not None:
-            return result
-
-    # Fallback: eval_{edits}/ flat dir (10k milestone eval)
-    eval_dir = base / f"eval_{edits // 1000}k"
-    if eval_dir.exists():
-        return _aggregate_case_files(eval_dir)
-
-    return None
+    if not run_dir.exists():
+        return None
+    return _aggregate_case_files(run_dir)
 
 
 def load_polykernel_cohorts(
@@ -370,10 +348,7 @@ def load_polykernel_cohorts(
     if not base.exists():
         return None
 
-    # Find case files
     run_dir = base / f"{alg}-{kernel}" / "run_000"
-    if not run_dir.exists():
-        run_dir = base / f"eval_{edits // 1000}k"
     if not run_dir.exists():
         return None
 
@@ -414,21 +389,18 @@ def load_polykernel_logs(
     if not base.exists():
         return []
 
-    # Logs live inside {Alg}-{kernel}/ subdirectory
     subdir = base / f"{alg}-{kernel}"
-    pattern = f"log_{alg}_seed{seed}_{kernel}_*.jsonl"
+    if not subdir.exists():
+        return []
 
+    pattern = f"log_{alg}_seed{seed}_{kernel}_*.jsonl"
     records = []
-    search_dirs = [subdir, base] if subdir.exists() else [base]
-    for search_dir in search_dirs:
-        for jsonl in sorted(search_dir.glob(pattern)):
-            with open(jsonl) as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        records.append(json.loads(line))
-        if records:
-            break
+    for jsonl in sorted(subdir.glob(pattern)):
+        with open(jsonl) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
     return records
 
 
@@ -440,11 +412,7 @@ def load_polykernel_metadata(
 ) -> Optional[Dict]:
     """Load experiment metadata for a polykernel run."""
     base = RESULTS / "polykernel_editor" / f"seed{seed}" / f"{edits}edits"
-    # Try kernel-specific naming (deg2, rbf_median)
-    kernel_short = kernel.replace("poly", "deg") if kernel.startswith("poly") else kernel
-    path = base / f"metadata_{alg}_seed{seed}_{kernel_short}.json"
-    if not path.exists():
-        path = base / f"metadata_{alg}_seed{seed}_{kernel}.json"
+    path = base / f"metadata_{alg}_seed{seed}_{kernel}.json"
     if not path.exists():
         return None
     with open(path) as f:
@@ -590,20 +558,10 @@ def load_mve_metrics(experiment: str, seed: int, alg: str) -> Optional[Dict[str,
     if not seed_dir.exists():
         return None
 
-    # Try multiple layout conventions
-    candidates = [
-        seed_dir / "alphaedit_results" / alg / "run_000",  # mve1-3 standard
-        seed_dir / "results" / alg / "run_000",            # legacy
-    ]
-
-    for run_dir in candidates:
-        if not run_dir.exists():
-            continue
-        result = _aggregate_case_files(run_dir)
-        if result is not None:
-            return result
-
-    return None
+    run_dir = seed_dir / "alphaedit_results" / alg / "run_000"
+    if not run_dir.exists():
+        return None
+    return _aggregate_case_files(run_dir)
 
 
 # ─── Matched Ordering Loaders ─────────────────────────────────────────────────
@@ -890,6 +848,46 @@ def discover_available_data() -> Dict[str, Any]:
             summary["mechanism_analysis"] = mech
 
     return summary
+
+
+# ─── Capability Probe ────────────────────────────────────────────────────────
+
+
+def load_capability_probe(seed: int, alg: str = "AlphaEdit") -> Optional[List[Dict[str, Any]]]:
+    """Load offline capability probe JSONL for a given seed and algorithm.
+
+    Returns list of records sorted by edit_count, or None if not found.
+    Each record has: edit_count, mean_perplexity, n_tokens, and optionally
+    mmlu_accuracy, mmlu_per_category.
+    """
+    import json as _json
+
+    probe_dir = RESULTS / "capability_probe"
+    if not probe_dir.exists():
+        return None
+
+    # Search for the JSONL file (may be in a subdirectory structure)
+    candidates = sorted(probe_dir.glob(f"seed{seed}/**/{alg}/offline_probe_*.jsonl"))
+    if not candidates:
+        # Also check flat layout
+        candidates = sorted(probe_dir.glob(f"offline_seed{seed}_{alg}*.jsonl"))
+    if not candidates:
+        return None
+
+    # Use the most recent file
+    jsonl_path = candidates[-1]
+    records = []
+    with open(jsonl_path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                records.append(_json.loads(line))
+
+    if not records:
+        return None
+
+    records.sort(key=lambda r: r.get("edit_count", 0))
+    return records
 
 
 # ─── CLI ──────────────────────────────────────────────────────────────────────

@@ -120,8 +120,9 @@ def _load_wikitext(n_samples=200):
 def _compute_perplexity(model, tokenizer, texts, max_length=512, batch_size=4):
     model.eval()
     device = next(model.parameters()).device
-    all_nlls = []
+    total_nll = 0.0
     total_tokens = 0
+    n_samples = 0
 
     for i in range(0, len(texts), batch_size):
         batch_texts = texts[i:i + batch_size]
@@ -146,17 +147,17 @@ def _compute_perplexity(model, tokenizer, texts, max_length=512, batch_size=4):
             shift_labels = valid_ids[1:]
             nll = F.cross_entropy(shift_logits, shift_labels, reduction="sum").item()
             n_tokens = len(shift_labels)
-            all_nlls.append(nll / n_tokens)
+            total_nll += nll
             total_tokens += n_tokens
+            n_samples += 1
 
-    if not all_nlls:
+    if n_samples == 0:
         return {{"mean_perplexity": float("nan"), "n_samples": 0, "n_tokens": 0}}
-    per_sample_ppl = [np.exp(nll) for nll in all_nlls]
+    # Corpus-level perplexity: exp(total_NLL / total_tokens)
+    corpus_ppl = float(np.exp(total_nll / total_tokens))
     return {{
-        "mean_perplexity": float(np.mean(per_sample_ppl)),
-        "median_perplexity": float(np.median(per_sample_ppl)),
-        "std_perplexity": float(np.std(per_sample_ppl)),
-        "n_samples": len(all_nlls),
+        "mean_perplexity": corpus_ppl,
+        "n_samples": n_samples,
         "n_tokens": total_tokens,
     }}
 

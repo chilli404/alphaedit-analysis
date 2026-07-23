@@ -130,28 +130,9 @@ def load_glue(glue_dir: Path) -> dict | None:
     if glue_dir is None or not glue_dir.exists():
         return None
 
-    # Look for the aggregate glue file (not the per-task gen files)
-    # Try edit_glue.json first (post-edit), then base_glue.json
-    for name in ["edit_glue.json", "base_glue.json"]:
-        glue_file = glue_dir / name
-        if glue_file.exists():
-            with open(glue_file) as f:
-                data = json.load(f)
-            return data
-
-    # Try to find any numbered GLUE file (e.g., 50_glue.json for batch 50)
-    glue_files = sorted(glue_dir.glob("*_glue.json"))
-    # Prefer the highest-numbered one (most edits applied)
-    for gf in reversed(glue_files):
-        if gf.name.startswith("base_"):
-            continue
-        with open(gf) as f:
-            return json.load(f)
-
-    # Fallback: base_glue.json
-    base = glue_dir / "base_glue.json"
-    if base.exists():
-        with open(base) as f:
+    glue_file = glue_dir / "edit_glue.json"
+    if glue_file.exists():
+        with open(glue_file) as f:
             return json.load(f)
 
     return None

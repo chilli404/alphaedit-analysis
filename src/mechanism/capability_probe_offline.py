@@ -43,6 +43,10 @@ from capability_probe import (
     compute_mmlu_accuracy,
     compute_perplexity,
     load_wikitext_samples,
+    PROBE_DTYPE,
+    PROBE_VERSION,
+    WIKITEXT_N_SAMPLES,
+    WIKITEXT_MAX_LENGTH,
 )
 from model_download import resolve_model_path
 from paths import get_project_root, get_result_root, get_checkpoint_root
@@ -102,6 +106,8 @@ def run_offline_probes(
     ckpt_dir: Path,
     output_jsonl: Path,
     compute_mmlu: bool = True,
+    seed: int | None = None,
+    alg_name: str | None = None,
 ) -> list[dict]:
     """Run capability probes on all checkpoints."""
     checkpoints = find_all_checkpoints(ckpt_dir)
@@ -138,6 +144,19 @@ def run_offline_probes(
     # Ensure output directory exists
     output_jsonl.parent.mkdir(parents=True, exist_ok=True)
 
+    # Build shared metadata for all records
+    model_dtype = str(next(model.parameters()).dtype)
+    shared_metadata = {
+        "probe_version": PROBE_VERSION,
+        "model_dtype": model_dtype,
+        "wikitext_split": "test",
+        "wikitext_dataset": "wikitext-103-raw-v1",
+        "wikitext_n_samples": WIKITEXT_N_SAMPLES,
+        "wikitext_max_length": WIKITEXT_MAX_LENGTH,
+        "seed": seed,
+        "alg_name": alg_name,
+    }
+
     # Run baseline measurement (0 edits)
     print("\n  [PROBE] Baseline (0 edits)...")
     t0 = time.time()
@@ -146,6 +165,7 @@ def run_offline_probes(
         "edit_count": 0,
         "timestamp_utc": time.time(),
         "source": "offline_probe",
+        "metadata": {**shared_metadata, "checkpoint_path": None},
         **ppl_result,
     }
     if compute_mmlu:
@@ -182,7 +202,7 @@ def run_offline_probes(
             "batch_idx": batch_idx,
             "timestamp_utc": time.time(),
             "source": "offline_probe",
-            "checkpoint_path": str(batch_dir),
+            "metadata": {**shared_metadata, "checkpoint_path": str(batch_dir)},
             **ppl_result,
         }
 
@@ -271,7 +291,7 @@ def main():
         print(f"    EVAL_AT_CHECKPOINTS_ONLY=true bash scripts/run_failure_curve_checkpointed.sh {args.seed} {args.alg_name} 10000")
         sys.exit(1)
 
-    # Load model once
+    # Load model once with consistent dtype
     print("\nLoading model...")
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -288,9 +308,11 @@ def main():
     print(f"  Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, token=token)
     tokenizer.pad_token = tokenizer.eos_token
-    print(f"  Loading model weights...")
-    model = AutoModelForCausalLM.from_pretrained(args.model_name, token=token).cuda(args.cuda_device)
-    print(f"  Model loaded: {args.model_name}")
+    print(f"  Loading model weights (dtype={PROBE_DTYPE})...")
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_name, token=token, torch_dtype=PROBE_DTYPE,
+    ).cuda(args.cuda_device)
+    print(f"  Model loaded: {args.model_name} ({PROBE_DTYPE})")
 
     # Run probes
     records = run_offline_probes(
@@ -299,6 +321,8 @@ def main():
         ckpt_dir=ckpt_dir,
         output_jsonl=output_jsonl,
         compute_mmlu=not args.no_mmlu,
+        seed=args.seed,
+        alg_name=args.alg_name,
     )
 
     print(f"\n{'=' * 70}")

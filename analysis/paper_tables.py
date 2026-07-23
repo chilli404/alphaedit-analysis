@@ -56,11 +56,7 @@ def table1_reproduction(output_dir: Path):
     for method_name, dataset, experiment, alg, seeds in configs:
         metrics_by_seed = []
         for seed in seeds:
-            # Primary: MVE experiment results
             m = load_mve_metrics(experiment, seed, alg)
-            # Fallback: failure curve at 2K
-            if m is None:
-                m = load_checkpoint_metrics(seed, 2000, alg)
             if m:
                 metrics_by_seed.append(m)
 

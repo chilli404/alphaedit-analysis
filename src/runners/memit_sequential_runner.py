@@ -485,9 +485,7 @@ def build_sequential_script(
         _mega_batch_eval(edited_model, tok, _records_to_eval, case_result_template, num_edits, case_ids, exec_time)
     # === END mega-batch eval ===
     for record in ds:
-        # Guard: skip if eval already done or disabled
-        if not _do_final_eval:
-            break
+        break  # Mega-batch handles all eval above; skip vendor fallback loop
         out_file = Path(case_result_template.format(num_edits, record["case_id"]))'''
 
     script = textwrap.dedent(f"""\

@@ -7,7 +7,7 @@
 #   make fig5         Figure 5: Per-edit interference (key geometry)
 #   make interference Run interference panel analysis (requires keys)
 #   make tables       All tables + paper_numbers.json
-#   make appendix     Appendix figures (A1, A3, A8)
+#   make appendix     Appendix figures (A1, A3, A8, capability)
 #   make check        Verify data availability
 #   make clean        Remove generated outputs
 #
@@ -20,7 +20,7 @@ APPENDIX := ../results/figures/appendix
 KEYS := ../results/key_vectors
 MATCHED := ../results/matched_ordering
 
-.PHONY: all fig1 fig2 fig5 interference mechanism tables appendix check clean validate_ordering
+.PHONY: all fig1 fig2 fig5 interference mechanism tables appendix appendix-capability check clean validate_ordering
 
 all: fig1 fig2 interference fig5 mechanism tables
 
@@ -48,9 +48,13 @@ tables:
 	@echo "── Tables & Paper Numbers ──"
 	$(PYTHON) -m analysis.paper_tables --output-dir $(OUTPUT)
 
-appendix:
+appendix: appendix-capability
 	@echo "── Appendix Figures ──"
 	$(PYTHON) -m analysis.appendix_figures --output-dir $(APPENDIX)
+
+appendix-capability:
+	@echo "── Appendix: Capability Probe ──"
+	$(PYTHON) -m analysis.appendix_capability --output-dir $(APPENDIX)
 
 validate_ordering:
 	@echo "── Matched Ordering: Generate & Validate ──"

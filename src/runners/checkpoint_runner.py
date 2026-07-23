@@ -411,6 +411,7 @@ def build_checkpoint_script(
     # === END mega-batch eval ===
     _eval_skipped = 0
     for record in ds:
+        break  # Mega-batch handles all eval above; skip vendor fallback loop
         # === CHECKPOINT: skip entire evaluation if _do_final_eval is False (injected) ===
         if not _do_final_eval:
             break

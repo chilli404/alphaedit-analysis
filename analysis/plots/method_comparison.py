@@ -44,6 +44,32 @@ plt.rcParams.update({
 
 RESULTS = Path("results")
 
+import re
+
+def _discover_memit_seq_variants(seeds: list[int]) -> list[tuple[float, float]]:
+    """Auto-discover MEMIT-Seq variants from failure_curve_checkpointed results."""
+    base = RESULTS / "failure_curve_checkpointed"
+    pattern = re.compile(r"^MEMIT-Seq-lp([\d.]+)-ld([\d.e-]+)-cache\d+$")
+    variants = set()
+
+    for seed in seeds:
+        seed_dir = base / f"seed{seed}"
+        if not seed_dir.exists():
+            continue
+        for edits_dir in seed_dir.iterdir():
+            if not edits_dir.is_dir() or not edits_dir.name.endswith("edits"):
+                continue
+            for subdir in edits_dir.iterdir():
+                if not subdir.is_dir():
+                    continue
+                m = pattern.match(subdir.name)
+                if m:
+                    lp, ld = float(m.group(1)), float(m.group(2))
+                    variants.add((lp, ld))
+
+    return sorted(variants)
+
+
 COLORS = {
     "AlphaEdit": "#2196F3",
     "AlphaEdit-Poly2": "#E91E63",
@@ -150,66 +176,14 @@ def load_poly2_results(seed: int) -> list[dict]:
 def load_memit_seq_results(seed: int, lambda_prev: float = 1.0, lambda_delta: float = 0.0) -> list[dict]:
     """Load MEMIT-Seq results from the unified failure_curve_checkpointed structure.
 
-    Checks sources (in priority order):
-      1. failure_curve_checkpointed/seed{N}/{edits}edits/{variant}/run_000/ (per-case JSONs, unified)
-      2. failure_curve_checkpointed/seed{N}/{variant}/full_eval_seed{N}.json (pre-aggregated, legacy)
-      3. memit_seqreg/seed{N}/{edits}edits/{variant}/run_000/ (old results dir, legacy)
-      4. memit_seqreg/full_eval_seed{N}_lp{X}_ld{Y}.json (oldest legacy)
+    Source: failure_curve_checkpointed/seed{N}/{edits}edits/{variant}/run_000/ (per-case JSONs)
 
     The method label uses the full variant name (e.g. "MEMIT-Seq-lp1.0-ld0.0-cache0")
     so different configurations are distinguishable in plots.
     """
     variant = f"MEMIT-Seq-lp{lambda_prev}-ld{lambda_delta}-cache0"
+    return _load_failure_curve(seed, variant, variant)
 
-    # Source 1: Unified per-case JSONs (same structure as AlphaEdit/MEMIT)
-    rows = _load_failure_curve(seed, variant, variant)
-    if rows:
-        return rows
-
-    # Source 2: Pre-aggregated full_eval JSON (legacy checkpoint eval output)
-    eval_path = RESULTS / "failure_curve_checkpointed" / f"seed{seed}" / variant / f"full_eval_seed{seed}.json"
-    if eval_path.exists():
-        rows = _load_full_eval_json(eval_path, seed, method_label=variant)
-        if rows:
-            return rows
-
-    # Source 3: Old memit_seqreg per-case layout
-    legacy_base = RESULTS / "memit_seqreg"
-    rows = _load_failure_curve(seed, variant, variant, base_dir=legacy_base)
-    if rows:
-        return rows
-
-    # Source 4: Oldest legacy pre-aggregated file
-    legacy_path = RESULTS / "memit_seqreg" / f"full_eval_seed{seed}_lp{lambda_prev}_ld{lambda_delta}.json"
-    if legacy_path.exists():
-        rows = _load_full_eval_json(legacy_path, seed, method_label=variant)
-        if rows:
-            return rows
-
-    return []
-
-
-def _load_full_eval_json(eval_path: Path, seed: int, method_label: str = "MEMIT-Seq") -> list[dict]:
-    """Load pre-aggregated full_eval JSON (legacy format) into row dicts."""
-    rows = []
-    with open(eval_path) as f:
-        data = json.load(f)
-    for key, entry in data.items():
-        if not key.endswith("_edits"):
-            continue
-        total_edits = entry.get("total_edits", int(key.replace("_edits", "")))
-        rows.append({
-            "total_edits": total_edits,
-            "method": method_label,
-            "seed": seed,
-            "efficacy": entry["all_facts"]["efficacy"],
-            "paraphrase": entry["all_facts"].get("paraphrase", np.nan),
-            "neighborhood": entry["all_facts"].get("neighborhood", np.nan),
-            "first_1k_efficacy": entry.get("first_1k", {}).get("efficacy", np.nan),
-            "latest_1k_efficacy": entry.get("latest_1k", {}).get("efficacy", np.nan),
-            "n_cases": entry.get("n_evaluated", 0),
-        })
-    return rows
 
 
 def _aggregate_cases(case_files: list[Path]) -> dict | None:
@@ -472,15 +446,20 @@ def main():
     parser.add_argument("--output_dir", type=Path,
                         default=Path("results/figures/method_comparison"),
                         help="Output directory for figures")
-    parser.add_argument("--lambda_prev", type=float, nargs="+", default=[1.0],
-                        help="MEMIT-Seq lambda_prev values (default: 1.0)")
-    parser.add_argument("--lambda_delta", type=float, nargs="+", default=[0.0],
-                        help="MEMIT-Seq lambda_delta values (default: 0.0)")
+    parser.add_argument("--lambda_prev", type=float, nargs="+", default=None,
+                        help="MEMIT-Seq lambda_prev values (default: auto-discover)")
+    parser.add_argument("--lambda_delta", type=float, nargs="+", default=None,
+                        help="MEMIT-Seq lambda_delta values (default: auto-discover)")
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build all (lp, ld) pairs to load
-    seq_variants = [(lp, ld) for lp in args.lambda_prev for ld in args.lambda_delta]
+    # Build all (lp, ld) pairs to load — auto-discover if not specified
+    if args.lambda_prev is None and args.lambda_delta is None:
+        seq_variants = _discover_memit_seq_variants(args.seeds)
+    else:
+        lp_vals = args.lambda_prev or [1.0]
+        ld_vals = args.lambda_delta or [0.0]
+        seq_variants = [(lp, ld) for lp in lp_vals for ld in ld_vals]
 
     print("=== Method Comparison ===\n")
     print(f"Seeds: {args.seeds}")
