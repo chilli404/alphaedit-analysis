@@ -572,6 +572,7 @@ if _ds_override_path:
 # Inject checkpoint LOAD before the loop
 _ckpt_load_injection = '''    # === CHECKPOINT: load state from previous run (injected) ===
     exec_time = 0  # Default: prevents UnboundLocalError if all batches skipped
+    edited_model = model  # Default: if all batches skipped, model IS the edited model (weights restored from checkpoint)
     if _ckpt_start_batch > 0 and '_ckpt_load' in globals():
         _ckpt_load(model, hparams)
     # === END checkpoint load ===
