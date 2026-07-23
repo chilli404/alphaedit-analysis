@@ -14,6 +14,36 @@ Usage:
 import os
 from pathlib import Path
 
+# Disable filelock before importing huggingface_hub/transformers — prevents
+# hangs on SkyPilot cluster filesystems where flock() doesn't work reliably.
+import filelock
+import filelock._api
+
+class _NoOpFileLock(filelock.BaseFileLock):
+    """A file lock that always succeeds immediately without actually locking."""
+    def _acquire(self):
+        self._context.lock_file_fd = True
+
+    def _release(self):
+        self._context.lock_file_fd = None
+
+# Patch everywhere filelock exposes lock classes
+filelock.FileLock = _NoOpFileLock
+filelock.SoftFileLock = _NoOpFileLock
+filelock.UnixFileLock = _NoOpFileLock
+filelock._api.FileLock = _NoOpFileLock
+
+import sys
+# Also patch any already-imported modules that grabbed a reference
+for mod_name, mod in list(sys.modules.items()):
+    if mod is None:
+        continue
+    for attr in ("FileLock", "SoftFileLock"):
+        if hasattr(mod, attr) and isinstance(getattr(mod, attr), type) and \
+           issubclass(getattr(mod, attr), filelock.BaseFileLock) and \
+           getattr(mod, attr) is not _NoOpFileLock:
+            setattr(mod, attr, _NoOpFileLock)
+
 from huggingface_hub import snapshot_download
 
 

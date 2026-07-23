@@ -180,7 +180,7 @@ Seeds for reproducibility: 42, 137, 2024, 7, 99 (run each experiment multiple ti
 **Plain English:** Tests whether edit ordering affects final performance at scale (3,000-10,000 edits) with checkpointing for long runs.
 
 **Setup:**
-- Multiple orderings x multiple algorithms (AlphaEdit, MEMIT, MEMIT-SEQ)
+- Multiple orderings x multiple algorithms (AlphaEdit, MEMIT, MEMIT-Seq)
 - 3,000 to 7,000+ edits with checkpoint resumption
 - 3 seeds (42, 137, 2024)
 - Up to 10 orderings per configuration
@@ -204,7 +204,7 @@ Then test whether this geometric difference affects performance.
 - Spherical k-means (k=30) on extracted key vectors to identify clusters
 - Key-clustered: same-cluster edits in consecutive batches (mean 1.56 clusters/batch)
 - Key-dispersed: round-robin assignment (each batch gets edits from all clusters, mean 23.84 clusters/batch)
-- Run both AlphaEdit and MEMIT-SEQ (lambda_prev=1.0, lambda_delta=0.0, unlimited cache)
+- Run both AlphaEdit and MEMIT-Seq (lambda_prev=1.0, lambda_delta=0.0, unlimited cache)
 - Seed 42, evaluated at 1K/2K/3K/4K/5K edit checkpoints
 
 **Pre-experiment diagnostics:**
@@ -238,7 +238,7 @@ Then test whether this geometric difference affects performance.
 | 4,000 | 0.910 | 0.695 | 0.1273 | 0.759 | 0.997 | 0.9128 |
 | 5,000 | 0.879 | 0.681 | 0.1219 | 0.650 | 0.992 | 0.8822 |
 
-**MEMIT-SEQ — Key-Clustered:**
+**MEMIT-Seq — Key-Clustered:**
 
 | Edits | Efficacy | Paraphrase | Neighborhood | First-1K | Latest-1K | Retention AUC |
 |-------|----------|-----------|-------------|----------|-----------|--------------|
@@ -248,7 +248,7 @@ Then test whether this geometric difference affects performance.
 | 4,000 | 0.983 | 0.662 | 0.2025 | 0.990 | 0.988 | 0.9824 |
 | 5,000 | 0.977 | 0.651 | 0.1893 | 0.988 | 0.976 | 0.9784 |
 
-**MEMIT-SEQ — Key-Dispersed:**
+**MEMIT-Seq — Key-Dispersed:**
 
 | Edits | Efficacy | Paraphrase | Neighborhood | First-1K | Latest-1K | Retention AUC |
 |-------|----------|-----------|-------------|----------|-----------|--------------|
@@ -271,15 +271,15 @@ Then test whether this geometric difference affects performance.
 **Key observations:**
 - AlphaEdit is highly sensitive to key geometry: 7.4pp efficacy gap at 5K edits
 - The first-1K cohort gap is catastrophic: 91.5% vs 65.0% — ordering determines whether early edits survive
-- MEMIT-SEQ is robust: only 0.6pp gap regardless of key geometry
-- MEMIT-SEQ outperforms AlphaEdit in BOTH orderings (0.977/0.971 vs 0.953/0.879)
+- MEMIT-Seq is robust: only 0.6pp gap regardless of key geometry
+- MEMIT-Seq outperforms AlphaEdit in BOTH orderings (0.977/0.971 vs 0.953/0.879)
 - Latest-1K stays high for all methods (~0.98-0.99) — recent edits always work, the question is whether old ones survive
 - Dispersed ordering hurts AlphaEdit's retention but slightly improves paraphrase generalization
 - Neighborhood specificity is higher (better) for clustered orderings across both methods
 
 **Verdict:**
 - AlphaEdit's null-space projection is fundamentally ordering-dependent — clustered keys share cache directions, so batches don't fight each other for null-space capacity
-- MEMIT-SEQ's regularization approach achieves ordering-robustness as a natural consequence of penalizing key disruption rather than constraining to a fixed subspace
+- MEMIT-Seq's regularization approach achieves ordering-robustness as a natural consequence of penalizing key disruption rather than constraining to a fixed subspace
 - The 26.5pp first-1K gap proves that key geometry directly determines which edits get overwritten
 
 ---
@@ -331,19 +331,21 @@ Then test whether this geometric difference affects performance.
 
 **Results generated:** 2 JSONL files (one per seed), each containing per-layer metrics at ~10 checkpoint intervals x 28 layers.
 
-**Numbers (seed 42, layer 7 — representative MLP layer):**
+**Numbers (seed 42, layer 7 — MLP down_proj input, key dimension 14,336):**
 
-| Edits | Cache Effective Rank | Cache Condition Number | Stable Rank |
-|-------|---------------------|----------------------|-------------|
-| 1,000 | 964 | 15,939,385 | 15.6 |
-| 5,000 | ~4,000 | ~20M | ~5.8 |
-| 10,000 | ~7,300 | ~35M | ~6.3 |
+| Edits | Numerical Rank | Cache Effective Rank | Cache Condition Number | Stable Rank |
+|-------|---------------|---------------------|----------------------|-------------|
+| 1,000 | 1,000 | 964 | 15,939,385 | 15.6 |
+| 5,000 | ~5,000 | ~4,000 | ~7M | ~6.5 |
+| 10,000 | 10,012 | 7,310 | 6,994,477 | 6.65 |
+
+Note: The key space is 14,336-dimensional (intermediate MLP size, not the 4,096 hidden dimension). Effective rank is bounded by the number of accumulated keys (~10K at 10K edits). Condition numbers vary significantly across layers (layer 4 reaches 34.7M at 10K; layer 7 reaches 7.0M).
 
 **Verdict:**
-- Effective rank grows but plateaus well below the theoretical maximum (4096)
-- Condition number explodes (15M -> 35M) indicating severe numerical instability
-- Stable rank stays low (~5-6) meaning energy is concentrated in very few directions
-- This explains the failure: the cache becomes ill-conditioned and spectrally concentrated, leaving no "room" for new edits
+- Numerical rank grows linearly with edit count (each batch contributes ~100 independent keys)
+- Despite occupying ~10,000 directions, stable rank stays at ~6-7 meaning energy is concentrated in very few dominant directions
+- Condition number is extreme (millions) indicating the cache is ill-conditioned for solving
+- The combination of high numerical rank but low stable rank means: many directions are occupied but dominated by a handful — new edits must compete with these dominant directions, leading to the solve producing small/ineffective updates
 
 ---
 
@@ -511,9 +513,9 @@ Two variants:
 | 4 | Failure Curve | 2K-10K | 3 | 278,331 JSONs | AlphaEdit collapses: 95.5% -> 31.5% |
 | 5 | Capability Probe | 0-10K | 1 | 2 JSONL files | AlphaEdit preserves model to 7K; MEMIT destroys at 2K |
 | 6 | Comparison Ordered | 3K-7K+ | 3 | 152,232 JSONs | Order matters more at scale |
-| 7 | Matched Ordering | 5,000 | 1 | 4 eval JSONs + diagnostics | AlphaEdit ordering-fragile (7.4pp gap); MEMIT-SEQ robust (0.6pp) |
+| 7 | Matched Ordering | 5,000 | 1 | 4 eval JSONs + diagnostics | AlphaEdit ordering-fragile (7.4pp gap); MEMIT-Seq robust (0.6pp) |
 | 8 | MEMIT+SeqReg | 5,000 | 1 | 274 files | Outperforms AlphaEdit without projection (0.967 vs 0.938 at 3K) |
-| 9 | Mechanism Analysis | 1K-10K | 2 | 2 JSONL files | Condition number reaches 35M; stable rank plateaus at ~6 |
+| 9 | Mechanism Analysis | 1K-10K | 2 | 2 JSONL files | Condition number reaches 7-35M (layer-dependent); stable rank plateaus at ~6 despite ~10K numerical rank |
 | 10 | Cache Ablation | 7K-10K | 2 | JSONL files | P ~ I at 7K (projection does nothing); cache dominates 13x |
 | 11 | Interference Panel | 10K | 2 | 1 JSON + key vectors | Max cosine predicts forgetting (OR=0.023, p<1e-44) |
 | 12 | Polykernel Diagnostic | 2,000 | 2 | 4 analysis JSONs + keys | Poly2 doubles effective rank (ratio 2.0x) — strong linear bottleneck |
@@ -533,15 +535,15 @@ Two variants:
 | Edits before MEMIT perplexity explodes | ~2,000 | Capability Probe |
 | AlphaEdit ordering sensitivity at 5K (efficacy) | 7.4pp gap | Matched Ordering |
 | AlphaEdit ordering sensitivity at 5K (first-1K) | 26.5pp gap | Matched Ordering |
-| MEMIT-SEQ ordering sensitivity at 5K | 0.6pp gap | Matched Ordering |
-| MEMIT-SEQ efficacy at 5K (clustered) | 97.7% | Matched Ordering |
-| MEMIT-SEQ efficacy at 5K (dispersed) | 97.1% | Matched Ordering |
+| MEMIT-Seq ordering sensitivity at 5K | 0.6pp gap | Matched Ordering |
+| MEMIT-Seq efficacy at 5K (clustered) | 97.7% | Matched Ordering |
+| MEMIT-Seq efficacy at 5K (dispersed) | 97.1% | Matched Ordering |
 | AlphaEdit first-1K retention (clustered, 5K) | 91.5% | Matched Ordering |
 | AlphaEdit first-1K retention (dispersed, 5K) | 65.0% | Matched Ordering |
 | MEMIT+SeqReg vs AlphaEdit at 3K | 0.967 vs 0.938 | MEMIT+SeqReg |
 | Projection P vs Identity I at 7K | ratio 0.997 (same) | Cache Ablation |
 | Key cosine as forgetting predictor | OR = 0.023, p<1e-44 | Interference Panel |
-| Cache condition number at 10K | 35,000,000 | Mechanism Analysis |
+| Cache condition number at 10K | 7M–35M (layer-dependent) | Mechanism Analysis |
 | Poly2/linear effective rank ratio | 2.024 | Polykernel Diagnostic |
 | Poly2 kernel capacity utilization at 10K | 63.7% efficacy (2x baseline) | Polykernel Editor |
 
@@ -555,7 +557,7 @@ Two variants:
 4. **Micro mechanism** (Exp 11): Key cosine similarity predicts individual edit forgetting.
 5. **Ordering fragility** (Exp 6-7): AlphaEdit is highly sensitive to key geometry of edit sequences. Clustered orderings preserve better.
 6. **Alternative method** (Exp 8): MEMIT+SeqReg beats AlphaEdit without projection. Regularization > projection.
-7. **Ordering robustness** (Exp 7): MEMIT-SEQ is naturally robust to ordering (0.6pp gap vs 7.4pp).
+7. **Ordering robustness** (Exp 7): MEMIT-Seq is naturally robust to ordering (0.6pp gap vs 7.4pp).
 8. **Capacity diagnosis** (Exp 12): Linear bottleneck confirmed — poly2 kernel reveals 2x available capacity.
 9. **Capacity exploitation** (Exp 13): Poly2 editor doubles efficacy at 10K, confirming the bottleneck is practically exploitable.
 

@@ -592,6 +592,27 @@ def run(args: argparse.Namespace) -> None:
             checkpoint_dir = str(get_checkpoint_root() / f"poly{args.kernel_degree}" / args.alg_name / f"seed{args.seed}")
         Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
+    # Resolve checkpoint path for eval_only mode
+    # If load_checkpoint is relative (e.g. "batch_29"), resolve to:
+    #   {CHECKPOINT_ROOT}/poly{degree}/{alg_name}/seed{seed}/{load_checkpoint}
+    load_checkpoint = args.load_checkpoint or ""
+    if args.eval_only and load_checkpoint:
+        load_path = Path(load_checkpoint)
+        if not load_path.is_absolute():
+            load_checkpoint = str(get_checkpoint_root() / f"poly{args.kernel_degree}" / args.alg_name / f"seed{args.seed}" / load_checkpoint)
+        elif not load_path.exists():
+            # Absolute path doesn't exist — try resolving with alg_name substitution
+            # e.g., user passed /path/poly2/AlphaEdit/seed42/batch_29 but alg is MEMIT
+            # Try replacing the algorithm component
+            parts = list(load_path.parts)
+            for i, part in enumerate(parts):
+                if part in ("AlphaEdit", "MEMIT"):
+                    parts[i] = args.alg_name
+                    candidate = Path(*parts)
+                    if candidate.exists():
+                        load_checkpoint = str(candidate)
+                    break
+
     # RESULTS_DIR for evaluate.py is the parent of variant_name dir
     eval_results_dir = results_dir.parent  # .../seed42/10000edits/
 
@@ -614,7 +635,7 @@ def run(args: argparse.Namespace) -> None:
         save_interval=args.save_interval,
         checkpoint_dir=checkpoint_dir,
         eval_only=args.eval_only,
-        load_checkpoint=args.load_checkpoint or "",
+        load_checkpoint=load_checkpoint,
         eval_results_dir=str(eval_results_dir),
         variant_name=variant_name,
     )
@@ -645,7 +666,7 @@ def run(args: argparse.Namespace) -> None:
         print(f"  Save interval:  every {args.save_interval} batches ({args.save_interval * args.num_edits} edits)")
         print(f"  Checkpoint dir: {checkpoint_dir}")
     elif args.eval_only:
-        print(f"  Load from:      {args.load_checkpoint}")
+        print(f"  Load from:      {load_checkpoint}")
     else:
         print(f"  Eval steps:     {args.downstream_eval_steps}")
     print(f"  Output:         {output_jsonl}")

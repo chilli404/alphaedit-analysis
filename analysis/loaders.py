@@ -685,7 +685,7 @@ def load_matched_ordering_results(
         seed: Random seed.
         ordering: Stream ordering (e.g. "clustered", "dispersed",
                   "key_clustered", "key_dispersed").
-        alg: Algorithm name ("AlphaEdit" or "MEMIT-Seq-1-0").
+        alg: Algorithm name ("AlphaEdit" or "MEMIT-Seq-lp1.0-ld0.0-cache0").
 
     Returns list of per-batch records with mechanism and evaluation data.
     """

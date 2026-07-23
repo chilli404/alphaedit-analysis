@@ -11,10 +11,10 @@ set -euo pipefail
 #
 # Usage:
 #   bash scripts/run_matched_ordering.sh [SEED] [ALG] [ORDERING]
-#   bash scripts/run_matched_ordering.sh 42 MEMIT-Seq-1-0 clustered
-#   bash scripts/run_matched_ordering.sh 42 MEMIT-Seq-1-0 dispersed
-#   bash scripts/run_matched_ordering.sh 42 AlphaEdit clustered
-#   bash scripts/run_matched_ordering.sh 42 AlphaEdit dispersed
+#   bash scripts/run_matched_ordering.sh 42 MEMIT-Seq-lp1.0-ld0.0-cache0 key_clustered
+#   bash scripts/run_matched_ordering.sh 42 MEMIT-Seq-lp1.0-ld0.0-cache0 key_dispersed
+#   bash scripts/run_matched_ordering.sh 42 AlphaEdit key_clustered
+#   bash scripts/run_matched_ordering.sh 42 AlphaEdit key_dispersed
 #
 # Environment variables:
 #   CUDA_DEVICE      - GPU device index (default: 0)
@@ -33,7 +33,7 @@ fi
 
 MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 SEED="${1:-42}"
-ALG="${2:-${ALG_NAME:-MEMIT-Seq-1-0}}"
+ALG="${2:-${ALG_NAME:-MEMIT-Seq-lp1.0-ld0.0-cache0}}"
 ORDERING="${3:-${ORDERING:-clustered}}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
 DATASET_SIZE_LIMIT="${TARGET_EDITS:-5000}"
@@ -148,8 +148,23 @@ if [[ "${FAST_CHECKPOINT:-true}" == "true" ]]; then
     echo "  FAST MODE: only evaluate edited batch"
 fi
 
-if [[ "$ALG" == "MEMIT-Seq-1-0" ]]; then
-    # Full-history MEMIT-seq (λ_prev=1, λ_delta=0, unlimited cache)
+if [[ "$ALG" == MEMIT-Seq-* ]]; then
+    # MEMIT-Seq variant: parse λ_prev, λ_delta, cache from ALG name
+    # Format: MEMIT-Seq-lp{LP}-ld{LD}-cache{CM}
+    LP=$(echo "$ALG" | sed -n 's/.*lp\([^-]*\).*/\1/p')
+    LD=$(echo "$ALG" | sed -n 's/.*ld\([^-]*\).*/\1/p')
+    CM=$(echo "$ALG" | sed -n 's/.*cache\(.*\)/\1/p')
+    LP="${LP:-1.0}"
+    LD="${LD:-0.0}"
+    # cache0 means unlimited (none)
+    if [[ "$CM" == "0" ]]; then
+        CACHE_MAX="none"
+        CACHE_STRATEGY="all"
+    else
+        CACHE_MAX="$CM"
+        CACHE_STRATEGY="recent"
+    fi
+
     uv run python src/runners/memit_sequential_runner.py \
         --seed "$SEED" \
         --cuda_device "$CUDA_DEVICE" \
@@ -158,14 +173,14 @@ if [[ "$ALG" == "MEMIT-Seq-1-0" ]]; then
         --ds_name mcf \
         --dataset_size_limit "$DATASET_SIZE_LIMIT" \
         --num_edits "$NUM_EDITS" \
-        --downstream_eval_steps 10 \
+        --downstream_eval_steps 0 \
         --conserve_memory \
-        --lambda_prev 1.0 \
-        --lambda_delta 0.0 \
-        --cache_strategy all \
-        --cache_max none \
+        --lambda_prev "$LP" \
+        --lambda_delta "$LD" \
+        --cache_strategy "$CACHE_STRATEGY" \
+        --cache_max "$CACHE_MAX" \
         --save_interval "$SAVE_INTERVAL" \
-        --checkpoint_dir "$CKPT_DIR" \
+        --ordering "$ORDERING" \
         --dataset_override "$STREAM_PATH" \
         $FAST_FLAG
 
@@ -184,18 +199,18 @@ elif [[ "$ALG" == "AlphaEdit" ]]; then
         ${FAST_CHECKPOINT:+--eval_at_checkpoints_only}
 
 else
-    echo "ERROR: Unknown algorithm '$ALG'. Use 'AlphaEdit' or 'MEMIT-Seq-1-0'."
+    echo "ERROR: Unknown algorithm '$ALG'. Use 'AlphaEdit' or 'MEMIT-Seq-lp{LP}-ld{LD}-cache{CM}'."
     exit 1
 fi
 
 # Copy results to output dir (check hierarchical layout first, then flat legacy)
 _SEQREG_BASE="$PROJECT_DIR/results/memit_seqreg"
-_SEQREG_HIER="$_SEQREG_BASE/seed${SEED}/${DATASET_SIZE_LIMIT}edits/MEMIT-SEQ-lp1.0-ld0.0-cache0"
+_SEQREG_HIER="$_SEQREG_BASE/seed${SEED}/${DATASET_SIZE_LIMIT}edits/${ALG}"
 if [[ -d "$_SEQREG_HIER" ]]; then
-    cp -r "$_SEQREG_HIER"/log_seed${SEED}_lp1.0_ld0.0_*.jsonl "$RESULTS_DIR/" 2>/dev/null || true
+    cp -r "$_SEQREG_HIER"/log_seed${SEED}_lp*_ld*_*.jsonl "$RESULTS_DIR/" 2>/dev/null || true
     cp -r "$_SEQREG_HIER"/metadata_seed${SEED}_*.json "$RESULTS_DIR/" 2>/dev/null || true
 elif [[ -d "$_SEQREG_BASE" ]]; then
-    cp -r "$_SEQREG_BASE"/log_seed${SEED}_lp1.0_ld0.0_*.jsonl "$RESULTS_DIR/" 2>/dev/null || true
+    cp -r "$_SEQREG_BASE"/log_seed${SEED}_lp*_ld*_*.jsonl "$RESULTS_DIR/" 2>/dev/null || true
     cp -r "$_SEQREG_BASE"/metadata_seed${SEED}_*.json "$RESULTS_DIR/" 2>/dev/null || true
 fi
 

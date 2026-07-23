@@ -466,7 +466,7 @@ def main():
     parser.add_argument("--lambda_prev", type=float, default=1.0)
     parser.add_argument("--lambda_delta", type=float, default=1.0)
     parser.add_argument("--alg_name", type=str, default=None,
-                        help="Algorithm name for output path (default: auto-detect from checkpoint_dir or MEMIT-SEQ)")
+                        help="Algorithm name for output path (default: auto-detect from checkpoint_dir or MEMIT-Seq)")
     parser.add_argument("--ordering", type=str, default=None,
                         help="Ordering type (e.g. key_clustered, key_dispersed) — used in output path")
     parser.add_argument("--model_name", default="meta-llama/Meta-Llama-3-8B-Instruct")
@@ -572,14 +572,14 @@ def main():
     elif args.checkpoint_dir:
         # Derive from checkpoint_dir structure:
         #   .../AlphaEdit/key_clustered/seed42 → alg=AlphaEdit, ordering=key_clustered
-        #   .../matched_key_clustered_seed42 → fall back to MEMIT-SEQ
+        #   .../matched_key_clustered_seed42 → fall back to MEMIT-Seq
         ckpt_parts = Path(args.checkpoint_dir).parts
         if "AlphaEdit" in ckpt_parts:
             variant_name = "AlphaEdit"
         else:
-            variant_name = f"MEMIT-SEQ-lp{args.lambda_prev}-ld{args.lambda_delta}"
+            variant_name = f"MEMIT-Seq-lp{args.lambda_prev}-ld{args.lambda_delta}"
     else:
-        variant_name = f"MEMIT-SEQ-lp{args.lambda_prev}-ld{args.lambda_delta}"
+        variant_name = f"MEMIT-Seq-lp{args.lambda_prev}-ld{args.lambda_delta}"
 
     # Determine ordering from --ordering flag or dataset_path filename
     ordering = args.ordering

@@ -524,8 +524,8 @@ def main():
     print("Done. Run experiments with:")
     print(f"  bash scripts/run_matched_ordering.sh {args.seed} AlphaEdit key_clustered")
     print(f"  bash scripts/run_matched_ordering.sh {args.seed} AlphaEdit key_dispersed")
-    print(f"  bash scripts/run_matched_ordering.sh {args.seed} MEMIT-Seq-1-0 key_clustered")
-    print(f"  bash scripts/run_matched_ordering.sh {args.seed} MEMIT-Seq-1-0 key_dispersed")
+    print(f"  bash scripts/run_matched_ordering.sh {args.seed} MEMIT-Seq-lp1.0-ld0.0-cache0 key_clustered")
+    print(f"  bash scripts/run_matched_ordering.sh {args.seed} MEMIT-Seq-lp1.0-ld0.0-cache0 key_dispersed")
     print(f"{'='*70}\n")
 
 

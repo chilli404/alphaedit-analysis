@@ -63,16 +63,21 @@ from eval_config import hash_eval_config
 from paths import get_project_root, get_alphaedit_root, get_result_root, get_checkpoint_root
 
 
-def resolve_checkpoint_dir(explicit_dir: str | None, seed: int, lambda_prev: float, lambda_delta: float, cache_max: int | None = None) -> Path:
+def resolve_checkpoint_dir(explicit_dir: str | None, seed: int, lambda_prev: float, lambda_delta: float, cache_max: int | None = None, ordering: str | None = None) -> Path:
     """Resolve checkpoint directory for MEMIT+SeqReg.
 
-    Convention: {CHECKPOINT_ROOT}/failure_curve/MEMIT-SEQ-lp{lp}-ld{ld}-cache{cm}/seed{N}/
+    Convention:
+        Standard:         {CHECKPOINT_ROOT}/failure_curve/MEMIT-Seq-lp{lp}-ld{ld}-cache{cm}/seed{N}/
+        Matched ordering: {CHECKPOINT_ROOT}/matched_ordering/MEMIT-Seq-lp{lp}-ld{ld}-cache{cm}/{ordering}/seed{N}/
     """
     if explicit_dir:
         return Path(explicit_dir)
 
     cache_max_str = str(cache_max) if cache_max is not None else "0"
-    variant_name = f"MEMIT-SEQ-lp{lambda_prev}-ld{lambda_delta}-cache{cache_max_str}"
+    variant_name = f"MEMIT-Seq-lp{lambda_prev}-ld{lambda_delta}-cache{cache_max_str}"
+
+    if ordering:
+        return get_checkpoint_root() / "matched_ordering" / variant_name / ordering / f"seed{seed}"
 
     return get_checkpoint_root() / "failure_curve" / variant_name / f"seed{seed}"
 
@@ -693,7 +698,7 @@ def run(args: argparse.Namespace) -> None:
 
     # Output directory
     cache_max_str = str(cache_max) if cache_max is not None else "0"
-    variant_name = f"MEMIT-SEQ-lp{args.lambda_prev}-ld{args.lambda_delta}-cache{cache_max_str}"
+    variant_name = f"MEMIT-Seq-lp{args.lambda_prev}-ld{args.lambda_delta}-cache{cache_max_str}"
     results_dir = (
         get_result_root() / "memit_seqreg"
         / f"seed{args.seed}" / f"{args.dataset_size_limit}edits" / variant_name
@@ -704,8 +709,9 @@ def run(args: argparse.Namespace) -> None:
     output_jsonl = results_dir / f"log_seed{args.seed}_lp{args.lambda_prev}_ld{args.lambda_delta}_{timestamp}.jsonl"
 
     # Resolve checkpoint directory and auto-detect resume point
+    ordering = getattr(args, 'ordering', None)
     ckpt_dir = resolve_checkpoint_dir(
-        args.checkpoint_dir, args.seed, args.lambda_prev, args.lambda_delta, cache_max
+        args.checkpoint_dir, args.seed, args.lambda_prev, args.lambda_delta, cache_max, ordering=ordering
     )
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
@@ -874,6 +880,10 @@ def main():
     # Order sensitivity
     parser.add_argument("--order_id", type=int, default=0,
                         help="Edit ordering ID (0=canonical, >0=shuffle with Random(order_id))")
+
+    # Matched ordering
+    parser.add_argument("--ordering", type=str, default=None,
+                        help="Ordering type (e.g. key_clustered, key_dispersed) — routes checkpoints to matched_ordering/")
 
     args = parser.parse_args()
     run(args)
