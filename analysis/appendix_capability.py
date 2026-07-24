@@ -5,15 +5,13 @@ Produces one figure with 3 panels:
   B. Corpus-level WikiText-103 perplexity vs edit count
   C. Four-subject MMLU accuracy vs edit count
 
-Each panel shows per-seed lines (42, 137, 2024) and an aggregate mean.
-
-Claim supported (appendix only):
-  Factual retention degrades substantially before broad language-model
-  capability collapses.
+Each panel shows per-algorithm traces with per-seed thin lines and an
+aggregate mean. Supports AlphaEdit, MEMIT, and MEMIT-Seq variants.
 
 Usage:
     uv run python -m analysis.appendix_capability
     uv run python -m analysis.appendix_capability --output-dir results/figures/appendix
+    uv run python -m analysis.appendix_capability --algorithms AlphaEdit MEMIT-Seq-lp1.0-ld0.0-cache0
 """
 
 import argparse
@@ -34,7 +32,21 @@ from analysis.loaders import (
 # ─── Configuration ────────────────────────────────────────────────────────────
 
 SEEDS = [42, 137, 2024]
-ALG = "AlphaEdit"
+
+# Algorithms to plot (in display order). Each entry is (alg_name, display_label, color).
+DEFAULT_ALGORITHMS = [
+    "AlphaEdit",
+    "MEMIT",
+    "MEMIT-Seq-lp1.0-ld0.0-cache0",
+]
+
+# Display labels and colors for algorithm variants
+ALG_DISPLAY = {
+    "AlphaEdit": ("AlphaEdit", ALGO_COLORS.get("AlphaEdit", "#2196F3")),
+    "MEMIT": ("MEMIT", ALGO_COLORS.get("MEMIT", "#FF9800")),
+    "MEMIT-Seq-lp1.0-ld0.0-cache0": ("MEMIT+SeqReg", ALGO_COLORS.get("MEMIT+SeqReg", "#4CAF50")),
+}
+
 # Edit points for factual efficacy (from failure curve)
 EDIT_POINTS = [2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000]
 
@@ -42,13 +54,23 @@ EDIT_POINTS = [2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000]
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _get_efficacy_curves():
+def _get_alg_display(alg: str):
+    """Get display label and color for an algorithm."""
+    if alg in ALG_DISPLAY:
+        return ALG_DISPLAY[alg]
+    # Fallback for unknown MEMIT-Seq variants
+    if alg.startswith("MEMIT-Seq"):
+        return (alg.replace("MEMIT-Seq-", "SeqReg "), "#4CAF50")
+    return (alg, "#607D8B")
+
+
+def _get_efficacy_curves(alg: str):
     """Load first-cohort efficacy from failure curve checkpoints."""
     curves = {}
     for seed in SEEDS:
         points = []
         for edits in EDIT_POINTS:
-            m = load_checkpoint_metrics(seed, edits, ALG)
+            m = load_checkpoint_metrics(seed, edits, alg)
             if m and "efficacy" in m:
                 points.append((edits, m["efficacy"]))
         if points:
@@ -56,12 +78,12 @@ def _get_efficacy_curves():
     return curves
 
 
-def _get_probe_curves():
+def _get_probe_curves(alg: str):
     """Load capability probe data (perplexity + MMLU) per seed."""
     ppl_curves = {}
     mmlu_curves = {}
     for seed in SEEDS:
-        records = load_capability_probe(seed, ALG)
+        records = load_capability_probe(seed, alg)
         if not records:
             continue
         ppl_points = []
@@ -91,7 +113,9 @@ def _compute_aggregate(curves):
     for points in curves.values():
         for x, _ in points:
             x_counts[x] += 1
-    shared_xs = sorted(x for x, c in x_counts.items() if c >= 2)
+    # For single-seed algorithms, accept x values appearing at least once
+    min_count = 2 if len(curves) >= 2 else 1
+    shared_xs = sorted(x for x, c in x_counts.items() if c >= min_count)
     if not shared_xs:
         return None
 
@@ -105,28 +129,43 @@ def _compute_aggregate(curves):
                     vals.append(py)
                     break
         means.append(np.mean(vals))
-        stds.append(np.std(vals))
+        stds.append(np.std(vals) if len(vals) > 1 else 0.0)
     return shared_xs, means, stds
 
 
 # ─── Figure ───────────────────────────────────────────────────────────────────
 
 
-def figure_capability_probe(output_dir: Path):
-    """Generate 3-panel capability probe appendix figure."""
+def figure_capability_probe(output_dir: Path, algorithms: list[str] | None = None):
+    """Generate 3-panel capability probe appendix figure with multi-algorithm support."""
     setup_style()
 
-    efficacy_curves = _get_efficacy_curves()
-    ppl_curves, mmlu_curves = _get_probe_curves()
+    if algorithms is None:
+        algorithms = DEFAULT_ALGORITHMS
 
-    # Check we have data
-    has_efficacy = bool(efficacy_curves)
-    has_ppl = bool(ppl_curves)
-    has_mmlu = bool(mmlu_curves)
+    # Collect data per algorithm
+    all_efficacy = {}  # alg -> {seed -> points}
+    all_ppl = {}       # alg -> {seed -> points}
+    all_mmlu = {}      # alg -> {seed -> points}
+
+    for alg in algorithms:
+        efficacy_curves = _get_efficacy_curves(alg)
+        ppl_curves, mmlu_curves = _get_probe_curves(alg)
+
+        if efficacy_curves:
+            all_efficacy[alg] = efficacy_curves
+        if ppl_curves:
+            all_ppl[alg] = ppl_curves
+        if mmlu_curves:
+            all_mmlu[alg] = mmlu_curves
+
+    has_efficacy = bool(all_efficacy)
+    has_ppl = bool(all_ppl)
+    has_mmlu = bool(all_mmlu)
 
     if not has_efficacy and not has_ppl and not has_mmlu:
         print("  [SKIP] No capability probe data available.")
-        print("         Run: python src/mechanism/capability_probe_offline.py --seed 42 --alg_name AlphaEdit")
+        print("         Run: bash scripts/run_capability_probe_offline.sh <seed> all")
         return
 
     n_panels = sum([has_efficacy, has_ppl, has_mmlu])
@@ -139,20 +178,25 @@ def figure_capability_probe(output_dir: Path):
     # Panel A: Factual efficacy
     if has_efficacy:
         ax = axes[panel_idx]
-        for seed, points in efficacy_curves.items():
-            xs, ys = zip(*points)
-            ax.plot(xs, ys, color=SEED_COLORS.get(seed, "gray"),
-                    linewidth=1.2, marker="o", markersize=3,
-                    alpha=0.6, label=f"seed {seed}")
-        agg = _compute_aggregate(efficacy_curves)
-        if agg:
-            xs, means, stds = agg
-            ax.plot(xs, means, color=ALGO_COLORS[ALG], linewidth=2.5,
-                    label="Mean", zorder=5)
-            ax.fill_between(xs,
-                            [m - s for m, s in zip(means, stds)],
-                            [m + s for m, s in zip(means, stds)],
-                            color=ALGO_COLORS[ALG], alpha=0.15)
+        for alg, curves in all_efficacy.items():
+            label, color = _get_alg_display(alg)
+            # Per-seed thin lines
+            for seed, points in curves.items():
+                xs, ys = zip(*points)
+                ax.plot(xs, ys, color=color,
+                        linewidth=0.8, marker="o", markersize=2,
+                        alpha=0.35)
+            # Aggregate mean
+            agg = _compute_aggregate(curves)
+            if agg:
+                xs, means, stds = agg
+                ax.plot(xs, means, color=color, linewidth=2.5,
+                        label=label, zorder=5)
+                if any(s > 0 for s in stds):
+                    ax.fill_between(xs,
+                                    [m - s for m, s in zip(means, stds)],
+                                    [m + s for m, s in zip(means, stds)],
+                                    color=color, alpha=0.1)
         ax.set_xlabel("Total Edits")
         ax.set_ylabel("Factual Efficacy")
         ax.set_title("A. Factual Retention")
@@ -164,43 +208,54 @@ def figure_capability_probe(output_dir: Path):
     # Panel B: Perplexity
     if has_ppl:
         ax = axes[panel_idx]
-        for seed, points in ppl_curves.items():
-            xs, ys = zip(*points)
-            ax.plot(xs, ys, color=SEED_COLORS.get(seed, "gray"),
-                    linewidth=1.2, marker="s", markersize=3,
-                    alpha=0.6, label=f"seed {seed}")
-        agg = _compute_aggregate(ppl_curves)
-        if agg:
-            xs, means, stds = agg
-            ax.plot(xs, means, color="black", linewidth=2.5,
-                    label="Mean", zorder=5)
-            ax.fill_between(xs,
-                            [m - s for m, s in zip(means, stds)],
-                            [m + s for m, s in zip(means, stds)],
-                            color="black", alpha=0.1)
+        for alg, curves in all_ppl.items():
+            label, color = _get_alg_display(alg)
+            # Per-seed thin lines
+            for seed, points in curves.items():
+                xs, ys = zip(*points)
+                ax.plot(xs, ys, color=color,
+                        linewidth=0.8, marker="s", markersize=2,
+                        alpha=0.35)
+            # Aggregate mean
+            agg = _compute_aggregate(curves)
+            if agg:
+                xs, means, stds = agg
+                ax.plot(xs, means, color=color, linewidth=2.5,
+                        label=label, zorder=5)
+                if any(s > 0 for s in stds):
+                    ax.fill_between(xs,
+                                    [m - s for m, s in zip(means, stds)],
+                                    [m + s for m, s in zip(means, stds)],
+                                    color=color, alpha=0.1)
         ax.set_xlabel("Total Edits")
-        ax.set_ylabel("Perplexity (WikiText-103)")
+        ax.set_ylabel("Perplexity (WikiText-2)")
         ax.set_title("B. Corpus Perplexity")
+        ax.set_yscale("log")
         ax.legend(fontsize=7, loc="upper left")
         panel_idx += 1
 
     # Panel C: MMLU
     if has_mmlu:
         ax = axes[panel_idx]
-        for seed, points in mmlu_curves.items():
-            xs, ys = zip(*points)
-            ax.plot(xs, ys, color=SEED_COLORS.get(seed, "gray"),
-                    linewidth=1.2, marker="^", markersize=3,
-                    alpha=0.6, label=f"seed {seed}")
-        agg = _compute_aggregate(mmlu_curves)
-        if agg:
-            xs, means, stds = agg
-            ax.plot(xs, means, color="black", linewidth=2.5,
-                    label="Mean", zorder=5)
-            ax.fill_between(xs,
-                            [m - s for m, s in zip(means, stds)],
-                            [m + s for m, s in zip(means, stds)],
-                            color="black", alpha=0.1)
+        for alg, curves in all_mmlu.items():
+            label, color = _get_alg_display(alg)
+            # Per-seed thin lines
+            for seed, points in curves.items():
+                xs, ys = zip(*points)
+                ax.plot(xs, ys, color=color,
+                        linewidth=0.8, marker="^", markersize=2,
+                        alpha=0.35)
+            # Aggregate mean
+            agg = _compute_aggregate(curves)
+            if agg:
+                xs, means, stds = agg
+                ax.plot(xs, means, color=color, linewidth=2.5,
+                        label=label, zorder=5)
+                if any(s > 0 for s in stds):
+                    ax.fill_between(xs,
+                                    [m - s for m, s in zip(means, stds)],
+                                    [m + s for m, s in zip(means, stds)],
+                                    color=color, alpha=0.1)
         ax.set_xlabel("Total Edits")
         ax.set_ylabel("Accuracy (4-subject MMLU)")
         ax.set_title("C. MMLU Accuracy")
@@ -219,8 +274,12 @@ def figure_capability_probe(output_dir: Path):
 def main():
     parser = argparse.ArgumentParser(description="Generate capability probe appendix figure")
     parser.add_argument("--output-dir", type=Path, default=APPENDIX_OUTPUT)
+    parser.add_argument(
+        "--algorithms", nargs="+", default=None,
+        help="Algorithms to include (default: AlphaEdit MEMIT MEMIT-Seq-lp1.0-ld0.0-cache0)"
+    )
     args = parser.parse_args()
-    figure_capability_probe(args.output_dir)
+    figure_capability_probe(args.output_dir, args.algorithms)
 
 
 if __name__ == "__main__":

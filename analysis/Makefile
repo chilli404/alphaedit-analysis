@@ -2,10 +2,12 @@
 #
 # Usage:
 #   make all          Generate everything
-#   make fig1         Figure 1: Reproduction + long-horizon
-#   make fig2         Figure 2: Anatomy of forgetting
-#   make fig5         Figure 5: Per-edit interference (key geometry)
+#   make fig2         Figure 2: Reproduction + long-horizon boundary
+#   make fig3         Figure 3: Local plasticity vs global retention
+#   make fig4         Figure 4: Stream concentration & interference
+#   make fig5         Figure 5: Attribution correction
 #   make interference Run interference panel analysis (requires keys)
+#   make mechanism    Ordering mechanism (interference distillation)
 #   make tables       All tables + paper_numbers.json
 #   make appendix     Appendix figures (A1, A3, A8, capability)
 #   make check        Verify data availability
@@ -20,25 +22,29 @@ APPENDIX := ../results/figures/appendix
 KEYS := ../results/key_vectors
 MATCHED := ../results/matched_ordering
 
-.PHONY: all fig1 fig2 fig5 interference mechanism tables appendix appendix-capability check clean validate_ordering
+.PHONY: all fig2 fig3 fig4 fig5 interference mechanism tables appendix appendix-capability check clean
 
-all: fig1 fig2 interference fig5 mechanism tables
-
-fig1:
-	@echo "── Figure 1: Reproduction & Long-Horizon ──"
-	$(PYTHON) -m analysis.fig1_reproduction --output-dir $(OUTPUT)
+all: fig2 fig3 interference fig4 fig5 mechanism tables
 
 fig2:
-	@echo "── Figure 2: Anatomy of Forgetting ──"
-	$(PYTHON) -m analysis.fig2_forgetting --output-dir $(OUTPUT)
+	@echo "── Figure 2: Reproduction & Long-Horizon ──"
+	$(PYTHON) -m analysis.fig2_reproduction --output-dir $(OUTPUT)
+
+fig3:
+	@echo "── Figure 3: Local Plasticity vs Global Retention ──"
+	$(PYTHON) -m analysis.fig3_plasticity --output-dir $(OUTPUT)
 
 interference:
 	@echo "── Interference Panel Analysis ──"
 	$(PYTHON) -m analysis.interference_panel --output-dir $(OUTPUT) --keys-dir $(KEYS)
 
+fig4:
+	@echo "── Figure 4: Stream Concentration & Interference ──"
+	$(PYTHON) -m analysis.fig4_mechanism --output-dir $(OUTPUT)
+
 fig5: interference
-	@echo "── Figure 5: Per-Edit Interference ──"
-	$(PYTHON) -m analysis.fig5_interference --output-dir $(OUTPUT)
+	@echo "── Figure 5: Attribution Correction ──"
+	$(PYTHON) -m analysis.fig5_attribution --output-dir $(OUTPUT)
 
 mechanism:
 	@echo "── Ordering Mechanism (Interference Distillation) ──"
@@ -55,11 +61,6 @@ appendix: appendix-capability
 appendix-capability:
 	@echo "── Appendix: Capability Probe ──"
 	$(PYTHON) -m analysis.appendix_capability --output-dir $(APPENDIX)
-
-validate_ordering:
-	@echo "── Matched Ordering: Generate & Validate ──"
-	$(PYTHON) src/datasets/generate_orderings.py --seed 42
-
 
 check:
 	@echo "── Data Availability Report ──"

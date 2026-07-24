@@ -21,6 +21,7 @@ Usage:
 
 import argparse
 import json
+import os
 import sys
 from itertools import chain
 from pathlib import Path
@@ -42,11 +43,21 @@ def resolve_checkpoint_dir(seed: int, lambda_prev: float, lambda_delta: float) -
 
 def load_model_from_checkpoint(model_name: str, ckpt_path: Path):
     """Load base model and apply checkpoint weights."""
+    from huggingface_hub import snapshot_download
+
+    token = os.environ.get("HF_TOKEN")
+    print(f"  Ensuring model is downloaded: {model_name}")
+    snapshot_download(
+        repo_id=model_name,
+        token=token,
+        endpoint=os.environ.get("HF_ENDPOINT"),
+    )
+
     print(f"  Loading base model: {model_name} (float16)")
     model = AutoModelForCausalLM.from_pretrained(
-        model_name, torch_dtype=torch.float16
+        model_name, torch_dtype=torch.float16, token=token,
     ).cuda()
-    tok = AutoTokenizer.from_pretrained(model_name)
+    tok = AutoTokenizer.from_pretrained(model_name, token=token)
     tok.pad_token = tok.eos_token
     tok.padding_side = "left"
 
@@ -594,10 +605,11 @@ def main():
                 ordering = ds_stem[:ds_stem.index(suffix)]
                 break
 
+    result_root = Path(os.environ.get("RESULT_ROOT", str(PROJECT_ROOT / "results")))
     if ordering:
-        out_dir = PROJECT_ROOT / "results" / "matched_ordering" / variant_name / ordering / f"seed{args.seed}"
+        out_dir = result_root / "matched_ordering" / variant_name / ordering / f"seed{args.seed}"
     else:
-        out_dir = PROJECT_ROOT / "results" / "matched_ordering" / variant_name / f"seed{args.seed}"
+        out_dir = result_root / "matched_ordering" / variant_name / f"seed{args.seed}"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"full_eval_seed{args.seed}.json"
     with open(str(out_path), "w") as f:

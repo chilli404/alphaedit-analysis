@@ -1095,10 +1095,10 @@ def main():
                         help="Previous-key protection: λ_prev ||ΔK_prev||² (AlphaEdit Eq. 12 uses λ=1)")
     parser.add_argument("--lambda_delta", type=float, default=0.0,
                         help="Update size minimization: λ_delta ||Δ||² (AlphaEdit Eq. 12 uses λ=1)")
-    parser.add_argument("--cache_strategy", default="recent", choices=["recent", "all"],
-                        help="Cache management strategy (default: recent)")
-    parser.add_argument("--cache_max", default="20",
-                        help="Max batches in cache (default: 20, use 'none' for unlimited)")
+    parser.add_argument("--cache_strategy", default="all", choices=["recent", "all"],
+                        help="Cache management strategy (default: all)")
+    parser.add_argument("--cache_max", default="none",
+                        help="Max batches in cache (default: none/unlimited, use integer to cap)")
 
     # Checkpoint and resume
     parser.add_argument("--save_interval", type=int, default=10,

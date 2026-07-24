@@ -27,11 +27,6 @@ SEED_COLORS = {
     99: "#9C27B0",
 }
 
-STREAM_COLORS = {
-    "low_coupling": "#2196F3",
-    "high_coupling": "#E91E63",
-}
-
 KERNEL_COLORS = {
     "AlphaEdit": "#2196F3",   # Standard (same as ALGO_COLORS)
     "poly2": "#9C27B0",       # Purple

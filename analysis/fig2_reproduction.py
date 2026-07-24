@@ -1,16 +1,16 @@
-"""Figure 1 — Faithful reproduction and long-horizon boundary.
+"""Figure 2 — Reproduction and long-horizon boundary.
 
-Question answered: Does AlphaEdit reproduce, and where does it begin to fail?
+Question answered: Does AlphaEdit reproduce its claimed advantage, and where
+does that advantage begin to break down?
 
 Panels:
-  A. Standard-scale reproduction (AlphaEdit vs MEMIT through 3K, multi-seed)
-  B. Long-horizon efficacy (1K → 10K, individual seed traces + mean)
-  C. Probability locality (neighborhood_prob trajectory)
-  D. Capability / locality comparison (neighborhood_prob normalized)
+  A. Standard-scale reproduction (AlphaEdit vs MEMIT at 2K, 5 seeds, bar chart)
+  B. Long-horizon efficacy (2K → 10K, per-seed traces + mean)
+  C. Paraphrase and locality trajectories (AlphaEdit mean across seeds)
 
 Usage:
-    uv run python -m analysis.fig1_reproduction
-    uv run python -m analysis.fig1_reproduction --output-dir results/figures/paper
+    uv run python -m analysis.fig2_reproduction
+    uv run python -m analysis.fig2_reproduction --output-dir results/figures/paper
 """
 
 import argparse
@@ -36,10 +36,7 @@ ALGOS = ["AlphaEdit", "MEMIT"]
 
 
 def _collect_curves(metric: str, alg: str):
-    """Collect per-seed curves for a metric/algorithm pair.
-
-    Returns dict: seed → list of (edits, value).
-    """
+    """Collect per-seed curves for a metric/algorithm pair."""
     seed_curves = {}
     for seed in SEEDS:
         curve = []
@@ -108,14 +105,16 @@ def panel_a_reproduction(ax):
                     if metric in m:
                         seed_values[metric].append(m[metric])
 
-        means = [np.mean(seed_values[m]) if seed_values[m] else 0 for m in metrics_list]
-        stds = [np.std(seed_values[m]) if seed_values[m] else 0 for m in metrics_list]
+        means = [np.mean(seed_values[m]) if seed_values[m] else 0
+                 for m in metrics_list]
+        stds = [np.std(seed_values[m]) if seed_values[m] else 0
+                for m in metrics_list]
 
         offset = (i - 0.5) * width
         color = ALGO_COLORS[alg]
-        bars = ax.bar(x + offset, means, width, yerr=stds, label=alg,
-                      color=color, alpha=0.8, edgecolor="black", linewidth=0.5,
-                      capsize=3)
+        ax.bar(x + offset, means, width, yerr=stds, label=alg,
+               color=color, alpha=0.8, edgecolor="black", linewidth=0.5,
+               capsize=3)
 
     ax.set_xticks(x)
     ax.set_xticklabels(metric_labels)
@@ -131,35 +130,51 @@ def panel_b_long_horizon(ax):
     for alg in ALGOS:
         _plot_algo_curves(ax, "efficacy", alg, show_individual=True)
 
-    ax.set_xlabel("Total Edits")
-    ax.set_ylabel("Efficacy")
-    ax.set_title("(B) Long-Horizon Efficacy (2K → 10K)")
-    ax.legend(loc="upper right")
+    # Shaded region for trajectory sensitivity
+    ax.axvspan(7000, 8000, alpha=0.08, color="red",
+               label="Increasing trajectory sensitivity")
+
+    ax.set_xlabel("Cumulative Edits")
+    ax.set_ylabel("Aggregate Efficacy")
+    ax.set_title("(B) Long-Horizon Failure Curve (2K\u201310K)")
+    ax.legend(loc="lower left", fontsize=8)
     ax.set_ylim(-0.05, 1.05)
     ax.axhline(0.5, color="gray", linestyle=":", alpha=0.4)
 
 
-def panel_c_probability_locality(ax):
-    """Panel C: Probability locality (neighborhood_prob) trajectory."""
-    for alg in ALGOS:
-        _plot_algo_curves(ax, "neighborhood_prob", alg, show_individual=False)
+def panel_c_paraphrase_locality(ax):
+    """Panel C: Paraphrase and locality trajectories (AlphaEdit, mean)."""
+    alg = "AlphaEdit"
 
-    ax.set_xlabel("Total Edits")
-    ax.set_ylabel("P(target_new | neighborhood)")
-    ax.set_title("(C) Probability Locality")
-    ax.legend(loc="upper right")
-    ax.axhline(0.5, color="gray", linestyle=":", alpha=0.4, label="chance")
+    for metric, label, ls in [
+        ("paraphrase", "Paraphrase", "-"),
+        ("neighborhood_prob", "Neighborhood P(new)", "--"),
+    ]:
+        seed_curves = _collect_curves(metric, alg)
+        if not seed_curves:
+            continue
 
+        all_edits = sorted(set(e for c in seed_curves.values() for e, _ in c))
+        mean_vals = []
+        for e in all_edits:
+            vals = [v for curve in seed_curves.values()
+                    for x, v in curve if x == e]
+            if vals:
+                mean_vals.append((e, np.mean(vals), np.std(vals)))
 
-def panel_d_paraphrase(ax):
-    """Panel D: Paraphrase (generalization) trajectory."""
-    for alg in ALGOS:
-        _plot_algo_curves(ax, "paraphrase", alg, show_individual=True)
+        if mean_vals:
+            xs, ys, stds = zip(*mean_vals)
+            color = ALGO_COLORS[alg] if metric == "paraphrase" else "#9C27B0"
+            ax.plot(xs, ys, color=color, linewidth=2, label=label,
+                    marker="s", markersize=3, linestyle=ls)
+            ax.fill_between(xs, np.array(ys) - np.array(stds),
+                            np.array(ys) + np.array(stds),
+                            color=color, alpha=0.1)
 
-    ax.set_xlabel("Total Edits")
-    ax.set_ylabel("Paraphrase Success")
-    ax.set_title("(D) Paraphrase Generalization")
-    ax.legend(loc="upper right")
+    ax.set_xlabel("Cumulative Edits")
+    ax.set_ylabel("Score")
+    ax.set_title("(C) Paraphrase & Locality (AlphaEdit)")
+    ax.legend(loc="upper right", fontsize=8)
     ax.set_ylim(-0.05, 1.05)
     ax.axhline(0.5, color="gray", linestyle=":", alpha=0.4)
 
@@ -168,26 +183,26 @@ def panel_d_paraphrase(ax):
 
 
 def generate(output_dir: Path = PAPER_OUTPUT):
-    """Generate Figure 1."""
+    """Generate Figure 2."""
     setup_style()
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 9))
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
     fig.suptitle(
-        "Figure 1: AlphaEdit Reproduces Its Advantage but Degrades at Scale",
-        fontsize=13, y=0.98,
+        "Figure 2: AlphaEdit Reproduces at 2K but Degrades Beyond 7K Edits",
+        fontsize=13, y=1.02,
     )
 
-    panel_a_reproduction(axes[0, 0])
-    panel_b_long_horizon(axes[0, 1])
-    panel_c_probability_locality(axes[1, 0])
-    panel_d_paraphrase(axes[1, 1])
+    panel_a_reproduction(axes[0])
+    panel_b_long_horizon(axes[1])
+    panel_c_paraphrase_locality(axes[2])
 
     plt.tight_layout()
-    save_figure(fig, "fig1_reproduction", output_dir)
+    save_figure(fig, "fig2_reproduction", output_dir)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate Figure 1: Reproduction & long-horizon boundary")
+    parser = argparse.ArgumentParser(
+        description="Generate Figure 2: Reproduction & long-horizon boundary")
     parser.add_argument("--output-dir", type=Path, default=PAPER_OUTPUT)
     args = parser.parse_args()
     generate(args.output_dir)
