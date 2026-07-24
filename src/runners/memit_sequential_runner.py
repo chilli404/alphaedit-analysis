@@ -589,11 +589,17 @@ def _ckpt_load(model, hparams):
                 loaded_count += 1
         print(f"  [CHECKPOINT] Loaded {{loaded_count}} parameter tensors")
 
-    # Load prev_cache
+    # Load prev_cache — MUST mutate in-place (clear + update) rather than reassign,
+    # because both the memit_main and evaluate.py exec namespaces hold references
+    # to the same dict object. Reassigning with `= torch.load(...)` would only
+    # update this namespace's binding, leaving memit_main with the original empty dict.
     cache_file = batch_dir / "prev_cache.pt"
     if cache_file.exists():
         global _memit_prev_cache
-        _memit_prev_cache = torch.load(str(cache_file), map_location="cpu")
+        _loaded_cache = torch.load(str(cache_file), map_location="cpu")
+        _memit_prev_cache.clear()
+        _memit_prev_cache.update(_loaded_cache)
+        del _loaded_cache
         total_keys = sum(sum(k.shape[1] for k in v) for v in _memit_prev_cache.values())
         print(f"  [CHECKPOINT] Loaded prev_cache ({{len(_memit_prev_cache)}} layers, {{total_keys}} total keys)")
 
