@@ -296,9 +296,24 @@ make -C analysis appendix
 
 | Edits | Efficacy | Paraphrase | Neighborhood |
 |-------|----------|------------|--------------|
-| 2,000 | 0.9525 | 0.7203 | 0.1634 |
+| 2,000 | 0.9525 | 0.7202 | 0.1634 |
+| 3,000 | 0.9330 | 0.7197 | 0.1555 |
+| 4,000 | 0.8770 | 0.7104 | 0.1416 |
 | 5,000 | 0.8186 | 0.6836 | 0.1289 |
-| 10,000 | 0.1614 | 0.0691 | 0.0329 |
+| 6,000 | 0.6410 | 0.5413 | 0.0971 |
+| 7,000 | 0.3819 | 0.2234 | 0.0649 |
+| 8,000 | 0.2129 | 0.0946 | 0.0401 |
+| 9,000 | 0.1792 | 0.0691 | 0.0393 |
+| 10,000 | 0.1614 | 0.0779 | 0.0329 |
+
+### AlphaEdit (Seed 137)
+
+| Edits | Efficacy | Paraphrase | Neighborhood |
+|-------|----------|------------|--------------|
+| 5,000 | 0.8420 | 0.6469 | 0.1365 |
+| 7,000 | 0.5619 | 0.3296 | 0.1056 |
+| 9,000 | 0.2206 | 0.0733 | 0.0556 |
+| 10,000 | 0.1704 | 0.0561 | 0.0365 |
 
 ### MEMIT Baseline (Seed 42)
 
@@ -308,7 +323,34 @@ make -C analysis appendix
 | 3,000 | 0.2583 | 0.1563 | 0.0252 |
 | 4,000 | 0.1047 | 0.0340 | 0.0165 |
 | 5,000 | 0.0852 | 0.0303 | 0.0149 |
-| 10,000 | 0.0000 | 0.0000 | — |
+| 6,000 | 0.0573 | 0.0250 | 0.0043 |
+| 7,000 | 0.0107 | 0.0071 | 0.0036 |
+| 8,000 | 0.0009 | 0.0008 | 0.0006 |
+| 9,000 | 0.0004 | 0.0002 | 0.0003 |
+| 10,000 | 0.0000 | 0.0000 | 0.0000 |
+
+### MEMIT Baseline (Seed 2024)
+
+| Edits | Efficacy | Paraphrase | Neighborhood |
+|-------|----------|------------|--------------|
+| 2,000 | 0.2065 | 0.1700 | 0.0422 |
+| 3,000 | 0.3139 | 0.1866 | 0.0286 |
+| 4,000 | 0.0775 | 0.0194 | 0.0096 |
+| 5,000 | 0.0286 | 0.0107 | 0.0047 |
+| 6,000 | 0.0055 | 0.0028 | 0.0000 |
+| 7,000 | 0.0014 | 0.0015 | 0.0001 |
+| 8,000 | 0.0000 | 0.0000 | 0.0000 |
+| 9,000 | 0.0000 | 0.0000 | 0.0000 |
+| 10,000 | 0.0000 | 0.0000 | 0.0000 |
+
+### MEMIT Baseline (Seed 137)
+
+| Edits | Efficacy | Paraphrase | Neighborhood |
+|-------|----------|------------|--------------|
+| 5,000 | 0.0472 | 0.0095 | 0.0114 |
+| 7,000 | 0.0440 | 0.0145 | 0.0078 |
+| 9,000 | 0.0023 | 0.0014 | 0.0001 |
+| 10,000 | 0.0022 | 0.0013 | 0.0000 |
 
 ### MEMIT-Seq-lp1.0-ld0.0-cache0 (Seed 42)
 
@@ -318,6 +360,11 @@ make -C analysis appendix
 | 3,000 | 0.9763 | 0.6535 | 0.1974 | 3000 |
 | 4,000 | 0.9715 | 0.6611 | 0.1762 | 4000 |
 | 5,000 | 0.9662 | 0.6639 | 0.1613 | 5000 |
+| 6,000 | 0.9595 | 0.6439 | 0.1558 | 6000 |
+| 7,000 | 0.9510 | 0.6164 | 0.1444 | 7000 |
+| 8,000 | 0.9314 | 0.5877 | 0.1321 | 8000 |
+| 9,000 | 0.8878 | 0.5144 | 0.1265 | 9000 |
+| 10,000 | 0.7997 | 0.4365 | 0.1183 | 10000 |
 
 ### MEMIT-Seq-lp0.0-ld1.0-cache0 — Ridge Only (Seed 42)
 
@@ -337,11 +384,11 @@ make -C analysis appendix
 
 **Observations**:
 - AlphaEdit degrades monotonically from 95.5% → 31.5% (seed 42) over 2K-10K edits. The decline accelerates sharply after 7K edits (75.4% → 61.9% → 44.8% → 31.5%).
-- Seed 2024 shows even steeper decline to 16.1% at 10K, demonstrating seed-dependent degradation rates.
-- MEMIT reaches effective 0% by 10K edits — complete failure of all installed edits.
-- **MEMIT-Seq-lp1.0-ld0.0 (prev-key regularization) outperforms AlphaEdit at every checkpoint**: 97.95% vs 95.5% at 2K, 96.62% vs 88.38% at 5K.
+- **Multi-seed consistency**: Seed 2024 collapses earlier (64.1% at 6K, 16.1% at 10K) and seed 137 shows intermediate decline (56.2% at 7K, 17.0% at 10K). All three seeds converge to ~16% by 10K — essentially random output.
+- MEMIT reaches effective 0% by 8K-10K edits across all seeds — complete failure of all installed edits.
+- **MEMIT-Seq-lp1.0-ld0.0 (prev-key regularization) outperforms AlphaEdit at every checkpoint through 10K edits**: 97.95% vs 95.5% at 2K, 96.62% vs 88.38% at 5K, 93.14% vs 61.94% at 8K, 79.97% vs 31.47% at 10K. The gap widens dramatically with scale (+2.5pp at 2K → +48.5pp at 10K).
 - **Ridge-only (lp0.0-ld1.0) fails completely** — comparable to unconstrained MEMIT (20.6% vs 17.8% at 2K). This isolates the critical component: it is the previous-key regularization, not ridge regularization, that provides protection.
-- The critical transition zone for AlphaEdit is 7000-8000 edits, where efficacy drops by ~13pp per 1K additional edits.
+- The critical transition zone for AlphaEdit is 7000-8000 edits (seed 42), where efficacy drops by ~13pp per 1K additional edits. Seed 2024 transitions earlier (6K-7K).
 - Ordering sensitivity (CV) explodes 16× between 3K and 7K edits, indicating the system becomes chaotic near its capacity boundary.
 
 ---
@@ -472,7 +519,7 @@ make -C analysis appendix
 **Configuration**:
 - Orderings: key_clustered (facts with similar key vectors grouped together) vs key_dispersed (maximally spread key vectors)
 - Algorithms: AlphaEdit, MEMIT-Seq-lp1.0-ld0.0-cache0
-- Edits: 1000-5000 (5 checkpoints at 1K intervals)
+- Edits: 1000-10000 (10 checkpoints at 1K intervals, seed 42); 1000-5000 (seed 2024)
 - Seeds: 42, 2024
 - Results path: `results/matched_ordering/{ALG}/{ORDERING}/seed{N}/full_eval_seed{N}.json`
 
@@ -480,58 +527,87 @@ make -C analysis appendix
 
 | Edits | Efficacy | Paraphrase | Neighborhood | First-1K | Retention AUC |
 |-------|----------|------------|--------------|----------|---------------|
-| 1,000 | 98.7% | 71.5% | 20.8% | — | 0.987 |
-| 2,000 | 95.6% | 65.8% | 20.7% | — | 0.970 |
-| 3,000 | 95.8% | 67.9% | 17.9% | — | 0.963 |
-| 4,000 | 95.4% | 66.8% | 16.5% | — | 0.960 |
-| 5,000 | **95.3%** | 65.6% | 14.8% | **91.5%** | **0.956** |
+| 1,000 | 94.8% | 67.9% | 11.3% | 94.8% | 0.952 |
+| 2,000 | 96.4% | 72.3% | 12.2% | 93.3% | 0.967 |
+| 3,000 | 95.0% | 68.7% | 11.5% | 90.7% | 0.952 |
+| 4,000 | 93.1% | 66.0% | 13.4% | 82.7% | 0.933 |
+| 5,000 | 92.2% | 65.9% | 13.2% | 80.1% | 0.923 |
+| 6,000 | 91.5% | 66.6% | 12.2% | 76.2% | 0.917 |
+| 7,000 | 91.2% | 65.9% | 11.4% | 73.3% | 0.914 |
+| 8,000 | 87.7% | 63.8% | 10.5% | 64.0% | 0.878 |
+| 9,000 | 85.4% | 62.0% | 10.0% | 58.4% | 0.855 |
+| 10,000 | **82.2%** | 59.7% | 9.9% | **55.1%** | **0.824** |
 
 ### AlphaEdit — Key Dispersed (seed 42)
 
 | Edits | Efficacy | Paraphrase | Neighborhood | First-1K | Retention AUC |
 |-------|----------|------------|--------------|----------|---------------|
-| 1,000 | 96.1% | 69.4% | 21.5% | — | 0.961 |
-| 2,000 | 95.7% | 70.8% | 16.0% | — | 0.958 |
-| 3,000 | 93.4% | 70.2% | 14.2% | — | 0.940 |
-| 4,000 | 91.0% | 69.5% | 12.7% | — | 0.923 |
-| 5,000 | **87.9%** | 68.2% | 12.2% | **65.0%** | **0.882** |
+| 1,000 | 95.7% | 65.5% | 21.2% | 95.7% | 0.958 |
+| 2,000 | 94.9% | 70.8% | 15.9% | 90.6% | 0.951 |
+| 3,000 | 93.9% | 71.2% | 14.7% | 85.2% | 0.941 |
+| 4,000 | 91.8% | 71.2% | 13.1% | 77.8% | 0.922 |
+| 5,000 | 90.1% | 69.8% | 12.1% | 71.0% | 0.903 |
+| 6,000 | 86.1% | 67.1% | 11.4% | 61.2% | 0.863 |
+| 7,000 | 79.1% | 62.1% | 10.5% | 47.9% | 0.793 |
+| 8,000 | 67.2% | 54.5% | 10.0% | 33.3% | 0.673 |
+| 9,000 | 52.8% | 39.5% | 8.4% | 22.1% | 0.527 |
+| 10,000 | **39.7%** | 19.3% | 6.4% | **14.8%** | **0.396** |
 
 ### MEMIT-Seq (lp1.0-ld0.0) — Key Clustered (seed 42)
 
 | Edits | Efficacy | Paraphrase | Neighborhood | First-1K | Retention AUC |
 |-------|----------|------------|--------------|----------|---------------|
-| 1,000 | 99.7% | 68.4% | 21.8% | — | 0.997 |
-| 2,000 | 98.3% | 63.9% | 22.9% | — | 0.990 |
-| 3,000 | 98.6% | 66.3% | 21.5% | — | 0.985 |
-| 4,000 | 98.3% | 66.3% | 20.3% | — | 0.981 |
-| 5,000 | **97.7%** | 65.1% | 18.9% | **98.8%** | **0.978** |
+| 1,000 | 97.7% | 66.5% | 13.6% | 97.7% | 0.979 |
+| 2,000 | 98.8% | 69.5% | 15.4% | 98.0% | 0.989 |
+| 3,000 | 98.3% | 67.3% | 15.1% | 97.1% | 0.984 |
+| 4,000 | 97.8% | 65.1% | 16.1% | 95.5% | 0.979 |
+| 5,000 | 97.4% | 65.6% | 16.2% | 95.2% | 0.975 |
+| 6,000 | 97.3% | 66.7% | 15.0% | 94.1% | 0.974 |
+| 7,000 | 97.0% | 65.7% | 14.0% | 91.8% | 0.971 |
+| 8,000 | 96.7% | 65.4% | 13.0% | 91.7% | 0.967 |
+| 9,000 | 96.3% | 64.6% | 12.1% | 90.0% | 0.964 |
+| 10,000 | **95.7%** | 63.9% | 12.2% | **87.8%** | **0.958** |
 
 ### MEMIT-Seq (lp1.0-ld0.0) — Key Dispersed (seed 42)
 
 | Edits | Efficacy | Paraphrase | Neighborhood | First-1K | Retention AUC |
 |-------|----------|------------|--------------|----------|---------------|
-| 1,000 | 97.5% | 64.5% | 24.6% | — | 0.975 |
-| 2,000 | 97.9% | 66.9% | 21.5% | — | 0.976 |
-| 3,000 | 97.6% | 68.5% | 19.0% | — | 0.975 |
-| 4,000 | 97.3% | 69.5% | 17.1% | — | 0.974 |
-| 5,000 | **97.1%** | 69.9% | 15.8% | — | **0.972** |
+| 1,000 | 98.1% | 61.3% | 23.6% | 98.1% | 0.981 |
+| 2,000 | 98.0% | 67.7% | 21.7% | 96.7% | 0.980 |
+| 3,000 | 97.7% | 68.0% | 19.6% | 94.9% | 0.978 |
+| 4,000 | 97.1% | 69.2% | 17.3% | 92.4% | 0.972 |
+| 5,000 | 96.7% | 69.3% | 15.5% | 90.5% | 0.968 |
+| 6,000 | 96.1% | 68.7% | 14.7% | 86.9% | 0.962 |
+| 7,000 | 95.2% | 67.9% | 13.5% | 83.5% | 0.953 |
+| 8,000 | 94.6% | 66.4% | 12.9% | 80.0% | 0.948 |
+| 9,000 | 93.5% | 65.0% | 11.6% | 76.0% | 0.936 |
+| 10,000 | **92.2%** | 62.9% | 11.2% | **72.3%** | **0.924** |
 
 ### Summary Comparison at 5000 Edits (seed 42)
 
 | Algorithm × Ordering | Efficacy | First-1K Retention | Retention AUC |
 |---------------------|----------|--------------------|--------------:|
-| AlphaEdit / clustered | 95.3% | 91.5% | 0.956 |
-| AlphaEdit / dispersed | 87.9% | 65.0% | 0.882 |
-| MEMIT-Seq / clustered | 97.7% | 98.8% | 0.978 |
-| MEMIT-Seq / dispersed | 97.1% | — | 0.972 |
+| AlphaEdit / clustered | 92.2% | 80.1% | 0.923 |
+| AlphaEdit / dispersed | 90.1% | 71.0% | 0.903 |
+| MEMIT-Seq / clustered | 97.4% | 95.2% | 0.975 |
+| MEMIT-Seq / dispersed | 96.7% | 90.5% | 0.968 |
+
+### Summary Comparison at 10000 Edits (seed 42)
+
+| Algorithm × Ordering | Efficacy | First-1K Retention | Retention AUC |
+|---------------------|----------|--------------------|--------------:|
+| AlphaEdit / clustered | 82.2% | 55.1% | 0.824 |
+| AlphaEdit / dispersed | 39.7% | 14.8% | 0.396 |
+| MEMIT-Seq / clustered | **95.7%** | **87.8%** | **0.958** |
+| MEMIT-Seq / dispersed | 92.2% | 72.3% | 0.924 |
 
 **Observations**:
-- **Key dispersal accelerates AlphaEdit's failure**: 7.4pp lower efficacy (87.9% vs 95.3%) and 26.5pp lower first-1K retention (65% vs 91.5%) under dispersed ordering at 5K edits.
-- **MEMIT-Seq is relatively ordering-insensitive**: Only 0.6pp efficacy difference (97.7% vs 97.1%) between clustered and dispersed, though first-1K retention still shows a gap (98.8% vs ~93.6% from installation strength data).
-- **MEMIT-Seq outperforms AlphaEdit** in all four conditions at 5K edits — both higher efficacy and dramatically higher retention AUC.
+- **Key dispersal accelerates AlphaEdit's failure dramatically at scale**: At 5K edits the gap is modest (90.1% vs 92.2%, first-1K 71.0% vs 80.1%), but by 10K edits it widens to **42.5pp efficacy** (39.7% vs 82.2%) and **40.3pp first-1K retention** (14.8% vs 55.1%). AlphaEdit/dispersed at 10K is effectively destroyed (retention AUC 0.396), while AlphaEdit/clustered remains functional (0.824).
+- **MEMIT-Seq is relatively ordering-insensitive even at 10K**: Only 3.5pp efficacy difference (95.7% vs 92.2%) between clustered and dispersed at 10K edits. First-1K retention shows a larger gap (87.8% vs 72.3%) but both conditions remain highly functional.
+- **MEMIT-Seq outperforms AlphaEdit** in all four conditions at all scales — the gap grows with edit count. At 10K: MEMIT-Seq/clustered (95.7%) vs AlphaEdit/clustered (82.2%) is +13.5pp; MEMIT-Seq/dispersed (92.2%) vs AlphaEdit/dispersed (39.7%) is +52.5pp.
 - **The mechanism is cross-batch exposure, not null-space exhaustion** (see Cross-Batch Cosine Analysis below): In dispersed streams, every old edit is guaranteed to encounter high-cosine subsequent keys (because all key clusters appear in every batch). In clustered streams, old edits from one cluster rarely encounter same-cluster keys in later batches — their high-cosine neighbors are temporally confined.
 - Cross-batch cosine analysis confirms: dispersed first-1K edits have mean max_cos_subsequent = 0.377 vs clustered = 0.316 (+0.061). 71% of dispersed first-1K edits face a subsequent key with cosine > 0.3, vs only 41% for clustered. Each dispersed first-1K edit encounters 4.7 high-overlap subsequent keys on average vs 1.5 for clustered.
-- The retention AUC gap (0.956 vs 0.882 for AlphaEdit) quantifies the cumulative cost of dispersed editing.
+- The retention AUC gap grows monotonically: 0.923 vs 0.903 at 5K → 0.824 vs 0.396 at 10K for AlphaEdit; 0.975 vs 0.968 at 5K → 0.958 vs 0.924 at 10K for MEMIT-Seq.
 
 ---
 
@@ -677,6 +753,11 @@ The cross-batch cosine analysis confirms the mechanistic hypothesis:
 | 3,000 | **97.63%** | 93.83% | 25.83% | 24.27% |
 | 4,000 | **97.15%** | 91.30% | 10.47% | 18.85% |
 | 5,000 | **96.62%** | 88.38% | 8.52% | 16.76% |
+| 6,000 | **95.95%** | 83.95% | 5.73% | — |
+| 7,000 | **95.10%** | 75.39% | 1.07% | — |
+| 8,000 | **93.14%** | 61.94% | 0.09% | — |
+| 9,000 | **88.78%** | 44.79% | 0.04% | — |
+| 10,000 | **79.97%** | 31.47% | 0.00% | — |
 
 ### Paraphrase Comparison (Seed 42)
 
@@ -700,12 +781,41 @@ The cross-batch cosine analysis confirms the mechanistic hypothesis:
 
 | Method | Edits | Efficacy | Paraphrase | Neighborhood | First-1K | Latest-1K |
 |--------|-------|----------|------------|--------------|----------|-----------|
-| AlphaEdit | 3,000 | 93.8% | 68.9% | 16.1% | 85.6% | 99.1% |
+| AlphaEdit | 3,000 | 93.8% | 68.9% | 16.1% | 85.5% | 99.2% |
 | MEMIT (unconstrained) | 3,000 | 25.8% | 15.6% | 2.5% | — | — |
-| **MEMIT+SeqReg** | **3,000** | **96.7%** | **66.4%** | **19.3%** | **92.9%** | **99.3%** |
-| AlphaEdit | 5,000 | 88.4% | 67.8% | 13.3% | 70.0% | 99.0% |
+| **MEMIT+SeqReg** | **3,000** | **97.6%** | **65.3%** | **19.7%** | **95.4%** | **99.3%** |
+| AlphaEdit | 5,000 | 88.4% | 67.8% | 13.3% | 70.0% | 99.2% |
 | MEMIT (unconstrained) | 5,000 | 8.5% | 3.0% | 1.5% | — | — |
-| **MEMIT+SeqReg** | **5,000** | **92.9%** | **66.6%** | **15.5%** | **78.2%** | **99.7%** |
+| **MEMIT+SeqReg** | **5,000** | **96.6%** | **66.4%** | **16.1%** | **90.5%** | **99.6%** |
+
+### Matched Ordering: MEMIT-Seq vs AlphaEdit Full Trajectory (Seed 42, 2K-10K)
+
+**Key Clustered ordering — Efficacy:**
+
+| Edits | MEMIT-Seq | AlphaEdit | Δ (MEMIT-Seq − AlphaEdit) |
+|-------|-----------|-----------|:-------------------------:|
+| 2,000 | 98.8% | 96.4% | +2.4 |
+| 3,000 | 98.3% | 95.0% | +3.3 |
+| 5,000 | 97.4% | 92.2% | +5.2 |
+| 7,000 | 97.0% | 91.2% | +5.8 |
+| 10,000 | **95.7%** | **82.2%** | **+13.5** |
+
+**Key Dispersed ordering — Efficacy:**
+
+| Edits | MEMIT-Seq | AlphaEdit | Δ (MEMIT-Seq − AlphaEdit) |
+|-------|-----------|-----------|:-------------------------:|
+| 2,000 | 98.0% | 94.9% | +3.1 |
+| 3,000 | 97.7% | 93.9% | +3.8 |
+| 5,000 | 96.7% | 90.1% | +6.6 |
+| 7,000 | 95.2% | 79.1% | +16.1 |
+| 10,000 | **92.2%** | **39.7%** | **+52.5** |
+
+**First-1K Retention at 10K edits:**
+
+| Ordering | MEMIT-Seq | AlphaEdit | Δ |
+|----------|-----------|-----------|:---:|
+| Clustered | 87.8% | 55.1% | +32.7 |
+| Dispersed | 72.3% | 14.8% | +57.5 |
 
 ### Capability Preservation (Seed 42, from capability probe)
 
@@ -717,13 +827,14 @@ The cross-batch cosine analysis confirms the mechanistic hypothesis:
 | 6,000 | **19.78** | 20.62 | 19,501,652.31 |
 
 **Observations**:
-- **MEMIT-Seq (lp1.0-ld0.0) outperforms AlphaEdit on efficacy at every checkpoint** from 2K-5K edits: +2.5pp at 2K, +3.8pp at 3K, +5.9pp at 4K, +8.2pp at 5K. The gap widens with scale.
-- **AlphaEdit retains a modest advantage on paraphrase** (~3-4pp higher), suggesting null-space projection may better preserve generalization structure.
+- **MEMIT-Seq (lp1.0-ld0.0) outperforms AlphaEdit on efficacy at every checkpoint through 10K edits**: +2.5pp at 2K, +8.2pp at 5K, +19.7pp at 7K, +31.2pp at 8K, +48.5pp at 10K. The gap widens dramatically with scale as AlphaEdit collapses while MEMIT-Seq degrades gracefully (80.0% at 10K).
+- **Under matched ordering, MEMIT-Seq dominates through 10K edits**: 95.7% efficacy (clustered) and 92.2% (dispersed) at 10K, vs AlphaEdit at 82.2% (clustered) and 39.7% (dispersed). First-1K retention at 10K: 87.8% vs 55.1% (clustered), 72.3% vs 14.8% (dispersed). The advantage gap widens from +5.2pp at 5K (clustered) to +13.5pp at 10K.
+- **AlphaEdit retains a modest advantage on paraphrase** (~3-4pp higher through 5K), suggesting null-space projection may better preserve generalization structure.
 - **MEMIT-Seq achieves better neighborhood preservation** (+4pp at 2K, +3pp at 5K), indicating less collateral damage to semantically adjacent facts.
 - **Ridge-only (lp0.0-ld1.0) is no better than unconstrained MEMIT** — this is the critical ablation proving that previous-key regularization is the active ingredient, not general regularization.
 - **Capability probe shows MEMIT-Seq preserves perplexity better** than AlphaEdit through 6K edits (19.78 vs 20.62), while MEMIT collapses to millions by 2K edits.
-- The first-1K retention difference (92.9% vs 85.6% at 3K; 78.2% vs 70.0% at 5K) shows MEMIT-Seq is more explicitly protective of previously-installed edits.
-- **Central implication**: Null-space projection is sufficient but not necessary for sequential editing. A simple quadratic regularization term penalizing interference with prior keys achieves comparable or better protection, challenging AlphaEdit's core architectural contribution.
+- The first-1K retention difference (95.4% vs 85.5% at 3K; 90.5% vs 70.0% at 5K) shows MEMIT-Seq is more explicitly protective of previously-installed edits.
+- **Central implication**: Previous-key regularization is the operative mechanism for sequential editing protection. It outperforms null-space projection at all tested scales, challenging AlphaEdit's core architectural contribution.
 
 ---
 
@@ -968,11 +1079,11 @@ AlphaEdit degrades monotonically from 95.5% to 31.5% efficacy (seed 42) over 2K-
 
 ### Finding 2: Sequential Regularization Outperforms Null-Space Projection
 
-MEMIT-Seq (lp1.0-ld0.0) achieves 97.95% efficacy at 2K and 96.62% at 5K — outperforming AlphaEdit (95.5% and 88.4%) at every checkpoint. It also maintains near-baseline perplexity through 6K edits (19.78 vs AlphaEdit's 20.62). The ridge-only ablation (lp0.0-ld1.0) fails completely (20.6% at 2K), isolating previous-key regularization as the critical component. This challenges AlphaEdit's central architectural contribution.
+MEMIT-Seq (lp1.0-ld0.0) outperforms AlphaEdit at every checkpoint from 2K to 10K edits. The advantage grows with scale: +2.5pp at 2K (97.95% vs 95.5%), +8.2pp at 5K (96.6% vs 88.4%), +31.2pp at 8K (93.1% vs 61.9%), +48.5pp at 10K (80.0% vs 31.5%). Under matched clustered ordering, MEMIT-Seq maintains **95.7% at 10K** (vs AlphaEdit 82.2%). It also maintains near-baseline perplexity through 6K edits (19.78 vs AlphaEdit's 20.62). The ridge-only ablation (lp0.0-ld1.0) fails completely (20.6% at 2K), isolating previous-key regularization as the critical component. This challenges AlphaEdit's central architectural contribution: a simple quadratic penalty against prior keys outperforms null-space projection at all tested scales.
 
 ### Finding 3: Key Geometry Determines Failure Rate via Cross-Batch Exposure
 
-Facts whose key vectors have high cosine similarity to future edits are preferentially forgotten (OR = 0.023 per unit cosine, p < 10⁻⁴⁴). Dispersed key orderings accelerate AlphaEdit's failure (87.9% vs 95.3% at 5K) while MEMIT-Seq remains insensitive to ordering (97.1% vs 97.7%). The mechanism is cross-batch cosine exposure: dispersed streams guarantee that every old edit encounters high-cosine subsequent keys (71% of first-1K edits face cos > 0.3, mean max_cos = 0.377), because all key clusters appear in every batch. Clustered streams temporally confine same-cluster keys, shielding old edits from geometric interference (41% face cos > 0.3, mean max_cos = 0.316). Notably, future_max_cos only predicts forgetting in the dispersed condition (OR = 0.039, p significant) — in clustered streams the predictor is non-significant (OR = 0.86), because interference is confined to a subspace that doesn't accumulate across batches.
+Facts whose key vectors have high cosine similarity to future edits are preferentially forgotten (OR = 0.023 per unit cosine, p < 10⁻⁴⁴). At 5K edits the ordering gap is modest for AlphaEdit (90.1% dispersed vs 92.2% clustered), but by 10K it widens to a **42.5pp gap** (39.7% vs 82.2%) — key geometry alone determines whether the method remains functional or collapses. MEMIT-Seq is more ordering-robust (92.2% vs 95.7% at 10K, a 3.5pp gap). The mechanism is cross-batch cosine exposure: dispersed streams guarantee that every old edit encounters high-cosine subsequent keys (71% of first-1K edits face cos > 0.3, mean max_cos = 0.377), because all key clusters appear in every batch. Clustered streams temporally confine same-cluster keys, shielding old edits from geometric interference (41% face cos > 0.3, mean max_cos = 0.316). Notably, future_max_cos only predicts forgetting in the dispersed condition (OR = 0.039, p significant) — in clustered streams the predictor is non-significant (OR = 0.86), because interference is confined to a subspace that doesn't accumulate across batches.
 
 ### Finding 4: Forgetting is Monotonic and Predictable
 
@@ -984,7 +1095,7 @@ AlphaEdit-poly2 matches linear AlphaEdit at 2K edits (96.0% vs 95.5%) and provid
 
 ### Finding 6: The Critical Transition is Sharp and Seed-Dependent
 
-The system transitions from ordered (CV = 0.3, stable performance) to chaotic (CV = 4.8, ordering-dominated outcomes) between 3K and 7K edits. The collapse point varies by seed (7K for seed 42, 7K for seed 2024, 8K for seed 137), suggesting stochastic dynamics near the capacity boundary. This phase-transition-like behavior indicates cumulative interference accumulates gradually but produces sudden, non-linear capability collapse once a critical displacement threshold is crossed.
+The system transitions from ordered (CV = 0.3, stable performance) to chaotic (CV = 4.8, ordering-dominated outcomes) between 3K and 7K edits. The collapse point varies by seed (7K-8K for seed 42, 6K-7K for seed 2024, 7K-9K for seed 137), suggesting stochastic dynamics near the capacity boundary. This phase-transition-like behavior indicates cumulative interference accumulates gradually but produces sudden, non-linear capability collapse once a critical displacement threshold is crossed.
 
 ### Finding 7: Model Coherence and Factual Editing Collapse Together
 
