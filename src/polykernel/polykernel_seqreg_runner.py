@@ -680,7 +680,7 @@ print("[SeqReg+Kernel] memit_main.py patched successfully")
 print(f"  lambda_prev={{_memit_lambda_prev}}, lambda_delta={{_memit_lambda_delta}}")
 print(f"  cache_strategy={{_memit_cache_strategy}}, cache_max={{_memit_cache_max}}")
 print(f"  kernel_type={{_pk_type}}, degree={{_pk_degree}}, sigma={{_pk_sigma}}")
-print(f"  kernel_prev={{_pk_kernel_prev}} ({'kernel on K_prev' if _pk_kernel_prev else 'HYBRID: linear K_prev'})")
+print(f"  kernel_prev={{_pk_kernel_prev}} ({'kernel on K_prev' if _kernel_prev_flag else 'HYBRID: linear K_prev'})")
 
 # 6. Read and patch evaluate.py
 with open("experiments/evaluate.py", "r") as f:
