@@ -150,7 +150,7 @@ def load_edit_ordering(seed: int) -> Optional[List[int]]:
 
 
 def load_case_metadata(seed: int) -> dict:
-    """Load prompt/subject for each case_id from per-case result files."""
+    """Load prompt/subject for each case_id from per-case result files or MCF dataset."""
     metadata = {}
     for edits_dir in sorted(FC_DIR.glob(f"seed{seed}/*edits")):
         run_dir = edits_dir / "AlphaEdit" / "run_000"
@@ -167,6 +167,25 @@ def load_case_metadata(seed: int) -> dict:
                     "subject": rewrite.get("subject", ""),
                     "relation_id": rewrite.get("relation_id", ""),
                 }
+    # Fallback: load from multi_counterfact.json if per-case files unavailable
+    if not metadata:
+        for mcf_path in [
+            PROJECT / "data" / "dsets" / "multi_counterfact.json",
+            VENDOR / "data" / "multi_counterfact.json",
+        ]:
+            if mcf_path.exists():
+                with open(mcf_path) as f:
+                    mcf_data = json.load(f)
+                for record in mcf_data:
+                    cid = record["case_id"]
+                    rw = record.get("requested_rewrite", {})
+                    metadata[cid] = {
+                        "prompt": rw.get("prompt", ""),
+                        "subject": rw.get("subject", ""),
+                        "relation_id": rw.get("relation_id", ""),
+                    }
+                print(f"  Loaded metadata from {mcf_path} ({len(metadata)} cases)")
+                break
     return metadata
 
 

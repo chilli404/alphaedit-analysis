@@ -11,11 +11,15 @@ Combines two existing approaches:
 Mathematical formulation:
     Standard SeqReg:    lhs = alpha*C0 + K@K^T + lp*K_prev@K_prev^T + ld*I
     Polykernel SeqReg:  lhs = alpha*C0 + K@(G_k*s)@K^T + lp*K_prev@(G_kp*s_p)@K_prev^T + ld*I
+    Hybrid SeqReg:      lhs = alpha*C0 + K@(G_k*s)@K^T + lp*K_prev@K_prev^T + ld*I
 
 Motivation: K_prev accumulates keys that become increasingly collinear over
-many batches. Kernel weighting amplifies regularization in crowded key
-directions, potentially making sequential protection more effective than
-the linear version.
+many batches. Kernel weighting on current keys amplifies within-batch
+regularization (100 keys), but applying it to K_prev (thousands of keys)
+causes catastrophic over-regularization at scale. The hybrid mode
+(--no_kernel_prev) applies the kernel only to current-batch keys while
+keeping linear accumulation for previous keys — combining poly2's benefit
+on within-batch geometry with linear SeqReg's stable long-run behavior.
 
 Implementation: Dual source injection (patches memit_main.py + evaluate.py).
 
@@ -83,6 +87,7 @@ def resolve_checkpoint_dir(
     kernel_degree: int = 2,
     kernel_sigma: str = "median",
     ordering: str | None = None,
+    kernel_prev: bool = True,
 ) -> Path:
     """Resolve checkpoint directory for Polykernel+SeqReg.
 
@@ -95,6 +100,8 @@ def resolve_checkpoint_dir(
 
     cache_max_str = str(cache_max) if cache_max is not None else "0"
     kernel_tag = f"poly{kernel_degree}" if kernel_type == "poly" else f"rbf_{kernel_sigma}"
+    if not kernel_prev:
+        kernel_tag += "-hybrid"
     variant_name = f"MEMIT-Seq-{kernel_tag}-lp{lambda_prev}-ld{lambda_delta}-cache{cache_max_str}"
 
     if ordering:
@@ -155,6 +162,7 @@ def build_polykernel_seqreg_script(
     dataset_override: str | None = None,
     eval_results_dir: str = "",
     variant_name: str = "",
+    kernel_prev: bool = True,
 ) -> str:
     """
     Build inline Python script for Polykernel+SeqReg.
@@ -178,6 +186,9 @@ def build_polykernel_seqreg_script(
     cache_max_repr = repr(cache_max)
 
     # Injection code for memit_main.py: kernel-augmented solve replacement
+    # kernel_prev controls whether to apply kernel to K_prev (True) or use linear (False)
+    _kernel_prev_flag = kernel_prev
+
     solve_replacement = r'''        # === MEMIT+SeqReg+Kernel: kernel-augmented solve (injected) ===
         # Shared kernel Gram computation function
         def _compute_kernel_gram(_K, _degree, _ktype, _sigma):
@@ -209,21 +220,26 @@ def build_polykernel_seqreg_script(
         _lhs_base = hparams.mom2_update_weight * cov.double() + _KKT_kernel
         _base_lhs_norm = torch.linalg.norm(_lhs_base, ord='fro').item()
 
-        # Previous keys: kernel-weighted K_prev@K_prev^T
+        # Previous keys: kernel-weighted or linear K_prev@K_prev^T
         _K_prev = None
         _kpkp_norm = 0.0
         if _memit_lambda_prev > 0 and layer in _memit_prev_cache and len(_memit_prev_cache[layer]) > 0:
             _K_prev = torch.cat(_memit_prev_cache[layer], dim=1).to(layer_ks.device).double()
-            _G_kp, _s_kp, _ = _compute_kernel_gram(_K_prev, _pk_degree, _pk_type, _pk_sigma)
-            _KPKP_kernel = _K_prev @ (_G_kp * _s_kp) @ _K_prev.T
-            _kpkp_norm = torch.linalg.norm(_KPKP_kernel, ord='fro').item()
-            del _G_kp
+            if _pk_kernel_prev:
+                # Full kernel on K_prev (original polykernel_seqreg behavior)
+                _G_kp, _s_kp, _ = _compute_kernel_gram(_K_prev, _pk_degree, _pk_type, _pk_sigma)
+                _KPKP = _K_prev @ (_G_kp * _s_kp) @ _K_prev.T
+                del _G_kp
+            else:
+                # Hybrid: linear K_prev@K_prev^T (no kernel on accumulated keys)
+                _KPKP = _K_prev @ _K_prev.T
+            _kpkp_norm = torch.linalg.norm(_KPKP, ord='fro').item()
 
         # Augmented LHS
         _lhs = _lhs_base
         if _K_prev is not None:
-            _lhs = _lhs + _memit_lambda_prev * _KPKP_kernel
-            del _KPKP_kernel
+            _lhs = _lhs + _memit_lambda_prev * _KPKP
+            del _KPKP
         if _memit_lambda_delta > 0:
             _lhs = _lhs + _memit_lambda_delta * torch.eye(_lhs.shape[0], device=_lhs.device, dtype=_lhs.dtype)
 
@@ -234,6 +250,7 @@ def build_polykernel_seqreg_script(
             "identity_dim": _lhs.shape[0],
             "kernel_scale_current": _s_k,
             "kernel_G_lin_rank": int((_G_lin_k.diag() > 1e-8).sum().item()),
+            "kernel_prev": _pk_kernel_prev,
         }
         del _G_k, _G_lin_k, _KKT_kernel
 
@@ -496,6 +513,7 @@ _memit_fast_mode = {fast_checkpoint}
 _pk_degree = {kernel_degree}
 _pk_type = "{kernel_type}"
 _pk_sigma = "{kernel_sigma}"
+_pk_kernel_prev = {_kernel_prev_flag}
 
 # 3c. Checkpoint parameters
 _ckpt_save_interval = {save_interval}
@@ -541,6 +559,7 @@ def _ckpt_save(cnt, model, hparams):
         "kernel_type": _pk_type,
         "kernel_degree": _pk_degree,
         "kernel_sigma": _pk_sigma,
+        "kernel_prev": _pk_kernel_prev,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
     }}
     with open(str(batch_dir / "metadata.json"), "w") as f:
@@ -651,6 +670,7 @@ _memit_ns = {{
     "_pk_degree": _pk_degree,
     "_pk_type": _pk_type,
     "_pk_sigma": _pk_sigma,
+    "_pk_kernel_prev": _pk_kernel_prev,
 }}
 exec(compile(_memit_source, "memit/memit_main.py", "exec"), _memit_ns)
 _patched_apply_memit = _memit_ns["apply_memit_to_model"]
@@ -660,6 +680,7 @@ print("[SeqReg+Kernel] memit_main.py patched successfully")
 print(f"  lambda_prev={{_memit_lambda_prev}}, lambda_delta={{_memit_lambda_delta}}")
 print(f"  cache_strategy={{_memit_cache_strategy}}, cache_max={{_memit_cache_max}}")
 print(f"  kernel_type={{_pk_type}}, degree={{_pk_degree}}, sigma={{_pk_sigma}}")
+print(f"  kernel_prev={{_pk_kernel_prev}} ({'kernel on K_prev' if _pk_kernel_prev else 'HYBRID: linear K_prev'})")
 
 # 6. Read and patch evaluate.py
 with open("experiments/evaluate.py", "r") as f:
@@ -840,6 +861,7 @@ exec(compile(_eval_source, "experiments/evaluate.py", "exec"), {{
     "_pk_degree": _pk_degree,
     "_pk_type": _pk_type,
     "_pk_sigma": _pk_sigma,
+    "_pk_kernel_prev": _pk_kernel_prev,
     "_ckpt_start_batch": _ckpt_start_batch,
     "_ckpt_save_interval": _ckpt_save_interval,
     "_ckpt_dir": _ckpt_dir,
@@ -906,6 +928,8 @@ def run(args: argparse.Namespace) -> None:
     # Build variant name
     cache_max_str = str(cache_max) if cache_max is not None else "0"
     kernel_tag = f"poly{args.kernel_degree}" if args.kernel_type == "poly" else f"rbf_{args.kernel_sigma}"
+    if not args.kernel_prev:
+        kernel_tag += "-hybrid"
     variant_name = f"MEMIT-Seq-{kernel_tag}-lp{args.lambda_prev}-ld{args.lambda_delta}-cache{cache_max_str}"
 
     # Output directory
@@ -929,7 +953,7 @@ def run(args: argparse.Namespace) -> None:
     ckpt_dir = resolve_checkpoint_dir(
         args.checkpoint_dir, args.seed, args.lambda_prev, args.lambda_delta,
         cache_max, args.kernel_type, args.kernel_degree, args.kernel_sigma,
-        ordering=ordering,
+        ordering=ordering, kernel_prev=args.kernel_prev,
     )
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
@@ -976,6 +1000,7 @@ def run(args: argparse.Namespace) -> None:
         dataset_override=args.dataset_override,
         eval_results_dir=str(results_dir),
         variant_name=variant_name,
+        kernel_prev=args.kernel_prev,
     )
 
     # Environment
@@ -988,7 +1013,9 @@ def run(args: argparse.Namespace) -> None:
     print(f"\n{'=' * 70}")
     print("Polykernel+SeqReg Runner")
     print(f"  Seed:           {args.seed}")
+    kernel_mode = "HYBRID (kernel current only, linear K_prev)" if not args.kernel_prev else "full (kernel both)"
     print(f"  Kernel:         {args.kernel_type} (degree={args.kernel_degree}, sigma={args.kernel_sigma})")
+    print(f"  Kernel mode:    {kernel_mode}")
     print(f"  lambda_prev:    {args.lambda_prev}")
     print(f"  lambda_delta:   {args.lambda_delta}")
     print(f"  Cache strategy: {args.cache_strategy}")
@@ -1027,6 +1054,7 @@ def run(args: argparse.Namespace) -> None:
         "kernel_type": args.kernel_type,
         "kernel_degree": args.kernel_degree,
         "kernel_sigma": args.kernel_sigma,
+        "kernel_prev": args.kernel_prev,
         "model_name": args.model_name,
         "hparams_fname": args.hparams_fname,
         "ds_name": args.ds_name,
@@ -1097,6 +1125,10 @@ def main():
                         help="Polynomial kernel degree (default: 2). Only used with --kernel_type poly.")
     parser.add_argument("--kernel_sigma", default="median",
                         help="RBF bandwidth: 'median' for median heuristic, or a float. Only used with --kernel_type rbf.")
+    parser.add_argument("--no_kernel_prev", dest="kernel_prev", action="store_false",
+                        help="Hybrid mode: apply kernel only to current-batch keys, use linear K_prev@K_prev^T. "
+                             "Prevents catastrophic over-regularization at high edit counts.")
+    parser.set_defaults(kernel_prev=True)
 
     # Checkpoint and resume
     parser.add_argument("--save_interval", type=int, default=10,

@@ -112,7 +112,7 @@ def compute_subsequent_cosines(
     keys: np.ndarray,
     case_id_to_idx: Dict[int, int],
     ordering: List[int],
-    max_position: int = 5000,
+    max_position: int = 10000,
 ) -> Dict[str, np.ndarray]:
     """For each edit position, compute cosine statistics to subsequent keys.
 
@@ -180,7 +180,7 @@ def compute_first_1k_exposure(
 
     This directly measures "how exposed are early edits to future interference?"
     """
-    n = min(len(ordering), 5000)
+    n = min(len(ordering), 10000)
 
     # Build stream key matrix
     stream_keys = []
@@ -321,7 +321,7 @@ def compute_by_age_bin(
     ordering: List[int],
 ) -> List[Dict]:
     """Compute max_cos_subsequent binned by edit age (1K cohorts)."""
-    n = min(len(ordering), 5000)
+    n = min(len(ordering), 10000)
 
     stream_keys = []
     for pos in range(n):

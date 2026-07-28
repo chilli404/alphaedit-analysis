@@ -50,6 +50,10 @@ EVAL_FLAG=""
 if [[ "${EVAL_AT_CHECKPOINTS_ONLY:-}" == "true" ]]; then
     EVAL_FLAG="--eval_at_checkpoints_only"
 fi
+KERNEL_PREV_FLAG=""
+if [[ "${NO_KERNEL_PREV:-}" == "true" ]]; then
+    KERNEL_PREV_FLAG="--no_kernel_prev"
+fi
 
 # Resolve stream path if ordering is set
 DATASET_OVERRIDE_FLAG=""
@@ -83,6 +87,9 @@ elif [[ -n "$EVAL_FLAG" ]]; then
 else
     echo "  Mode: full evaluation"
 fi
+if [[ -n "$KERNEL_PREV_FLAG" ]]; then
+    echo "  Kernel prev: DISABLED (hybrid mode: kernel current only, linear K_prev)"
+fi
 echo "  Started: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo ""
 
@@ -103,7 +110,7 @@ uv run python src/polykernel/polykernel_seqreg_runner.py \
     --save_interval "$SAVE_INTERVAL" \
     --downstream_eval_steps "$DOWNSTREAM_EVAL_STEPS" \
     --conserve_memory \
-    $FAST_FLAG $EVAL_FLAG $DATASET_OVERRIDE_FLAG
+    $FAST_FLAG $EVAL_FLAG $KERNEL_PREV_FLAG $DATASET_OVERRIDE_FLAG
 
 echo ""
 echo "=== Polykernel+SeqReg complete ==="

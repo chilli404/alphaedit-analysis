@@ -55,16 +55,16 @@ def _load_mechanism_summary(output_dir: Path) -> dict:
 
 
 def panel_b_cumulative_performance(ax):
-    """Panel B: Cumulative performance at 5K (grouped dot plot)."""
+    """Panel B: Cumulative performance at 10K (grouped dot plot)."""
     seed = 42
     ordering = "key_clustered"
-    ckpt = "5000_edits"
+    ckpt = "10000_edits"
 
     # Load data for each method
     methods = {}
 
     # MEMIT from failure curve
-    memit_data = load_checkpoint_metrics(seed, 5000, "MEMIT")
+    memit_data = load_checkpoint_metrics(seed, 10000, "MEMIT")
     if memit_data:
         methods["MEMIT"] = memit_data
 
@@ -110,10 +110,10 @@ def panel_b_cumulative_performance(ax):
 
 
 def panel_c_retention_decomposition(ax):
-    """Panel C: Retention/plasticity decomposition at 5K."""
+    """Panel C: Retention/plasticity decomposition at 10K."""
     seed = 42
     ordering = "key_clustered"
-    ckpt = "5000_edits"
+    ckpt = "10000_edits"
 
     methods = {}
     method_labels = []

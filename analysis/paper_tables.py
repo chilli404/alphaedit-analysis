@@ -95,11 +95,11 @@ def table1_reproduction(output_dir: Path):
 
 
 def table3_matched_comparison(output_dir: Path):
-    """Table 3: Decisive comparison (MEMIT vs AlphaEdit vs SeqReg at 3K/5K)."""
+    """Table 3: Decisive comparison (MEMIT vs AlphaEdit vs SeqReg at 3K/5K/10K)."""
     rows = []
     seed = 42
 
-    for edits in (3000, 5000):
+    for edits in (3000, 5000, 10000):
         # AlphaEdit
         ae = load_checkpoint_metrics(seed, edits, "AlphaEdit")
         if ae:
@@ -306,7 +306,8 @@ def generate_paper_numbers(output_dir: Path):
     seqreg = load_seqreg_eval(42)
     if seqreg:
         for key, edits in [("2000_edits", 2000), ("3000_edits", 3000),
-                           ("4000_edits", 4000), ("5000_edits", 5000)]:
+                           ("4000_edits", 4000), ("5000_edits", 5000),
+                           ("7000_edits", 7000), ("10000_edits", 10000)]:
             if key in seqreg:
                 sr = seqreg[key]
                 numbers[f"seqreg_efficacy_{edits}"] = sr.get("all_facts", {}).get("efficacy")

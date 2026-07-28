@@ -43,10 +43,10 @@ from analysis.style import PROJECT, PAPER_OUTPUT
 RESULTS = PROJECT / "results"
 FC_DIR = RESULTS / "failure_curve_checkpointed"
 
-# Trajectories with full coverage at 3K–5K
+# Trajectories with full coverage at 3K–10K
 TRAJECTORIES = [42, 2024]
 # Checkpoints for the panel (must have per-case data for both seeds)
-CHECKPOINTS = [3000, 4000, 5000]
+CHECKPOINTS = [3000, 5000, 7000, 10000]
 ALG = "AlphaEdit"
 BATCH_SIZE = 100
 

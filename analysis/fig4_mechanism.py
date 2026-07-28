@@ -52,7 +52,7 @@ def _load_interference_results(output_dir: Path) -> dict:
 def panel_b_retention_under_concentration(ax):
     """Panel B: Retention under controlled concentration (paired low/high)."""
     alg = "AlphaEdit"
-    ckpt = "5000_edits"
+    ckpt = "10000_edits"
     orderings = ["key_dispersed", "key_clustered"]
     ordering_labels = ["Dispersed\n(low conc.)", "Clustered\n(high conc.)"]
     ordering_colors = ["#2196F3", "#E91E63"]

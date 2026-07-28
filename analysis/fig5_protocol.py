@@ -8,7 +8,7 @@ Panel D — Retention AUC trajectory (AUC vs total edits)
 Usage:
     uv run python -m analysis.fig5_protocol
     uv run python -m analysis.fig5_protocol --output-dir results/figures/paper
-    uv run python -m analysis.fig5_protocol --edits 5000 --seed 42
+    uv run python -m analysis.fig5_protocol --edits 10000 --seed 42
 """
 
 import argparse
@@ -207,7 +207,7 @@ def panel_d(ax, seed: int):
 # ─── Main Figure ─────────────────────────────────────────────────────────────
 
 
-def generate(seed: int = 42, edits: int = 5000, output_dir: Path = PAPER_OUTPUT):
+def generate(seed: int = 42, edits: int = 10000, output_dir: Path = PAPER_OUTPUT):
     """Generate the 4-panel protocol figure."""
     setup_style()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -241,7 +241,7 @@ def main():
     parser = argparse.ArgumentParser(description="Generate Figure 5: Protocol")
     parser.add_argument("--output-dir", type=Path, default=PAPER_OUTPUT)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--edits", type=int, default=5000)
+    parser.add_argument("--edits", type=int, default=10000)
     args = parser.parse_args()
     generate(seed=args.seed, edits=args.edits, output_dir=args.output_dir)
 
