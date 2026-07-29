@@ -1,0 +1,373 @@
+"""Paper tables and paper_numbers.json generator.
+
+Produces:
+  - table1_reproduction.csv (method × dataset × metrics, mean ± std across seeds)
+  - table3_matched_comparison.csv (method × edits × cohort metrics)
+  - table4_stream_audit.csv (matched vs manipulated properties)
+  - paper_numbers.json (all numbers cited in prose)
+
+Usage:
+    uv run python -m analysis.paper_tables
+    uv run python -m analysis.paper_tables --output-dir results/figures/paper
+"""
+
+import argparse
+import csv
+import json
+from pathlib import Path
+
+import numpy as np
+
+from analysis.style import PAPER_OUTPUT
+from analysis.loaders import (
+    load_checkpoint_metrics,
+    load_checkpoint_cohorts,
+    load_comparison_ordered,
+    load_mve_metrics,
+    load_polykernel_diagnostic,
+    load_polykernel_metrics,
+    load_seqreg_eval,
+)
+
+# ─── Configuration ────────────────────────────────────────────────────────────
+
+SEEDS = [42, 2024, 137, 7, 99]
+EDIT_POINTS = [2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000]
+BATCH_SIZE = 100
+
+
+# ─── Table 1: Reproduction Results ───────────────────────────────────────────
+
+
+def table1_reproduction(output_dir: Path):
+    """Table 1: Multi-seed reproduction results (mean ± std).
+
+    Uses MVE experiment results (all 5 seeds) as the authoritative source.
+    Falls back to failure_curve_checkpointed at 2K if MVE data unavailable.
+    """
+    rows = []
+
+    configs = [
+        ("AlphaEdit", "mcf", "mve1_alphaedit_mcf", "AlphaEdit", SEEDS),
+        ("MEMIT", "mcf", "mve2_memit_mcf", "MEMIT", SEEDS),
+        ("AlphaEdit", "zsre", "mve3_alphaedit_zsre", "AlphaEdit", [42, 137, 2024, 7, 99]),
+    ]
+
+    for method_name, dataset, experiment, alg, seeds in configs:
+        metrics_by_seed = []
+        for seed in seeds:
+            m = load_mve_metrics(experiment, seed, alg)
+            if m:
+                metrics_by_seed.append(m)
+
+        if not metrics_by_seed:
+            continue
+
+        row = {
+            "method": method_name,
+            "dataset": dataset,
+            "n_edits": 2000,
+            "n_seeds": len(metrics_by_seed),
+        }
+
+        for metric in ("efficacy", "paraphrase", "neighborhood",
+                       "neighborhood_prob"):
+            vals = [m[metric] for m in metrics_by_seed if metric in m and m[metric] is not None]
+            if vals:
+                row[f"{metric}_mean"] = np.mean(vals)
+                row[f"{metric}_std"] = np.std(vals)
+
+        rows.append(row)
+
+    # Write CSV
+    csv_path = output_dir / "table1_reproduction.csv"
+    if rows:
+        fieldnames = list(rows[0].keys())
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+        print(f"  {csv_path.name}: {len(rows)} rows")
+    return rows
+
+
+# ─── Table 3: Matched Baseline Comparison ────────────────────────────────────
+
+
+def table3_matched_comparison(output_dir: Path):
+    """Table 3: Decisive comparison (MEMIT vs AlphaEdit vs SeqReg at 3K/5K/10K)."""
+    rows = []
+    seed = 42
+
+    for edits in (3000, 5000, 10000):
+        # AlphaEdit
+        ae = load_checkpoint_metrics(seed, edits, "AlphaEdit")
+        if ae:
+            # Get cohort data
+            cohorts = load_checkpoint_cohorts(seed, edits, "AlphaEdit", BATCH_SIZE)
+            first_1k = latest_1k = None
+            if cohorts:
+                f1k = [cohorts[i]["efficacy"] for i in range(10) if i in cohorts]
+                first_1k = np.mean(f1k) if f1k else None
+                n_batches = edits // BATCH_SIZE
+                l1k = [cohorts[i]["efficacy"] for i in range(n_batches - 10, n_batches) if i in cohorts]
+                latest_1k = np.mean(l1k) if l1k else None
+
+            rows.append({
+                "method": "AlphaEdit",
+                "edits": edits,
+                "efficacy": ae.get("efficacy"),
+                "paraphrase": ae.get("paraphrase"),
+                "neighborhood": ae.get("neighborhood"),
+                "first_1k": first_1k,
+                "latest_1k": latest_1k,
+            })
+
+        # MEMIT
+        memit = load_checkpoint_metrics(seed, edits, "MEMIT")
+        if memit:
+            rows.append({
+                "method": "MEMIT",
+                "edits": edits,
+                "efficacy": memit.get("efficacy"),
+                "paraphrase": memit.get("paraphrase"),
+                "neighborhood": memit.get("neighborhood"),
+                "first_1k": None,
+                "latest_1k": None,
+            })
+
+        # MEMIT+SeqReg
+        seqreg = load_seqreg_eval(seed)
+        key = f"{edits}_edits"
+        if seqreg and key in seqreg:
+            sr = seqreg[key]
+            rows.append({
+                "method": "MEMIT+SeqReg",
+                "edits": edits,
+                "efficacy": sr.get("all_facts", {}).get("efficacy"),
+                "paraphrase": sr.get("all_facts", {}).get("paraphrase"),
+                "neighborhood": sr.get("all_facts", {}).get("neighborhood"),
+                "first_1k": sr.get("first_1k", {}).get("efficacy"),
+                "latest_1k": sr.get("latest_1k", {}).get("efficacy"),
+            })
+
+    csv_path = output_dir / "table3_matched_comparison.csv"
+    if rows:
+        fieldnames = list(rows[0].keys())
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+        print(f"  {csv_path.name}: {len(rows)} rows")
+    return rows
+
+
+# ─── Table 5: Per-Edit Interference ──────────────────────────────────────────
+
+
+def table5_interference(output_dir: Path):
+    """Table 5: Per-edit interference analysis — key geometry predicts forgetting.
+
+    Loads from interference_panel_results.json (generated by interference_panel.py).
+    """
+    results_path = output_dir / "interference_panel_results.json"
+    if not results_path.exists():
+        print("  table5_interference.csv: SKIP (run interference_panel.py first)")
+        return []
+
+    with open(results_path) as f:
+        results = json.load(f)
+
+    rows = []
+    for seed_str, data in sorted(results.get("per_trajectory", {}).items()):
+        row = {
+            "seed": int(seed_str),
+            "n_obs": data.get("n_obs"),
+            "survival_rate": data.get("survival_rate"),
+            "subject_overlap_beta": data.get("subject_overlap_coef"),
+            "subject_overlap_OR": data.get("subject_overlap_OR"),
+            "subject_overlap_pval": data.get("subject_overlap_pval"),
+            "max_cosine_beta": data.get("max_cosine_coef"),
+            "max_cosine_OR": data.get("max_cosine_OR"),
+            "max_cosine_pval": data.get("max_cosine_pval"),
+            "aic_age_only": data.get("m1_aic"),
+            "aic_plus_semantic": data.get("m2_aic"),
+            "aic_plus_keys": data.get("m4_aic"),
+            "aic_improvement_keys_over_semantic": data.get("aic_improvement_keys_over_semantic"),
+        }
+        rows.append(row)
+
+    csv_path = output_dir / "table5_interference.csv"
+    if rows:
+        fieldnames = list(rows[0].keys())
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+        print(f"  {csv_path.name}: {len(rows)} rows")
+    return rows
+
+
+# ─── Paper Numbers JSON ───────────────────────────────────────────────────────
+
+
+def generate_paper_numbers(output_dir: Path):
+    """Generate paper_numbers.json with all cited values."""
+    numbers = {}
+
+    # Failure curve trajectory
+    for seed in [42, 2024]:
+        for edits in EDIT_POINTS:
+            ae = load_checkpoint_metrics(seed, edits, "AlphaEdit")
+            memit = load_checkpoint_metrics(seed, edits, "MEMIT")
+            if ae:
+                numbers[f"ae_efficacy_seed{seed}_{edits}"] = ae["efficacy"]
+            if memit:
+                numbers[f"memit_efficacy_seed{seed}_{edits}"] = memit["efficacy"]
+
+    # Order sensitivity
+    for edits in [3000, 7000]:
+        orders = load_comparison_ordered(42, edits)
+        ae_orders = [o for o in orders if o["algorithm"] == "AlphaEdit"]
+        if ae_orders:
+            effs = [o["efficacy"] for o in ae_orders]
+            numbers[f"order_cv_{edits}"] = np.std(effs) / np.mean(effs) * 100
+            numbers[f"order_spread_{edits}"] = max(effs) - min(effs)
+
+    # Interference panel (per-edit geometric analysis)
+    interference_path = output_dir / "interference_panel_results.json"
+    if interference_path.exists():
+        with open(interference_path) as f:
+            interf = json.load(f)
+        numbers["interference_panel_size"] = interf.get("panel_size")
+        numbers["interference_monotonicity"] = interf.get("monotonicity", {}).get("monotonic_fraction")
+        numbers["interference_n_trajectories"] = len(interf.get("trajectories", []))
+
+        for seed_str, data in interf.get("per_trajectory", {}).items():
+            prefix = f"interference_seed{seed_str}"
+            numbers[f"{prefix}_survival_rate"] = data.get("survival_rate")
+            numbers[f"{prefix}_subject_overlap_beta"] = data.get("subject_overlap_coef")
+            numbers[f"{prefix}_subject_overlap_pval"] = data.get("subject_overlap_pval")
+            numbers[f"{prefix}_subject_overlap_OR"] = data.get("subject_overlap_OR")
+            numbers[f"{prefix}_max_cosine_beta"] = data.get("max_cosine_coef")
+            numbers[f"{prefix}_max_cosine_pval"] = data.get("max_cosine_pval")
+            numbers[f"{prefix}_max_cosine_OR"] = data.get("max_cosine_OR")
+            numbers[f"{prefix}_aic_keys_over_semantic"] = data.get("aic_improvement_keys_over_semantic")
+
+        # Age-matched key cosine (average across bins)
+        ks = interf.get("age_matched", {}).get("key_similarity", {})
+        if ks:
+            diffs = [v["cos_diff"] for v in ks.values()]
+            numbers["interference_mean_cos_diff"] = np.mean(diffs)
+            numbers["interference_cos_consistent_bins"] = interf.get("age_matched", {}).get("key_cos_consistent_bins")
+
+        # OR per +0.1 cosine
+        for seed_str, data in interf.get("per_trajectory", {}).items():
+            if "max_cosine_OR_per_0.1" in data:
+                numbers[f"interference_seed{seed_str}_OR_per_0.1"] = data["max_cosine_OR_per_0.1"]
+            # Clustered SE robustness
+            robust = data.get("robustness_clustered", {})
+            if "max_cosine_coef" in robust:
+                numbers[f"interference_seed{seed_str}_clustered_se"] = robust["max_cosine_se_clustered"]
+                numbers[f"interference_seed{seed_str}_clustered_pval"] = robust["max_cosine_pval_clustered"]
+                numbers[f"interference_seed{seed_str}_clustered_OR_per_0.1"] = robust["max_cosine_OR_per_0.1_clustered"]
+                numbers[f"interference_seed{seed_str}_n_clusters"] = robust["n_clusters"]
+
+        # Bootstrap CIs
+        for seed_str, boot in interf.get("bootstrap", {}).items():
+            if isinstance(boot, dict) and "beta_ci_025" in boot:
+                numbers[f"interference_seed{seed_str}_beta_ci_025"] = boot["beta_ci_025"]
+                numbers[f"interference_seed{seed_str}_beta_ci_975"] = boot["beta_ci_975"]
+                numbers[f"interference_seed{seed_str}_or01_ci_025"] = boot["or_per_0.1_ci_025"]
+                numbers[f"interference_seed{seed_str}_or01_ci_975"] = boot["or_per_0.1_ci_975"]
+                numbers[f"interference_seed{seed_str}_boot_sign_consistency"] = boot["sign_consistency"]
+
+        # Negative controls
+        for seed_str, ctrls in interf.get("negative_controls", {}).items():
+            if isinstance(ctrls, dict):
+                perm = ctrls.get("permuted_keys", {})
+                if "p_value" in perm:
+                    numbers[f"interference_seed{seed_str}_perm_pval"] = perm["p_value"]
+                rand = ctrls.get("random_keys", {})
+                if "random_diff" in rand:
+                    numbers[f"interference_seed{seed_str}_random_diff"] = rand["random_diff"]
+                    numbers[f"interference_seed{seed_str}_real_diff"] = rand["real_diff"]
+                prec = ctrls.get("preceding_keys", {})
+                if "preceding_diff" in prec:
+                    numbers[f"interference_seed{seed_str}_preceding_diff"] = prec["preceding_diff"]
+
+        # LOO prediction
+        for key, val in interf.get("leave_one_out", {}).items():
+            if isinstance(val, dict):
+                numbers[f"interference_loo_{key}_auc"] = val.get("full_auc")
+                numbers[f"interference_loo_{key}_improvement"] = val.get("auc_improvement")
+
+    # SeqReg comparison
+    seqreg = load_seqreg_eval(42)
+    if seqreg:
+        for key, edits in [("2000_edits", 2000), ("3000_edits", 3000),
+                           ("4000_edits", 4000), ("5000_edits", 5000),
+                           ("7000_edits", 7000), ("10000_edits", 10000)]:
+            if key in seqreg:
+                sr = seqreg[key]
+                numbers[f"seqreg_efficacy_{edits}"] = sr.get("all_facts", {}).get("efficacy")
+                numbers[f"seqreg_paraphrase_{edits}"] = sr.get("all_facts", {}).get("paraphrase")
+                numbers[f"seqreg_neighborhood_{edits}"] = sr.get("all_facts", {}).get("neighborhood")
+                numbers[f"seqreg_auc_{edits}"] = sr.get("retention_auc")
+                numbers[f"seqreg_first_1k_{edits}"] = sr.get("first_1k", {}).get("efficacy")
+                numbers[f"seqreg_latest_1k_{edits}"] = sr.get("latest_1k", {}).get("efficacy")
+                numbers[f"seqreg_latest_100_{edits}"] = sr.get("latest_100", {}).get("efficacy")
+
+    # Polykernel behavioral metrics
+    for kernel, edits in [("poly2", 2000), ("rbf", 2000), ("poly2", 10000)]:
+        m = load_polykernel_metrics(42, edits, kernel)
+        if m:
+            for metric in ("efficacy", "paraphrase", "neighborhood"):
+                numbers[f"polykernel_{kernel}_{metric}_{edits}"] = m.get(metric)
+
+    # Polykernel diagnostic (effective rank ratios at first and last batch)
+    diag = load_polykernel_diagnostic(42, "AlphaEdit")
+    if diag and "per_batch" in diag:
+        for batch_entry in diag["per_batch"]:
+            batch_idx = batch_entry["batch_idx"]
+            if batch_idx in (0, len(diag["per_batch"]) - 1):
+                ratios = []
+                for layer_data in batch_entry["layers"].values():
+                    ratio = layer_data.get("ratio", {}).get("eff_rank")
+                    if ratio is not None:
+                        ratios.append(ratio)
+                if ratios:
+                    numbers[f"polykernel_diag_mean_eff_rank_ratio_batch{batch_idx}"] = float(np.mean(ratios))
+
+    # Write JSON
+    json_path = output_dir / "paper_numbers.json"
+    with open(json_path, "w") as f:
+        json.dump(numbers, f, indent=2, default=str)
+    n_values = sum(1 for v in numbers.values() if v is not None)
+    print(f"  paper_numbers.json: {n_values} values")
+    return numbers
+
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
+
+def generate(output_dir: Path = PAPER_OUTPUT):
+    """Generate all tables and paper_numbers.json."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    print("Generating tables...")
+    table1_reproduction(output_dir)
+    table3_matched_comparison(output_dir)
+    table5_interference(output_dir)
+    print("\nGenerating paper numbers...")
+    generate_paper_numbers(output_dir)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Generate paper tables and numbers")
+    parser.add_argument("--output-dir", type=Path, default=PAPER_OUTPUT)
+    args = parser.parse_args()
+    generate(args.output_dir)
+
+
+if __name__ == "__main__":
+    main()

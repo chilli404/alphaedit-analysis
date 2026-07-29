@@ -932,7 +932,7 @@ def run(args: argparse.Namespace) -> None:
         kernel_tag += "-hybrid"
     variant_name = f"MEMIT-Seq-{kernel_tag}-lp{args.lambda_prev}-ld{args.lambda_delta}-cache{cache_max_str}"
 
-    # Output directory
+    # Output directory — use failure_curve_checkpointed so method_comparison.py discovers it
     ordering = getattr(args, 'ordering', None)
     if ordering:
         results_dir = (
@@ -941,13 +941,17 @@ def run(args: argparse.Namespace) -> None:
         )
     else:
         results_dir = (
-            get_result_root() / "polykernel_seqreg"
+            get_result_root() / "failure_curve_checkpointed"
             / f"seed{args.seed}" / f"{args.dataset_size_limit}edits"
         )
     results_dir.mkdir(parents=True, exist_ok=True)
 
+    # Variant-specific output directory (log + metadata go here alongside run_000/)
+    variant_dir = results_dir / variant_name
+    variant_dir.mkdir(parents=True, exist_ok=True)
+
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    output_jsonl = results_dir / f"log_seed{args.seed}_{kernel_tag}_lp{args.lambda_prev}_ld{args.lambda_delta}_{timestamp}.jsonl"
+    output_jsonl = variant_dir / f"log_seed{args.seed}_{timestamp}.jsonl"
 
     # Resolve checkpoint directory and auto-detect resume point
     ckpt_dir = resolve_checkpoint_dir(
@@ -1067,7 +1071,7 @@ def run(args: argparse.Namespace) -> None:
         "output_jsonl": str(output_jsonl),
         "variant_name": variant_name,
     }
-    meta_path = results_dir / f"metadata_seed{args.seed}_{kernel_tag}_lp{args.lambda_prev}_ld{args.lambda_delta}.json"
+    meta_path = variant_dir / f"metadata_seed{args.seed}.json"
     with open(meta_path, "w") as f:
         json.dump(metadata, f, indent=2)
 

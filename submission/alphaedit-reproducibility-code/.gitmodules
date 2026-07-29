@@ -1,0 +1,3 @@
+[submodule "vendor/AlphaEdit"]
+	path = vendor/AlphaEdit
+	url = https://github.com/jianghoucheng/AlphaEdit.git

@@ -70,15 +70,42 @@ def _discover_memit_seq_variants(seeds: list[int]) -> list[tuple[float, float]]:
     return sorted(variants)
 
 
+def _discover_polykernel_seq_variants(seeds: list[int]) -> list[str]:
+    """Auto-discover Polykernel+SeqReg variants from failure_curve_checkpointed results.
+
+    Matches dirs like: MEMIT-Seq-poly2-hybrid-lp1.0-ld0.0-cache0
+    """
+    base = RESULTS / "failure_curve_checkpointed"
+    pattern = re.compile(r"^MEMIT-Seq-(poly\d+|rbf_[\w.]+)(-hybrid)?-lp[\d.]+-ld[\d.e-]+-cache\d+$")
+    variants = set()
+
+    for seed in seeds:
+        seed_dir = base / f"seed{seed}"
+        if not seed_dir.exists():
+            continue
+        for edits_dir in seed_dir.iterdir():
+            if not edits_dir.is_dir() or not edits_dir.name.endswith("edits"):
+                continue
+            for subdir in edits_dir.iterdir():
+                if not subdir.is_dir():
+                    continue
+                if pattern.match(subdir.name):
+                    variants.add(subdir.name)
+
+    return sorted(variants)
+
+
 COLORS = {
     "AlphaEdit": "#2196F3",
     "AlphaEdit-Poly2": "#E91E63",
     "MEMIT-Seq": "#4CAF50",
+    "MEMIT-Seq-hybrid": "#FF9800",
 }
 MARKERS = {
     "AlphaEdit": "o",
     "AlphaEdit-Poly2": "D",
     "MEMIT-Seq": "s",
+    "MEMIT-Seq-hybrid": "^",
 }
 
 
@@ -86,6 +113,8 @@ def _color_for(method: str) -> str:
     """Return color for method, falling back to MEMIT-Seq base for variants."""
     if method in COLORS:
         return COLORS[method]
+    if "hybrid" in method:
+        return COLORS["MEMIT-Seq-hybrid"]
     if method.startswith("MEMIT-Seq"):
         return COLORS["MEMIT-Seq"]
     return "#9E9E9E"
@@ -95,6 +124,8 @@ def _marker_for(method: str) -> str:
     """Return marker for method, falling back to MEMIT-Seq base for variants."""
     if method in MARKERS:
         return MARKERS[method]
+    if "hybrid" in method:
+        return MARKERS["MEMIT-Seq-hybrid"]
     if method.startswith("MEMIT-Seq"):
         return MARKERS["MEMIT-Seq"]
     return "^"
@@ -183,6 +214,14 @@ def load_memit_seq_results(seed: int, lambda_prev: float = 1.0, lambda_delta: fl
     """
     variant = f"MEMIT-Seq-lp{lambda_prev}-ld{lambda_delta}-cache0"
     return _load_failure_curve(seed, variant, variant)
+
+
+def load_polykernel_seq_results(seed: int, variant_name: str) -> list[dict]:
+    """Load Polykernel+SeqReg results from failure_curve_checkpointed.
+
+    Source: failure_curve_checkpointed/seed{N}/{edits}edits/{variant_name}/run_000/
+    """
+    return _load_failure_curve(seed, variant_name, variant_name)
 
 
 
@@ -461,9 +500,14 @@ def main():
         ld_vals = args.lambda_delta or [0.0]
         seq_variants = [(lp, ld) for lp in lp_vals for ld in ld_vals]
 
+    # Auto-discover polykernel+seqreg variants (e.g. MEMIT-Seq-poly2-hybrid-lp1.0-ld0.0-cache0)
+    pk_seq_variants = _discover_polykernel_seq_variants(args.seeds)
+
     print("=== Method Comparison ===\n")
     print(f"Seeds: {args.seeds}")
     print(f"MEMIT-Seq variants: {[f'lp{lp}-ld{ld}' for lp, ld in seq_variants]}")
+    if pk_seq_variants:
+        print(f"Polykernel+SeqReg variants: {pk_seq_variants}")
     print(f"Output: {args.output_dir}\n")
 
     # Load all data
@@ -485,6 +529,11 @@ def main():
             seq_rows = load_memit_seq_results(seed, lp, ld)
             print(f"  {variant_name}: {len(seq_rows)} checkpoints")
             all_rows.extend(seq_rows)
+
+        for pk_variant in pk_seq_variants:
+            pk_rows = load_polykernel_seq_results(seed, pk_variant)
+            print(f"  {pk_variant}: {len(pk_rows)} checkpoints")
+            all_rows.extend(pk_rows)
 
     if not all_rows:
         print("\nERROR: No data found.")
