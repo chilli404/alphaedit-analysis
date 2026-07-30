@@ -73,24 +73,35 @@ def _discover_memit_seq_variants(seeds: list[int]) -> list[tuple[float, float]]:
 def _discover_polykernel_seq_variants(seeds: list[int]) -> list[str]:
     """Auto-discover Polykernel+SeqReg variants from failure_curve_checkpointed results.
 
-    Matches dirs like: MEMIT-Seq-poly2-hybrid-lp1.0-ld0.0-cache0
+    Matches dirs like:
+      MEMIT-Seq-poly2-hybrid-lp1.0-ld0.0-cache0
+      MEMIT-Seq-poly2-hybrid-REVIVE-tau0.2-lp1.0-ld0.0-cache0
     """
     base = RESULTS / "failure_curve_checkpointed"
-    pattern = re.compile(r"^MEMIT-Seq-(poly\d+|rbf_[\w.]+)(-hybrid)?-lp[\d.]+-ld[\d.e-]+-cache\d+$")
+    pattern = re.compile(
+        r"^MEMIT-Seq-(poly\d+|rbf_[\w.]+)(-hybrid)?(-REVIVE-tau[\d.]+)?-lp[\d.]+-ld[\d.e-]+-cache\d+$"
+    )
     variants = set()
 
-    for seed in seeds:
-        seed_dir = base / f"seed{seed}"
-        if not seed_dir.exists():
-            continue
-        for edits_dir in seed_dir.iterdir():
-            if not edits_dir.is_dir() or not edits_dir.name.endswith("edits"):
+    # Search both failure_curve_checkpointed and polykernel_seqreg directories
+    search_dirs = [base]
+    polykernel_dir = RESULTS / "polykernel_seqreg"
+    if polykernel_dir.exists():
+        search_dirs.append(polykernel_dir)
+
+    for search_base in search_dirs:
+        for seed in seeds:
+            seed_dir = search_base / f"seed{seed}"
+            if not seed_dir.exists():
                 continue
-            for subdir in edits_dir.iterdir():
-                if not subdir.is_dir():
+            for edits_dir in seed_dir.iterdir():
+                if not edits_dir.is_dir() or not edits_dir.name.endswith("edits"):
                     continue
-                if pattern.match(subdir.name):
-                    variants.add(subdir.name)
+                for subdir in edits_dir.iterdir():
+                    if not subdir.is_dir():
+                        continue
+                    if pattern.match(subdir.name):
+                        variants.add(subdir.name)
 
     return sorted(variants)
 
@@ -100,12 +111,14 @@ COLORS = {
     "AlphaEdit-Poly2": "#E91E63",
     "MEMIT-Seq": "#4CAF50",
     "MEMIT-Seq-hybrid": "#FF9800",
+    "MEMIT-Seq-REVIVE": "#9C27B0",
 }
 MARKERS = {
     "AlphaEdit": "o",
     "AlphaEdit-Poly2": "D",
     "MEMIT-Seq": "s",
     "MEMIT-Seq-hybrid": "^",
+    "MEMIT-Seq-REVIVE": "P",
 }
 
 
@@ -113,6 +126,8 @@ def _color_for(method: str) -> str:
     """Return color for method, falling back to MEMIT-Seq base for variants."""
     if method in COLORS:
         return COLORS[method]
+    if "REVIVE" in method:
+        return COLORS["MEMIT-Seq-REVIVE"]
     if "hybrid" in method:
         return COLORS["MEMIT-Seq-hybrid"]
     if method.startswith("MEMIT-Seq"):
@@ -124,6 +139,8 @@ def _marker_for(method: str) -> str:
     """Return marker for method, falling back to MEMIT-Seq base for variants."""
     if method in MARKERS:
         return MARKERS[method]
+    if "REVIVE" in method:
+        return MARKERS["MEMIT-Seq-REVIVE"]
     if "hybrid" in method:
         return MARKERS["MEMIT-Seq-hybrid"]
     if method.startswith("MEMIT-Seq"):

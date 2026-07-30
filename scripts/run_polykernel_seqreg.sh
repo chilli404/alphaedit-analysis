@@ -54,6 +54,22 @@ KERNEL_PREV_FLAG=""
 if [[ "${NO_KERNEL_PREV:-}" == "true" ]]; then
     KERNEL_PREV_FLAG="--no_kernel_prev"
 fi
+REVIVE_FLAGS=""
+if [[ "${REVIVE:-}" == "true" ]]; then
+    REVIVE_FLAGS="--revive --revive_tau ${REVIVE_TAU:-0.2}"
+    if [[ -n "${REVIVE_SVD_DEVICE:-}" ]]; then
+        REVIVE_FLAGS="$REVIVE_FLAGS --revive_svd_device $REVIVE_SVD_DEVICE"
+    fi
+    if [[ -n "${REVIVE_SVD_DTYPE:-}" ]]; then
+        REVIVE_FLAGS="$REVIVE_FLAGS --revive_svd_dtype $REVIVE_SVD_DTYPE"
+    fi
+    if [[ -n "${REVIVE_CACHE_DIR:-}" ]]; then
+        REVIVE_FLAGS="$REVIVE_FLAGS --revive_cache_dir $REVIVE_CACHE_DIR"
+    fi
+    if [[ -n "${REVIVE_LOG_INTERVAL:-}" ]]; then
+        REVIVE_FLAGS="$REVIVE_FLAGS --revive_log_interval $REVIVE_LOG_INTERVAL"
+    fi
+fi
 
 # Resolve stream path if ordering is set
 DATASET_OVERRIDE_FLAG=""
@@ -90,6 +106,9 @@ fi
 if [[ -n "$KERNEL_PREV_FLAG" ]]; then
     echo "  Kernel prev: DISABLED (hybrid mode: kernel current only, linear K_prev)"
 fi
+if [[ -n "$REVIVE_FLAGS" ]]; then
+    echo "  REVIVE: ENABLED (tau=${REVIVE_TAU:-0.2})"
+fi
 echo "  Started: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo ""
 
@@ -110,7 +129,7 @@ uv run python src/polykernel/polykernel_seqreg_runner.py \
     --save_interval "$SAVE_INTERVAL" \
     --downstream_eval_steps "$DOWNSTREAM_EVAL_STEPS" \
     --conserve_memory \
-    $FAST_FLAG $EVAL_FLAG $KERNEL_PREV_FLAG $DATASET_OVERRIDE_FLAG
+    $FAST_FLAG $EVAL_FLAG $KERNEL_PREV_FLAG $REVIVE_FLAGS $DATASET_OVERRIDE_FLAG
 
 echo ""
 echo "=== Polykernel+SeqReg complete ==="
