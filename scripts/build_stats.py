@@ -9,9 +9,18 @@ dimension fraction per layer.
 
 Resumable: skips layers whose .npz file already exists.
 
+For GPT-J-6B: attempts remote fetch from memit.baulab.info first (pre-computed
+stats from the original MEMIT release). Only falls back to local computation if
+the remote files are missing or integrity-invalid.
+
+For Qwen2.5-7B-Instruct: no hosted stats exist; computes locally.
+
 Usage:
     # Full computation (requires GPU)
     uv run python scripts/build_stats.py --model Qwen/Qwen2.5-7B-Instruct
+
+    # GPT-J: fetches from baulab.info (no GPU needed if remote files exist)
+    uv run python scripts/build_stats.py --model EleutherAI/gpt-j-6b
 
     # Specific layers only
     uv run python scripts/build_stats.py --model EleutherAI/gpt-j-6b --layers 3 4 5 6 7 8
@@ -24,10 +33,13 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sys
 import time
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 import numpy as np
@@ -57,6 +69,150 @@ def _patched_load_dataset(path, name=None, *args, **kwargs):
 _datasets.load_dataset = _patched_load_dataset
 
 from model_registry import get_model_spec
+
+
+# ─── Remote Stats (baulab.info) ──────────────────────────────────────────────
+
+BAULAB_REMOTE_ROOT = "https://memit.baulab.info/data/stats"
+
+# Models with stats hosted on baulab.info (original MEMIT release).
+# Key: local stats_dir_name, Value: remote directory name on baulab server.
+# The baulab server uses the original MEMIT convention: name_or_path.replace("/", "_")
+BAULAB_HOSTED_MODELS = {
+    "gpt-j-6b": "EleutherAI_gpt-j-6B",
+}
+
+
+def baulab_remote_url(remote_model_name, layer_name, precision="float32", sample_size=100000):
+    """Construct the baulab.info URL for a stats file."""
+    size_suffix = f"_{sample_size}"
+    filename = f"{layer_name}_{precision}_mom2{size_suffix}.npz"
+    return f"{BAULAB_REMOTE_ROOT}/{remote_model_name}/wikipedia_stats/{filename}"
+
+
+def download_stats_file(url, dest_path, timeout=120):
+    """Download a single stats file from baulab.info.
+
+    Returns:
+        True if download succeeded, False otherwise.
+    """
+    try:
+        print(f"    Downloading: {url}")
+        urllib.request.urlretrieve(url, str(dest_path))
+        return True
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError) as e:
+        print(f"    FAILED: {e}")
+        if dest_path.exists():
+            dest_path.unlink()
+        return False
+
+
+def verify_stats_file(path, expected_layer_name=None):
+    """Verify a downloaded stats .npz file is valid.
+
+    The npz is saved by CombinedStat(mom2=SecondMoment()) via save_cached_state.
+    Keys are prefixed: "mom2.mom2" (raw sum matrix), "mom2.count", "mom2.constructor",
+    plus metadata args from tally().
+
+    Checks:
+      - File can be loaded as npz
+      - Contains 'mom2.mom2' key (the raw second-moment sum)
+      - mom2 array is 2D and square
+      - No NaN/Inf values
+      - Count is positive
+
+    Returns:
+        (valid: bool, info: str)
+    """
+    try:
+        data = np.load(path, allow_pickle=True)
+    except Exception as e:
+        return False, f"cannot load npz: {e}"
+
+    if "mom2.mom2" not in data:
+        return False, f"missing 'mom2.mom2' key (found: {list(data.keys())})"
+
+    mom2 = data["mom2.mom2"]
+    if mom2.ndim != 2:
+        return False, f"mom2 is {mom2.ndim}D, expected 2D"
+    if mom2.shape[0] != mom2.shape[1]:
+        return False, f"mom2 is not square: {mom2.shape}"
+    if np.isnan(mom2).any() or np.isinf(mom2).any():
+        return False, "mom2 contains NaN or Inf"
+
+    if "mom2.count" in data:
+        count = int(data["mom2.count"])
+        if count <= 0:
+            return False, f"mom2.count is non-positive: {count}"
+    else:
+        return False, "missing 'mom2.count' key"
+
+    return True, f"OK [{mom2.shape[0]}x{mom2.shape[1]}, dtype={mom2.dtype}, count={count}]"
+
+
+def attempt_remote_fetch(spec, stats_dir, missing_layers, sample_size=100000):
+    """Attempt to download stats from baulab.info for supported models.
+
+    Args:
+        spec: ModelSpec from the registry
+        stats_dir: Local directory to save files
+        missing_layers: List of (layer_idx, layer_name) tuples
+        sample_size: Expected sample size
+
+    Returns:
+        still_missing: List of (layer_idx, layer_name) that could not be fetched
+        manifest_entries: Dict of {layer_name: {source, url, sha256}} for fetched files
+    """
+    remote_model_name = BAULAB_HOSTED_MODELS.get(spec.stats_dir_name)
+    if remote_model_name is None:
+        print(f"\n  No hosted stats for {spec.short_name} — will compute locally.")
+        return missing_layers, {}
+
+    print(f"\n{'='*60}")
+    print(f"Attempting remote fetch from memit.baulab.info")
+    print(f"  Remote model dir: {remote_model_name}")
+    print(f"  Local target: {stats_dir}")
+    print(f"{'='*60}")
+
+    still_missing = []
+    manifest_entries = {}
+
+    for layer, layer_name in missing_layers:
+        url = baulab_remote_url(remote_model_name, layer_name, "float32", sample_size)
+        _, dest_path = check_existing_stats(stats_dir, layer_name, "float32", sample_size)
+
+        # Download
+        success = download_stats_file(url, dest_path)
+        if not success:
+            still_missing.append((layer, layer_name))
+            continue
+
+        # Verify integrity
+        valid, info = verify_stats_file(dest_path)
+        if not valid:
+            print(f"    INTEGRITY FAILED for layer {layer}: {info}")
+            dest_path.unlink()
+            still_missing.append((layer, layer_name))
+            continue
+
+        # Compute SHA256 for manifest
+        sha256 = hashlib.sha256(dest_path.read_bytes()).hexdigest()
+        print(f"    Layer {layer}: {info} [sha256:{sha256[:12]}...]")
+
+        manifest_entries[layer_name] = {
+            "source": "baulab-hosted",
+            "url": url,
+            "sha256": sha256,
+            "size_bytes": dest_path.stat().st_size,
+        }
+
+    fetched = len(missing_layers) - len(still_missing)
+    print(f"\n  Remote fetch: {fetched}/{len(missing_layers)} layers downloaded successfully.")
+
+    return still_missing, manifest_entries
+
+
+# ─── Local Computation ───────────────────────────────────────────────────────
 
 
 def load_hparams(model_spec, alg="AlphaEdit"):
@@ -144,6 +300,9 @@ def check_existing_stats(stats_dir, layer_name, precision="float32", sample_size
     return filename.exists(), filename
 
 
+# ─── Main ────────────────────────────────────────────────────────────────────
+
+
 def main():
     parser = argparse.ArgumentParser(description="Build covariance statistics for a model")
     parser.add_argument("--model", required=True, help="Model name or HuggingFace repo ID")
@@ -161,6 +320,8 @@ def main():
                         help="Override output directory (default: data/stats/{model}/wikipedia_stats)")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed for reproducibility (default: 42)")
+    parser.add_argument("--force_local", action="store_true",
+                        help="Skip remote fetch and compute locally (even for models with hosted stats)")
     args = parser.parse_args()
 
     # Resolve model
@@ -202,6 +363,14 @@ def main():
         if not exists:
             missing_layers.append((layer, layer_name))
 
+    # Stats manifest tracks provenance for each file
+    manifest_path = stats_dir / "stats_manifest.json"
+    if manifest_path.exists():
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+    else:
+        manifest = {"model": spec.short_name, "hf_repo": spec.hf_repo, "layers": {}}
+
     if args.verify_only:
         if missing_layers:
             print(f"\nERROR: {len(missing_layers)} layers missing stats. "
@@ -212,66 +381,113 @@ def main():
         if not missing_layers:
             print("\nAll stats already computed. Skipping to projector.")
         else:
-            print(f"\nWill compute stats for {len(missing_layers)} layers.")
-
-            # Set seeds
-            import random
-            random.seed(args.seed)
-            np.random.seed(args.seed)
-            torch.manual_seed(args.seed)
-            torch.cuda.manual_seed_all(args.seed)
-
-            # Load model
-            print(f"\nLoading model: {spec.hf_repo}")
-            from transformers import AutoModelForCausalLM, AutoTokenizer
-
-            model = AutoModelForCausalLM.from_pretrained(
-                spec.hf_repo,
-                torch_dtype=torch.bfloat16,
-                device_map="auto",
-            )
-            tok = AutoTokenizer.from_pretrained(spec.hf_repo)
-            if tok.pad_token is None:
-                tok.pad_token = tok.eos_token
-            print(f"  Model loaded. Device: {next(model.parameters()).device}")
-
-            # Verify module paths exist
-            print("\nVerifying module paths...")
-            for layer, layer_name in missing_layers:
-                try:
-                    param = None
-                    for name, p in model.named_parameters():
-                        if layer_name in name:
-                            param = p
-                            break
-                    assert param is not None, f"Module {layer_name} not found in model"
-                    print(f"  Layer {layer} ({layer_name}): OK "
-                          f"[shape={list(param.shape)}]")
-                except AssertionError as e:
-                    print(f"  Layer {layer} ({layer_name}): FAILED - {e}")
-                    print("\nAborting. Check module path templates in hparams.")
-                    sys.exit(1)
-
-            # Compute stats for missing layers
-            # We need to set the STATS_DIR that layer_stats expects
-            # The function builds its own path: stats_dir / model_name / ds_name_stats / ...
-            # So we pass the parent of where we want files to land
-            vendor_stats_dir = stats_dir.parent.parent  # data/stats/ (layer_stats adds model/ds_stats/)
-            os.chdir(str(VENDOR_DIR))  # layer_stats uses relative paths internally
-
-            for layer, layer_name in missing_layers:
-                compute_stats_for_layer(
-                    model, tok, layer_name,
-                    str(vendor_stats_dir),
-                    type("HParams", (), {
-                        "mom2_dataset": hparams_dict.get("mom2_dataset", "wikipedia"),
-                        "mom2_dtype": hparams_dict.get("mom2_dtype", "float32"),
-                    })(),
-                    sample_size=args.sample_size,
+            # ─── Phase 1: Attempt remote fetch (GPT-J only) ──────────────
+            if not args.force_local and spec.stats_dir_name in BAULAB_HOSTED_MODELS:
+                missing_layers, remote_manifest = attempt_remote_fetch(
+                    spec, stats_dir, missing_layers, args.sample_size
                 )
+                # Record fetched files in manifest
+                for layer_name, entry in remote_manifest.items():
+                    manifest["layers"][layer_name] = entry
 
-            del model
-            torch.cuda.empty_cache()
+            # ─── Phase 2: Local computation for remaining layers ─────────
+            if missing_layers:
+                if spec.stats_dir_name in BAULAB_HOSTED_MODELS:
+                    # Remote fetch failed for some layers — flag for human review
+                    print(f"\n{'!'*60}")
+                    print(f"[HUMAN] Remote fetch incomplete for {spec.short_name}.")
+                    print(f"  {len(missing_layers)} layers need local computation:")
+                    for layer, layer_name in missing_layers:
+                        print(f"    - Layer {layer} ({layer_name})")
+                    print(f"")
+                    print(f"  This requires GPU + ~{len(missing_layers) * 30} min computation time.")
+                    print(f"  If you expected all layers from baulab.info, investigate the failure above.")
+                    print(f"{'!'*60}")
+
+                    # Ask for confirmation before expensive local computation
+                    response = input("\n  Proceed with local computation? [y/N] ").strip().lower()
+                    if response != "y":
+                        print("  Aborted. Fix remote fetch issues or run with --force_local.")
+                        sys.exit(1)
+
+                print(f"\nWill compute stats for {len(missing_layers)} layers locally.")
+
+                # Set seeds
+                import random
+                random.seed(args.seed)
+                np.random.seed(args.seed)
+                torch.manual_seed(args.seed)
+                torch.cuda.manual_seed_all(args.seed)
+
+                # Load model
+                print(f"\nLoading model: {spec.hf_repo}")
+                from transformers import AutoModelForCausalLM, AutoTokenizer
+
+                model = AutoModelForCausalLM.from_pretrained(
+                    spec.hf_repo,
+                    torch_dtype=torch.bfloat16,
+                    device_map="auto",
+                )
+                tok = AutoTokenizer.from_pretrained(spec.hf_repo)
+                if tok.pad_token is None:
+                    tok.pad_token = tok.eos_token
+                print(f"  Model loaded. Device: {next(model.parameters()).device}")
+
+                # Verify module paths exist
+                print("\nVerifying module paths...")
+                for layer, layer_name in missing_layers:
+                    try:
+                        param = None
+                        for name, p in model.named_parameters():
+                            if layer_name in name:
+                                param = p
+                                break
+                        assert param is not None, f"Module {layer_name} not found in model"
+                        print(f"  Layer {layer} ({layer_name}): OK "
+                              f"[shape={list(param.shape)}]")
+                    except AssertionError as e:
+                        print(f"  Layer {layer} ({layer_name}): FAILED - {e}")
+                        print("\nAborting. Check module path templates in hparams.")
+                        sys.exit(1)
+
+                # Compute stats for missing layers
+                # We need to set the STATS_DIR that layer_stats expects
+                # The function builds its own path: stats_dir / model_name / ds_name_stats / ...
+                # So we pass the parent of where we want files to land
+                vendor_stats_dir = stats_dir.parent.parent  # data/stats/ (layer_stats adds model/ds_stats/)
+                os.chdir(str(VENDOR_DIR))  # layer_stats uses relative paths internally
+
+                for layer, layer_name in missing_layers:
+                    compute_stats_for_layer(
+                        model, tok, layer_name,
+                        str(vendor_stats_dir),
+                        type("HParams", (), {
+                            "mom2_dataset": hparams_dict.get("mom2_dataset", "wikipedia"),
+                            "mom2_dtype": hparams_dict.get("mom2_dtype", "float32"),
+                        })(),
+                        sample_size=args.sample_size,
+                    )
+
+                    # Record in manifest
+                    _, stats_path = check_existing_stats(stats_dir, layer_name, "float32", args.sample_size)
+                    if stats_path.exists():
+                        sha256 = hashlib.sha256(stats_path.read_bytes()).hexdigest()
+                        manifest["layers"][layer_name] = {
+                            "source": "local-computation",
+                            "dataset": "wikipedia/20220301.en",
+                            "sample_size": args.sample_size,
+                            "seed": args.seed,
+                            "sha256": sha256,
+                            "size_bytes": stats_path.stat().st_size,
+                        }
+
+                del model
+                torch.cuda.empty_cache()
+
+    # Save manifest
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+    print(f"\n  Manifest saved to: {manifest_path}")
 
     # Compute null-space projector and retained-dimension report
     if not args.no_projector:
@@ -297,13 +513,17 @@ def main():
                 continue
 
             # Load the covariance matrix
-            data = np.load(stats_path)
-            # The mom2 stat stores the second moment; we need to get it
-            # layer_stats saves via CombinedStat which uses .npz with specific keys
-            if "mom2" in data:
-                cov = torch.from_numpy(data["mom2"])
+            # The npz is saved by CombinedStat(mom2=SecondMoment()) with prefixed keys:
+            #   "mom2.mom2" = raw sum of outer products (not normalized)
+            #   "mom2.count" = number of samples
+            # The actual second-moment matrix is mom2.mom2 / mom2.count
+            # (matching AlphaEdit_main.py line 185: stat.mom2.moment())
+            data = np.load(stats_path, allow_pickle=True)
+            if "mom2.mom2" in data:
+                raw_mom2 = torch.from_numpy(data["mom2.mom2"])
+                count = int(data["mom2.count"])
+                cov = (raw_mom2 / count).float()
             else:
-                # Fallback: try loading the full stat object
                 print(f"  Layer {layer}: unexpected npz format, keys={list(data.keys())}")
                 continue
 
@@ -327,6 +547,16 @@ def main():
             p_path = stats_dir / "null_space_project.pt"
             torch.save(P_stacked, str(p_path))
             print(f"  Projector saved to: {p_path} [shape={list(P_stacked.shape)}]")
+
+    # Print S3 upload hint for locally-computed stats
+    if any(
+        manifest.get("layers", {}).get(ln, {}).get("source") == "local-computation"
+        for ln in layer_names
+    ):
+        s3_dest = f"/s3-data/continual-learning/alphaedit/stats/{spec.stats_dir_name}"
+        print(f"\n  To cache on S3 for future cluster runs:")
+        print(f"    cp -r {stats_dir} {s3_dest}/")
+        print(f"  Then link_stats.sh will find them automatically on SkyPilot clusters.")
 
     print("\n=== Done ===")
 
