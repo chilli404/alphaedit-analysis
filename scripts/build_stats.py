@@ -41,6 +41,21 @@ VENDOR_DIR = PROJECT_DIR / "vendor" / "AlphaEdit"
 sys.path.insert(0, str(VENDOR_DIR))
 sys.path.insert(0, str(PROJECT_DIR / "src" / "util"))
 
+# Monkey-patch datasets.load_dataset to fix deprecated Wikipedia config.
+# The vendor code (rome/layer_stats.py:103) hardcodes "20200501.en" which
+# HuggingFace has removed. The equivalent is now "20220301.en".
+import datasets as _datasets
+_original_load_dataset = _datasets.load_dataset
+
+
+def _patched_load_dataset(path, name=None, *args, **kwargs):
+    if name == "20200501.en":
+        name = "20220301.en"
+    return _original_load_dataset(path, name, *args, **kwargs)
+
+
+_datasets.load_dataset = _patched_load_dataset
+
 from model_registry import get_model_spec
 
 

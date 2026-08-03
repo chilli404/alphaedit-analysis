@@ -111,6 +111,7 @@ def patch_evaluate_file(alphaedit_root: Path) -> None:
     Idempotent — safe to call multiple times. Applies:
       - P-cache: loads null_space_project.pt if present instead of recomputing SVD
       - Model-list: adds Qwen2.5-7B to the cache_c/P shape initialization list
+      - Layer stats: fixes deprecated Wikipedia dataset config (20200501.en → 20220301.en)
 
     Args:
         alphaedit_root: Path to vendor/AlphaEdit/ directory.
@@ -122,6 +123,29 @@ def patch_evaluate_file(alphaedit_root: Path) -> None:
     if patched != source:
         eval_path.write_text(patched)
         print("  Applied P-cache + model-list patches to evaluate.py")
+    # Also patch layer_stats.py (called by AlphaEdit_main.py for on-the-fly stats)
+    patch_layer_stats_file(alphaedit_root)
+
+
+def patch_layer_stats_file(alphaedit_root: Path) -> None:
+    """
+    Fix deprecated Wikipedia dataset config in vendor/AlphaEdit/rome/layer_stats.py.
+
+    HuggingFace removed the '20200501.en' config; the equivalent is '20220301.en'.
+    This affects stats computation (both build_stats.py and on-the-fly in AlphaEdit_main.py).
+
+    Idempotent — safe to call multiple times.
+
+    Args:
+        alphaedit_root: Path to vendor/AlphaEdit/ directory.
+    """
+    stats_path = alphaedit_root / "rome" / "layer_stats.py"
+    source = stats_path.read_text()
+    if "20200501.en" not in source:
+        return  # Already patched or upstream changed
+    patched = source.replace("20200501.en", "20220301.en")
+    stats_path.write_text(patched)
+    print("  Applied Wikipedia dataset config patch to rome/layer_stats.py")
 
 
 def patch_glue_eval_file(alphaedit_root: Path) -> None:
