@@ -26,12 +26,28 @@ models:
       training data and tokenizer. Tests generalizability across LLMs.
       Freely available on HuggingFace (no gated access).
       Covariance stats computed on first run (~30 min).
-  fallback:
+  cross_model_primary:
+    name: "Qwen/Qwen2.5-7B-Instruct"
+    hparams_fname: "Qwen2.5-7B.json"
+    hparams_provenance: "github.com/zjunlp/EasyEdit commit 95a0db4 (2025-02-18)"
+    hidden_size: 3584
+    n_layers: 28
+    clustering_layer: 6
+    notes: >
+      Cross-architecture primary: same Llama-style module paths but different
+      training data, tokenizer (Qwen BPE), and hidden size (3584 vs 4096).
+      Tests if age-biased forgetting replicates on second architecture.
+  cross_model_secondary:
     name: "EleutherAI/gpt-j-6b"
     hparams_fname: "EleutherAI_gpt-j-6B.json"
+    hparams_provenance: "Official AlphaEdit repo (vendor/AlphaEdit/hparams/)"
+    hidden_size: 4096
+    n_layers: 28
+    clustering_layer: 5
     notes: >
-      Different architecture family (GPT vs Llama). Official hparams
-      already in repo. Use if Mistral-7B proves incompatible.
+      Cross-architecture secondary: different architecture family (GPT vs Llama).
+      Module paths use transformer.h.{}.mlp.fc_out instead of model.layers.{}.mlp.down_proj.
+      Official hparams already in repo. Well-established editing target.
 
 seeds:
   default: [42, 137, 2024, 7, 99]
@@ -208,6 +224,92 @@ expanded_experiments:
     notes: >
       Build a small dated fact set from MQuAKE-t style temporal edits
       and KnowEdit wiki_recent; edit in chronological and reverse order.
+
+# Cross-architecture experiments (replicating key findings on second architecture)
+cross_model_experiments:
+  mve1_qwen_mcf:
+    description: "AlphaEdit on MCF with Qwen2.5-7B-Instruct"
+    model: "Qwen/Qwen2.5-7B-Instruct"
+    alg_name: "AlphaEdit"
+    ds_name: "mcf"
+    dataset_size_limit: 2000
+    num_edits: 100
+    seeds: [42, 2024]
+    priority: 1
+
+  mve2_qwen_memit_mcf:
+    description: "MEMIT baseline on MCF with Qwen2.5-7B-Instruct"
+    model: "Qwen/Qwen2.5-7B-Instruct"
+    alg_name: "MEMIT"
+    ds_name: "mcf"
+    dataset_size_limit: 2000
+    num_edits: 100
+    seeds: [42]
+    priority: 3
+
+  failure_curve_qwen:
+    description: "AlphaEdit/MEMIT failure curve on Qwen2.5-7B-Instruct (10K edits)"
+    model: "Qwen/Qwen2.5-7B-Instruct"
+    alg_name: "both"
+    ds_name: "mcf"
+    dataset_size_limit: 10000
+    num_edits: 100
+    save_interval: 10
+    seeds: [42, 2024]
+    priority: 1
+
+  memit_sequential_qwen:
+    description: "MEMIT-Seq on Qwen2.5-7B-Instruct (10K edits)"
+    model: "Qwen/Qwen2.5-7B-Instruct"
+    alg_name: "MEMIT-Seq"
+    ds_name: "mcf"
+    dataset_size_limit: 10000
+    num_edits: 100
+    save_interval: 10
+    seeds: [42]
+    priority: 2
+
+  mve1_gptj_mcf:
+    description: "AlphaEdit on MCF with GPT-J-6B"
+    model: "EleutherAI/gpt-j-6b"
+    alg_name: "AlphaEdit"
+    ds_name: "mcf"
+    dataset_size_limit: 2000
+    num_edits: 100
+    seeds: [42]
+    priority: 4
+
+  mve2_gptj_memit_mcf:
+    description: "MEMIT baseline on MCF with GPT-J-6B"
+    model: "EleutherAI/gpt-j-6b"
+    alg_name: "MEMIT"
+    ds_name: "mcf"
+    dataset_size_limit: 2000
+    num_edits: 100
+    seeds: [42]
+    priority: 4
+
+  failure_curve_gptj:
+    description: "AlphaEdit/MEMIT failure curve on GPT-J-6B (5K edits)"
+    model: "EleutherAI/gpt-j-6b"
+    alg_name: "both"
+    ds_name: "mcf"
+    dataset_size_limit: 5000
+    num_edits: 100
+    save_interval: 10
+    seeds: [42]
+    priority: 4
+
+  memit_sequential_gptj:
+    description: "MEMIT-Seq on GPT-J-6B (5K edits)"
+    model: "EleutherAI/gpt-j-6b"
+    alg_name: "MEMIT-Seq"
+    ds_name: "mcf"
+    dataset_size_limit: 5000
+    num_edits: 100
+    save_interval: 10
+    seeds: [42]
+    priority: 5
 
 # Hardware requirements
 hardware:

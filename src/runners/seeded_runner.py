@@ -38,7 +38,7 @@ sys.path.insert(0, str(_SRC_DIR / "util"))
 
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
-from source_patches import patch_evaluate_file, build_order_shuffle_injection, SHUFFLE_ANCHOR
+from source_patches import patch_evaluate_file, patch_glue_eval_file, build_order_shuffle_injection, SHUFFLE_ANCHOR
 from dataset_fingerprint import build_fingerprint_injection
 from eval_config import hash_eval_config
 from paths import get_project_root, get_alphaedit_root, get_result_root
@@ -317,6 +317,7 @@ def run(args: argparse.Namespace) -> None:
     # Link project hparams into submodule
     link_hparams()
     patch_evaluate_file(alphaedit_root)
+    patch_glue_eval_file(alphaedit_root)
 
     # Run pre-flight validation
     validate_environment(args)

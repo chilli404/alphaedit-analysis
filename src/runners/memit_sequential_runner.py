@@ -58,7 +58,7 @@ sys.path.insert(0, str(_SRC_DIR / "util"))
 
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
-from source_patches import patch_evaluate_file
+from source_patches import patch_evaluate_file, patch_glue_eval_file
 from eval_config import hash_eval_config
 from paths import get_project_root, get_alphaedit_root, get_result_root, get_checkpoint_root
 
@@ -913,6 +913,7 @@ def run(args: argparse.Namespace) -> None:
 
     link_hparams()
     patch_evaluate_file(alphaedit_root)
+    patch_glue_eval_file(alphaedit_root)
 
     model_name = resolve_model_path(args.model_name)
 

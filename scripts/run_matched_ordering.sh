@@ -165,6 +165,14 @@ if [[ "$ALG" == MEMIT-Seq-* ]]; then
 
 elif [[ "$ALG" == "AlphaEdit" ]]; then
     # AlphaEdit via alphaedit_stream_runner (checkpointed stream editing with mechanism measurement)
+    # Map ordering name to --stream choice: predefined names pass directly,
+    # non-standard names (greedy_minmax, cluster_topo, random, etc.) use "custom"
+    STREAM_CHOICE="$ORDERING"
+    case "$ORDERING" in
+        clustered|dispersed|key_clustered|key_dispersed|custom) ;;
+        *) STREAM_CHOICE="custom" ;;
+    esac
+
     uv run python src/runners/alphaedit_stream_runner.py \
         --seed "$SEED" \
         --cuda_device "$CUDA_DEVICE" \
@@ -172,7 +180,8 @@ elif [[ "$ALG" == "AlphaEdit" ]]; then
         --stream_length "$DATASET_SIZE_LIMIT" \
         --num_edits "$NUM_EDITS" \
         --save_interval "$SAVE_INTERVAL" \
-        --stream "$ORDERING" \
+        --stream "$STREAM_CHOICE" \
+        --stream_name "$ORDERING" \
         --stream_path "$STREAM_PATH" \
         --checkpoint_base "$CKPT_DIR" \
         ${FAST_CHECKPOINT:+--eval_at_checkpoints_only}

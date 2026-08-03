@@ -38,7 +38,7 @@ sys.path.insert(0, str(_SRC_DIR / "util"))
 
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
-from source_patches import patch_evaluate_file
+from source_patches import patch_evaluate_file, patch_glue_eval_file
 from paths import get_project_root, get_alphaedit_root, get_result_root
 
 
@@ -272,6 +272,7 @@ def run(args: argparse.Namespace) -> None:
 
     link_hparams()
     patch_evaluate_file(alphaedit_root)
+    patch_glue_eval_file(alphaedit_root)
 
     # Resolve model path (falls back to Artifactory mirror if HF access fails)
     model_name = resolve_model_path(args.model_name)

@@ -35,6 +35,7 @@ if [[ -f "$PROJECT_DIR/.env" ]]; then
 fi
 
 MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
+HPARAMS_FNAME="${HPARAMS_FNAME:-Llama3-8B.json}"
 
 SEED="${1:-42}"
 ALG="${2:-${ALG_NAME:-both}}"
@@ -79,7 +80,7 @@ run_checkpointed() {
         --cuda_device "$CUDA_DEVICE" \
         --alg_name "$alg_name" \
         --model_name "$MODEL_NAME" \
-        --hparams_fname Llama3-8B.json \
+        --hparams_fname "$HPARAMS_FNAME" \
         --ds_name mcf \
         --dataset_size_limit "$target" \
         --num_edits "$NUM_EDITS" \
@@ -140,7 +141,7 @@ run_memit_seq() {
         --seed "$seed" \
         --cuda_device "$CUDA_DEVICE" \
         --model_name "$MODEL_NAME" \
-        --hparams_fname Llama3-8B.json \
+        --hparams_fname "$HPARAMS_FNAME" \
         --ds_name mcf \
         --dataset_size_limit "$target" \
         --num_edits "$NUM_EDITS" \

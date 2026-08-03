@@ -640,10 +640,11 @@ def main():
 
     from model_download import resolve_model_path
     from setup_hparams import link_hparams
-    from source_patches import patch_evaluate_file
+    from source_patches import patch_evaluate_file, patch_glue_eval_file
 
     link_hparams()
     patch_evaluate_file(ALPHAEDIT_ROOT)
+    patch_glue_eval_file(ALPHAEDIT_ROOT)
     model_name = resolve_model_path(args.model_name)
 
     # Validate anchors

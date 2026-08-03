@@ -897,6 +897,47 @@ def load_capability_probe(seed: int, alg: str = "AlphaEdit") -> Optional[List[Di
     return records
 
 
+# ─── Cross-Model Loaders ──────────────────────────────────────────────────────
+
+
+# Model tag → experiment directory name mapping
+_CROSS_MODEL_EXPERIMENTS = {
+    "qwen": {"AlphaEdit": "mve1_qwen_mcf", "MEMIT": "mve2_qwen_memit_mcf"},
+    "gptj": {"AlphaEdit": "mve1_gptj_mcf", "MEMIT": "mve2_gptj_memit_mcf"},
+    "llama3": {"AlphaEdit": "mve1_alphaedit_mcf", "MEMIT": "mve2_memit_mcf"},
+}
+
+
+def load_cross_model_mve(model_tag: str, alg: str = "AlphaEdit",
+                         seeds=(42, 2024), result_root=None):
+    """Load cross-model MVE results for a given model and algorithm.
+
+    Args:
+        model_tag: "qwen", "gptj", or "llama3"
+        alg: "AlphaEdit" or "MEMIT"
+        seeds: Sequence of seeds to aggregate over
+        result_root: Override result directory (default: standard RESULT_ROOT)
+
+    Returns:
+        List of per-seed metric dicts, or empty list if no data found.
+    """
+    if model_tag not in _CROSS_MODEL_EXPERIMENTS:
+        raise ValueError(f"Unknown model_tag: {model_tag}. "
+                         f"Valid: {list(_CROSS_MODEL_EXPERIMENTS.keys())}")
+
+    experiment = _CROSS_MODEL_EXPERIMENTS[model_tag].get(alg)
+    if experiment is None:
+        raise ValueError(f"No experiment for {model_tag}/{alg}")
+
+    metrics_by_seed = []
+    for seed in seeds:
+        m = load_mve_metrics(experiment, seed, alg, result_root=result_root)
+        if m:
+            metrics_by_seed.append(m)
+
+    return metrics_by_seed
+
+
 # ─── CLI ──────────────────────────────────────────────────────────────────────
 
 
