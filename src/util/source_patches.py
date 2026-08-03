@@ -32,12 +32,56 @@ P_COMPUTE_CACHED = """\
             import os as _os
             _stats_root = Path(_os.environ.get("STATS_ROOT", ""))
             if not _stats_root.is_dir():
-                _stats_root = Path(_os.environ.get("CHECKPOINT_ROOT", "")).parent / "stats" / "llama3-8b-instruct"
+                _model_short = hparams.model_name.lower().replace("/", "-").replace("_", "-")
+                _stats_root = Path(_os.environ.get("CHECKPOINT_ROOT", "")).parent / "stats" / _model_short
             if _stats_root.is_dir():
                 torch.save(P, str(_stats_root / "null_space_project.pt"))
                 print(f"Computed and cached null-space projection (persisted to {_stats_root})")
             else:
                 print(f"Computed and cached null-space projection to null_space_project.pt")"""
+
+
+# --- Model-name list patch for evaluate.py cache_c/P shape initialization ---
+# The vendor evaluate.py (line 201) hardcodes which models use W_out.shape[1].
+# Qwen2.5-7B needs to be added; GPT-J is already present.
+SHAPE_MODEL_LIST_ANCHOR = '["EleutherAI_gpt-j-6B","Llama3-8B","phi-1.5"]'
+SHAPE_MODEL_LIST_EXTENDED = '["EleutherAI_gpt-j-6B","Llama3-8B","phi-1.5","Qwen2.5-7B"]'
+
+
+def apply_model_list_patch(source: str) -> str:
+    """
+    Add Qwen2.5-7B to the model-name list for cache_c/P tensor shape in evaluate.py.
+
+    The vendor code uses W_out.shape[1] for GPT-J/Llama/Phi and W_out.shape[0] for
+    GPT-2. Qwen2.5-7B follows the same convention as Llama (shape[1]).
+
+    Idempotent — returns source unchanged if already patched.
+    """
+    if SHAPE_MODEL_LIST_ANCHOR not in source:
+        return source
+    return source.replace(SHAPE_MODEL_LIST_ANCHOR, SHAPE_MODEL_LIST_EXTENDED, 1)
+
+
+# --- GLUE context length map patch ---
+GLUE_MAP_ANCHOR = '"gpt2-medium": 1024'
+GLUE_MAP_EXTENDED = '"gpt2-medium": 1024, "qwen2.5-7b-instruct": 4096, "gpt-j-6b": 2048'
+
+
+def apply_glue_context_patch(source: str) -> str:
+    """
+    Add Qwen2.5-7B and GPT-J context length entries to glue_eval/useful_functions.py.
+
+    The vendor code maps lowercase model names to max context length. Qwen2.5-7B
+    uses 4096 (capped from 131K); GPT-J uses 2048. The GPT-J entry also fixes a
+    pre-existing bug where "gpt-j-6b" (from HF repo basename) was not mapped.
+
+    Idempotent — returns source unchanged if already patched.
+    """
+    if GLUE_MAP_ANCHOR not in source:
+        return source
+    if "qwen2.5-7b-instruct" in source:
+        return source  # Already patched
+    return source.replace(GLUE_MAP_ANCHOR, GLUE_MAP_EXTENDED, 1)
 
 
 def apply_p_cache_patch(source: str) -> str:
@@ -66,6 +110,7 @@ def patch_evaluate_file(alphaedit_root: Path) -> None:
 
     Idempotent — safe to call multiple times. Applies:
       - P-cache: loads null_space_project.pt if present instead of recomputing SVD
+      - Model-list: adds Qwen2.5-7B to the cache_c/P shape initialization list
 
     Args:
         alphaedit_root: Path to vendor/AlphaEdit/ directory.
@@ -73,9 +118,28 @@ def patch_evaluate_file(alphaedit_root: Path) -> None:
     eval_path = alphaedit_root / "experiments" / "evaluate.py"
     source = eval_path.read_text()
     patched = apply_p_cache_patch(source)
+    patched = apply_model_list_patch(patched)
     if patched != source:
         eval_path.write_text(patched)
-        print("  Applied P-cache patch to evaluate.py")
+        print("  Applied P-cache + model-list patches to evaluate.py")
+
+
+def patch_glue_eval_file(alphaedit_root: Path) -> None:
+    """
+    Apply runtime patches to vendor/AlphaEdit/glue_eval/useful_functions.py on disk.
+
+    Idempotent — safe to call multiple times. Applies:
+      - Context length map: adds Qwen2.5-7B and GPT-J entries
+
+    Args:
+        alphaedit_root: Path to vendor/AlphaEdit/ directory.
+    """
+    glue_path = alphaedit_root / "glue_eval" / "useful_functions.py"
+    source = glue_path.read_text()
+    patched = apply_glue_context_patch(source)
+    if patched != source:
+        glue_path.write_text(patched)
+        print("  Applied GLUE context-length patch to useful_functions.py")
 
 
 # --- Source anchor used by order shuffle injection ---

@@ -3,7 +3,9 @@ set -euo pipefail
 
 # Links precomputed covariance statistics into the AlphaEdit data directory.
 # Uses S3 stats if available; otherwise falls back to project-local stats.
+# Supports multiple models via MODEL_NAME env var.
 # Usage: bash scripts/link_stats.sh
+#        MODEL_NAME="Qwen/Qwen2.5-7B-Instruct" bash scripts/link_stats.sh
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -17,8 +19,22 @@ fi
 MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 _MODEL_SHORT="${MODEL_NAME##*/}"
 
-S3_STATS_SRC="$S3_DIR/continual-learning/alphaedit/stats/llama3-8b-instruct"
-PROJECT_STATS_SRC="$PROJECT_DIR/data/stats/llama3-8b-instruct/wikipedia_stats"
+# Map model name to stats subdirectory
+stats_subdir_for_model() {
+    local model="$1"
+    case "$model" in
+        *Meta-Llama-3-8B*)          echo "llama3-8b-instruct" ;;
+        *gpt-j-6[bB]*)             echo "gpt-j-6b" ;;
+        *Qwen2.5-7B*)              echo "qwen2.5-7b-instruct" ;;
+        *Mistral-7B*|*mistral-7b*) echo "mistral-7b" ;;
+        *)                         echo "$(echo "${model##*/}" | tr '[:upper:]' '[:lower:]')" ;;
+    esac
+}
+
+STATS_SUBDIR="$(stats_subdir_for_model "$MODEL_NAME")"
+
+S3_STATS_SRC="$S3_DIR/continual-learning/alphaedit/stats/$STATS_SUBDIR"
+PROJECT_STATS_SRC="$PROJECT_DIR/data/stats/$STATS_SUBDIR/wikipedia_stats"
 
 STATS_SRC="$PROJECT_STATS_SRC"
 [[ -d "$S3_STATS_SRC" ]] && STATS_SRC="$S3_STATS_SRC"
@@ -30,10 +46,15 @@ if [[ ! -d "$STATS_SRC" ]]; then
     echo "Checked:"
     echo "  S3:      $S3_STATS_SRC"
     echo "  Project: $PROJECT_STATS_SRC"
+    echo ""
+    echo "To generate stats for this model, run:"
+    echo "  uv run python scripts/build_stats.py --model $MODEL_NAME"
     exit 1
 fi
 
 echo "=== Linking Covariance Statistics ==="
+echo "  Model:  $MODEL_NAME"
+echo "  Stats:  $STATS_SUBDIR"
 echo "  Source: $STATS_SRC"
 echo "  Target: $STATS_DST"
 
@@ -63,7 +84,6 @@ for f in "$STATS_DST"/*.npz; do
 done
 
 echo ""
-echo "Expected files: model.layers.{4,5,6,7,8}.mlp.down_proj_float32_mom2_100000.npz"
 
 # Link cached null-space projection (P) if available (avoids 45-min SVD recomputation)
 P_CACHE_SRC="$STATS_SRC/null_space_project.pt"

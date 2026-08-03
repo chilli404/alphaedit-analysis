@@ -874,7 +874,14 @@ def load_capability_probe(seed: int, alg: str = "AlphaEdit") -> Optional[List[Di
     if not candidates:
         return None
 
-    # Use the most recent file
+    # Prefer the file under the highest edit count directory (e.g., 10000edits > 6000edits)
+    import re as _re
+
+    def _extract_edits(p):
+        m = _re.search(r"/(\d+)edits/", str(p))
+        return int(m.group(1)) if m else 0
+
+    candidates.sort(key=lambda p: (_extract_edits(p), p))
     jsonl_path = candidates[-1]
     records = []
     with open(jsonl_path) as f:

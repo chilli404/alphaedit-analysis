@@ -1,0 +1,46 @@
+% Discussion section stubs for scheduling experiment.
+% Uncomment ONE branch after results land.
+
+% ─── Positive branch: scheduling improves retention ──────────────────────────
+% \begin{quote}
+% The greedy scheduling algorithm reduces first-cohort interference exposure
+% from \schedKeyclusteredFirstCohortTenK{} (key-clustered baseline) to
+% \schedGreedyminmaxFirstCohortTenK{}, yielding a \schedGreedyGainPP{} pp
+% improvement in 10K-horizon retention at zero algorithmic cost.
+% This validates the survival model's cosine-exposure coefficient
+% \emph{prospectively}: the predicted retention improvement under the
+% greedy ordering's exposure profile matches the observed gain within
+% 95\% confidence bounds.
+%
+% The random-shuffle control (\schedRandomFirstCohortTenK{}) confirms that
+% mere reshuffling does not explain the benefit---the geometry-aware
+% structure is necessary.
+%
+% \paragraph{Deployment implications.}
+% In batch-deployment settings where the edit queue is known in advance,
+% interference-aware scheduling offers a free-lunch defense against
+% null-space exhaustion.  In streaming settings where edits arrive online,
+% the same geometric predictor can flag high-risk incoming edits for
+% deferred processing or prioritized null-space refresh.
+% \end{quote}
+
+% ─── Null branch: scheduling fails despite geometric manipulation ────────────
+% \begin{quote}
+% Despite successfully reducing first-cohort max-cosine exposure from
+% \schedKeyclusteredFirstCohortTenK{} to \schedGreedyminmaxFirstCohortTenK{}
+% (Phase~2 gate passed), the greedy ordering does not improve 10K-horizon
+% retention (\schedGreedyminmaxEff10K{} vs.\ \schedKeyclusteredEff10K{}).
+%
+% This null result sharpens the paper's attribution story:
+% per-edit cosine exposure is predictive of forgetting (the survival model
+% fits retrospectively) but is not sufficiently manipulable through ordering
+% alone.  The interference channel saturates before geometric reshuffling
+% can decongest it, implying that history-aware regularization
+% (\S\ref{sec:seqreg}) is necessary rather than merely additive.
+%
+% \paragraph{Deployment implications.}
+% In both batch and streaming deployment settings, passive scheduling is
+% insufficient---active algorithmic intervention (null-space refresh or
+% sequential regularization) remains the practical defense against
+% long-horizon degradation.
+% \end{quote}

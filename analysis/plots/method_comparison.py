@@ -250,7 +250,13 @@ def _aggregate_cases(case_files: list[Path]) -> dict | None:
 
     for cf in case_files:
         with open(cf) as f:
-            case = json.load(f)
+            content = f.read()
+        if not content.strip():
+            continue
+        try:
+            case = json.loads(content)
+        except json.JSONDecodeError:
+            continue
 
         post = case.get("post", {})
 
