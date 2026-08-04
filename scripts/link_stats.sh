@@ -11,12 +11,16 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 S3_DIR="/s3-data"
 
+# Preserve caller's MODEL_NAME before sourcing .env (which may override it)
+_CALLER_MODEL_NAME="${MODEL_NAME:-}"
+
 # Load environment config
 if [[ -f "$PROJECT_DIR/.env" ]]; then
     set -a; source "$PROJECT_DIR/.env"; set +a
 fi
 
-MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
+# Caller's explicit MODEL_NAME takes priority over .env
+MODEL_NAME="${_CALLER_MODEL_NAME:-${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}}"
 _MODEL_SHORT="${MODEL_NAME##*/}"
 
 # Map model name to stats subdirectory
