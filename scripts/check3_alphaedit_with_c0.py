@@ -30,6 +30,7 @@ sys.path.insert(0, str(VENDOR_DIR))
 sys.path.insert(0, str(PROJECT_DIR / "src" / "util"))
 
 from source_patches import patch_evaluate_file, patch_glue_eval_file
+from setup_hparams import link_hparams
 
 
 def compute_relative_projector(stats_dir, layers, rel_factor=0.02):
@@ -78,14 +79,47 @@ def main():
     print(f"  Saved to: {p_path} [shape={list(P.shape)}]")
     print()
 
-    # Apply source patches
+    # Ensure stats are accessible at the path get_cov() expects.
+    # get_cov() uses model.config._name_or_path.rsplit("/")[-1] → "Qwen2.5-7B-Instruct"
+    # but our stats were saved to "qwen2.5-7b-instruct". Create symlink if needed.
+    vendor_stats_dir = VENDOR_DIR / "data" / "stats"
+    vendor_stats_dir.mkdir(parents=True, exist_ok=True)
+    expected_name = "Qwen2.5-7B-Instruct"
+    target = vendor_stats_dir / expected_name
+    if not target.exists():
+        # Try lowercase source
+        lowercase_src = PROJECT_DIR / "data" / "stats" / "qwen2.5-7b-instruct"
+        if lowercase_src.exists():
+            target.symlink_to(lowercase_src)
+            print(f"  Symlinked stats: {target.name} → {lowercase_src}")
+        else:
+            print(f"  WARNING: Stats not found for get_cov() at {target}")
+
+    # Apply source patches and link hparams
     os.chdir(str(VENDOR_DIR))
+    link_hparams()
     patch_evaluate_file(VENDOR_DIR)
     patch_glue_eval_file(VENDOR_DIR)
 
-    # Read AlphaEdit_main.py and patch the solve to add alpha*C0
+    # Patch memit_main.py to accept extra kwargs (evaluate.py passes return_orig_weights_device)
+    memit_path = VENDOR_DIR / "memit" / "memit_main.py"
+    memit_original = memit_path.read_text()
+    if "**_kwargs" not in memit_original:
+        memit_patched = memit_original.replace(
+            "    cache_template: Optional[str] = None,\n",
+            "    cache_template: Optional[str] = None, **_kwargs,\n", 1)
+        memit_path.write_text(memit_patched)
+        print("  Patched memit_main.py: added **_kwargs")
+
+    # Read AlphaEdit_main.py and patch it
     ae_path = VENDOR_DIR / "AlphaEdit" / "AlphaEdit_main.py"
-    ae_source = ae_path.read_text()
+    ae_original = ae_path.read_text()  # Save for restoration
+    ae_source = ae_original
+
+    # First: add **_kwargs to accept return_orig_weights_device from evaluate.py
+    if "**_kwargs" not in ae_source:
+        ae_source = ae_source.replace("    P = None,\n", "    P = None, **_kwargs,\n", 1)
+        print("  Patched AlphaEdit_main.py: added **_kwargs")
 
     # The original solve line:
     original_solve = (
@@ -115,36 +149,62 @@ def main():
     print(f"  alpha*C0 uses mom2_update_weight={alpha}")
     print()
 
-    # Now run the experiment
-    eval_source = (VENDOR_DIR / "experiments" / "evaluate.py").read_text()
-
-    hparams_dir = PROJECT_DIR / "configs" / "hparams"
-
-    sys.argv = [
-        "evaluate.py",
-        "--alg_name", "AlphaEdit",
-        "--model_name", "Qwen/Qwen2.5-7B-Instruct",
-        "--hparams_fname", "Qwen2.5-7B.json",
-        "--ds_name", "mcf",
-        "--dataset_size_limit", "200",
-        "--num_edits", "100",
-        "--use_cache",
-    ]
-
-    # Set HPARAMS_DIR so evaluate.py finds our configs
-    os.environ["HPARAMS_DIR"] = str(hparams_dir)
+    # Now run the experiment via subprocess (same pattern as seeded_runner.py)
+    # This ensures vendor imports (from memit import ..., from AlphaEdit import ...) resolve correctly
 
     print(f"  Running: 200 edits (2 batches of 100)")
     print(f"  Projector: relative τ (near-identity)")
     print(f"  LHS: P @ (K@K^T + cache_c) + L2*I + alpha*C0")
     print()
 
+    import subprocess
+    import textwrap
+
+    script = textwrap.dedent("""\
+import os, sys
+import numpy as np
+import torch
+
+sys.argv = [
+    "evaluate.py",
+    "--alg_name", "AlphaEdit",
+    "--model_name", "Qwen/Qwen2.5-7B-Instruct",
+    "--hparams_fname", "Qwen2.5-7B.json",
+    "--ds_name", "mcf",
+    "--dataset_size_limit", "200",
+    "--num_edits", "100",
+    "--use_cache",
+]
+
+with open("experiments/evaluate.py", "r") as f:
+    source = f.read()
+
+# Patch CUDA device
+patch_target = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
+if patch_target in source:
+    source = source.replace(patch_target, '# CUDA managed externally')
+
+exec(compile(source, "experiments/evaluate.py", "exec"),
+     {"__name__": "__main__", "__file__": "experiments/evaluate.py"})
+""")
+
+    env = os.environ.copy()
+    env["CUDA_VISIBLE_DEVICES"] = os.environ.get("CUDA_VISIBLE_DEVICES", "0")
+
     try:
-        exec(compile(eval_source, "evaluate.py", "exec"))
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=str(VENDOR_DIR),
+            env=env,
+        )
+        if result.returncode != 0:
+            print(f"\n  ERROR: Experiment failed with return code {result.returncode}")
+            sys.exit(result.returncode)
     finally:
-        # Restore original AlphaEdit_main.py
-        ae_path.write_text(ae_source)
-        print("\n  Restored original AlphaEdit_main.py")
+        # Restore original files
+        ae_path.write_text(ae_original)
+        memit_path.write_text(memit_original)
+        print("\n  Restored original AlphaEdit_main.py and memit_main.py")
 
 
 if __name__ == "__main__":
