@@ -75,6 +75,17 @@ POST_EDIT_ANCHOR = '        exec_time = time() - start'
 # CUDA patch target
 CUDA_PATCH_TARGET = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
 
+# AlphaEdit import in evaluate.py (for dual injection replacement)
+ALPHAEDIT_IMPORT_ANCHOR = 'from AlphaEdit.AlphaEdit_main import apply_AlphaEdit_to_model, get_cov'
+
+# --- Source anchor from AlphaEdit_main.py at commit b84624f ---
+
+ALPHAEDIT_SOLVE_ANCHOR = (
+    '        upd_matrix = torch.linalg.solve(\n'
+    '                P[i,:,:].cuda() @ (layer_ks @ layer_ks.T + cache_c[i,:,:].cuda()) + hparams.L2*torch.eye(layer_ks.shape[0], dtype=torch.float,device="cuda"), P[i,:,:].cuda() @ layer_ks @ resid.T\n'
+    '        )'
+)
+
 
 _DEFAULT_MODEL = "meta-llama/Meta-Llama-3-8B-Instruct"
 
@@ -190,6 +201,8 @@ def build_checkpoint_script(
     results_dir: str | None = None,
     result_root: str | None = None,
     dir_name: str | None = None,
+    inject_c0: bool = False,
+    c0_weight: float = 15000.0,
 ) -> str:
     """
     Build an inline Python script that:
@@ -244,6 +257,74 @@ def build_checkpoint_script(
             f')\n'
             f'print(f"  [DIR_NAME] Overridden to: {dir_name}")\n'
         )
+
+    # Build optional AlphaEdit+C₀ dual injection (patches AlphaEdit_main.py to add covariance to LHS)
+    if inject_c0:
+        c0_injection = f'''
+# === AlphaEdit+C₀: dual source injection (injected) ===
+_alphaedit_c0_weight = {c0_weight}
+
+# Read and patch AlphaEdit_main.py
+with open("AlphaEdit/AlphaEdit_main.py", "r") as _ae_f:
+    _ae_source = _ae_f.read()
+
+# Fix relative imports for standalone exec
+_ae_source = _ae_source.replace("from .compute_ks", "from AlphaEdit.compute_ks")
+_ae_source = _ae_source.replace("from .compute_z", "from AlphaEdit.compute_z")
+_ae_source = _ae_source.replace("from .AlphaEdit_hparams", "from AlphaEdit.AlphaEdit_hparams")
+
+# Replace solve line to include C₀ in LHS
+_ae_solve_anchor = (
+    '        upd_matrix = torch.linalg.solve(\\n'
+    '                P[i,:,:].cuda() @ (layer_ks @ layer_ks.T + cache_c[i,:,:].cuda()) + hparams.L2*torch.eye(layer_ks.shape[0], dtype=torch.float,device="cuda"), P[i,:,:].cuda() @ layer_ks @ resid.T\\n'
+    '        )'
+)
+assert _ae_solve_anchor in _ae_source, (
+    "AlphaEdit solve anchor not found in AlphaEdit_main.py. "
+    "Upstream code has changed from pinned commit b84624f."
+)
+
+_ae_solve_replacement = """        # === AlphaEdit+C₀: augmented solve with covariance (injected) ===
+        _cov_for_layer = get_cov(model, tok, hparams.rewrite_module_tmp.format(layer), hparams.mom2_dataset, hparams.mom2_n_samples, hparams.mom2_dtype)
+        upd_matrix = torch.linalg.solve(
+                P[i,:,:].cuda() @ (_alphaedit_c0_weight * _cov_for_layer.float() + layer_ks @ layer_ks.T + cache_c[i,:,:].cuda()) + hparams.L2*torch.eye(layer_ks.shape[0], dtype=torch.float,device="cuda"), P[i,:,:].cuda() @ layer_ks @ resid.T
+        )
+        # === END AlphaEdit+C₀ ==="""
+
+_ae_source = _ae_source.replace(_ae_solve_anchor, _ae_solve_replacement, 1)
+assert "AlphaEdit+C\\u2080" in _ae_source or "AlphaEdit+C0" in _ae_source or "_alphaedit_c0_weight" in _ae_source, "C0 injection into AlphaEdit_main.py failed"
+
+# Compile and exec patched AlphaEdit_main.py
+_ae_ns = {{
+    "__name__": "AlphaEdit.AlphaEdit_main",
+    "__file__": "AlphaEdit/AlphaEdit_main.py",
+    "_alphaedit_c0_weight": _alphaedit_c0_weight,
+}}
+exec(compile(_ae_source, "AlphaEdit/AlphaEdit_main.py", "exec"), _ae_ns)
+_patched_apply_AlphaEdit = _ae_ns["apply_AlphaEdit_to_model"]
+_patched_get_cov = _ae_ns["get_cov"]
+
+print(f"[AlphaEdit+C0] AlphaEdit_main.py patched: c0_weight={{_alphaedit_c0_weight}}")
+
+# Replace AlphaEdit import in evaluate.py
+_ae_import_anchor = "from AlphaEdit.AlphaEdit_main import apply_AlphaEdit_to_model, get_cov"
+assert _ae_import_anchor in source, (
+    "AlphaEdit import anchor not found in evaluate.py. "
+    "Upstream code has changed from pinned commit b84624f."
+)
+source = source.replace(
+    _ae_import_anchor,
+    "# apply_AlphaEdit_to_model patched by checkpoint_runner (AlphaEdit+C0)",
+)
+# === END AlphaEdit+C₀ dual injection ===
+'''
+        c0_exec_ns_injection = (
+            '_exec_ns["apply_AlphaEdit_to_model"] = _patched_apply_AlphaEdit\n'
+            '_exec_ns["get_cov"] = _patched_get_cov\n'
+        )
+    else:
+        c0_injection = ""
+        c0_exec_ns_injection = ""
 
     # Mega-batch eval injection (outside f-string to avoid Python 3.10 nested-quote issues)
     mega_batch_eval_injection = '''    # === MEGA-BATCH EVAL: batched multi-token scoring (injected by checkpoint_runner) ===
@@ -563,6 +644,8 @@ def _ckpt_should_save(cnt):
 with open("experiments/evaluate.py", "r") as f:
     source = f.read()
 
+# 4b. AlphaEdit+C₀ dual injection (if enabled)
+{c0_injection}
 # 5. Patch CUDA_VISIBLE_DEVICES
 cuda_patch_target = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
 assert cuda_patch_target in source, (
@@ -581,26 +664,29 @@ source = source.replace(
 # doesn't match, P and cache_c are never created and the edit call crashes with
 # TypeError: 'NoneType' object is not subscriptable.
 # Fix: add an else branch that infers dimensions from W_out generically.
-_p_init_anchor = '''        elif hparams.model_name in ["EleutherAI_gpt-j-6B","Llama3-8B","phi-1.5"]:
+_p_init_anchor = '''        elif hparams.model_name in ["EleutherAI_gpt-j-6B","Llama3-8B","phi-1.5","Qwen2.5-7B"]:
             cache_c = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
             if alg_name == "AlphaEdit":
                 P = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
         del W_out'''
-assert _p_init_anchor in source, (
-    "P initialization anchor not found in evaluate.py source. "
-    "Upstream code has changed from pinned commit b84624f."
-)
-_p_init_patched = '''        elif hparams.model_name in ["EleutherAI_gpt-j-6B","Llama3-8B","phi-1.5"]:
-            cache_c = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
-            if alg_name == "AlphaEdit":
-                P = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
-        else:
+if _p_init_anchor not in source:
+    # Fallback: try the pre-patch version (without Qwen2.5-7B)
+    _p_init_anchor_old = _p_init_anchor.replace(',"Qwen2.5-7B"', '')
+    assert _p_init_anchor_old in source, (
+        "P initialization anchor not found in evaluate.py source. "
+        "Upstream code has changed from pinned commit b84624f."
+    )
+    _p_init_anchor = _p_init_anchor_old
+_p_init_patched = _p_init_anchor.replace(
+    '        del W_out',
+    '''        else:
             # Fallback: infer dimensions from W_out (handles any model not in whitelist)
             cache_c = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
             if alg_name == "AlphaEdit":
                 P = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
             print(f"  [CHECKPOINT] WARNING: model_name '{{hparams.model_name}}' not in upstream whitelist, using fallback P init (dim={{W_out.shape[1]}})")
         del W_out'''
+)
 source = source.replace(_p_init_anchor, _p_init_patched, 1)
 
 # 5c. Inject eval results pre-sync: copy partial results from S3/previous run into the new run_dir
@@ -785,24 +871,24 @@ assert "CHECKPOINT: fast mode" in source, "Fast eval injection failed"
 assert "CHECKPOINT: skip cases already evaluated" in source, "Eval resume injection failed"
 
 # 12. Execute
-exec(compile(source, "experiments/evaluate.py", "exec"),
-     {{
-         "__name__": "__main__",
-         "__file__": "experiments/evaluate.py",
-         "_ckpt_start_batch": _ckpt_start_batch,
-         "_ckpt_save_interval": _ckpt_save_interval,
-         "_ckpt_dir": _ckpt_dir,
-         "_ckpt_alg_name": _ckpt_alg_name,
-         "_ckpt_seed": _ckpt_seed,
-         "_ckpt_num_edits": _ckpt_num_edits,
-         "_ckpt_fast_mode": _ckpt_fast_mode,
-         "_ckpt_eval_at_checkpoints_only": _ckpt_eval_at_checkpoints_only,
-         "_ckpt_dataset_size_limit": _ckpt_dataset_size_limit,
-         "_ckpt_save": _ckpt_save,
-         "_ckpt_load": _ckpt_load,
-         "_ckpt_should_skip": _ckpt_should_skip,
-         "_ckpt_should_save": _ckpt_should_save,
-     }})
+_exec_ns = {{
+    "__name__": "__main__",
+    "__file__": "experiments/evaluate.py",
+    "_ckpt_start_batch": _ckpt_start_batch,
+    "_ckpt_save_interval": _ckpt_save_interval,
+    "_ckpt_dir": _ckpt_dir,
+    "_ckpt_alg_name": _ckpt_alg_name,
+    "_ckpt_seed": _ckpt_seed,
+    "_ckpt_num_edits": _ckpt_num_edits,
+    "_ckpt_fast_mode": _ckpt_fast_mode,
+    "_ckpt_eval_at_checkpoints_only": _ckpt_eval_at_checkpoints_only,
+    "_ckpt_dataset_size_limit": _ckpt_dataset_size_limit,
+    "_ckpt_save": _ckpt_save,
+    "_ckpt_load": _ckpt_load,
+    "_ckpt_should_skip": _ckpt_should_skip,
+    "_ckpt_should_save": _ckpt_should_save,
+}}
+{c0_exec_ns_injection}exec(compile(source, "experiments/evaluate.py", "exec"), _exec_ns)
 
 # 13. Final summary
 print(f"\\n=== Checkpoint runner complete ===")
@@ -834,19 +920,31 @@ def run(args: argparse.Namespace) -> None:
 
     # Validate anchors exist in the source before launching
     eval_source = (alphaedit_root / "experiments" / "evaluate.py").read_text()
-    for anchor_name, anchor_str in [
+    anchors_to_check = [
         ("LOOP_ANCHOR", LOOP_ANCHOR),
         ("PRE_EDIT_ANCHOR", PRE_EDIT_ANCHOR),
         ("POST_EDIT_ANCHOR", POST_EDIT_ANCHOR),
         ("CUDA_PATCH_TARGET", CUDA_PATCH_TARGET),
-    ]:
+    ]
+    if args.inject_c0:
+        anchors_to_check.append(("ALPHAEDIT_IMPORT_ANCHOR", ALPHAEDIT_IMPORT_ANCHOR))
+        ae_source = (alphaedit_root / "AlphaEdit" / "AlphaEdit_main.py").read_text()
+        if ALPHAEDIT_SOLVE_ANCHOR not in ae_source:
+            print("ERROR: ALPHAEDIT_SOLVE_ANCHOR not found in AlphaEdit_main.py.")
+            print("  The upstream code has diverged from pinned commit b84624f.")
+            sys.exit(1)
+    for anchor_name, anchor_str in anchors_to_check:
         if anchor_str not in eval_source:
             print(f"ERROR: {anchor_name} not found in evaluate.py.")
             print("  The upstream code has diverged from pinned commit b84624f.")
             sys.exit(1)
 
     # Resolve checkpoint directory
-    ckpt_dir = resolve_checkpoint_dir(args.checkpoint_dir, args.alg_name, args.seed, args.order_id, model_name=args.model_name)
+    # When inject_c0 is active, use a variant name for directory isolation
+    ckpt_alg_name = args.alg_name
+    if args.inject_c0:
+        ckpt_alg_name = f"{args.alg_name}-C0-{args.c0_weight}"
+    ckpt_dir = resolve_checkpoint_dir(args.checkpoint_dir, ckpt_alg_name, args.seed, args.order_id, model_name=args.model_name)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     # Resolve results directory (where evaluate.py writes per-case JSONs)
@@ -877,6 +975,9 @@ def run(args: argparse.Namespace) -> None:
     if args.alg_name.startswith("MEMIT-Seq"):
         eval_alg_name = "MEMIT"
         dir_name_override = args.alg_name
+    elif args.inject_c0:
+        # AlphaEdit+C₀: keep AlphaEdit as eval algorithm (for ALG_DICT), use variant for dir_name
+        dir_name_override = ckpt_alg_name
 
     script = build_checkpoint_script(
         seed=args.seed,
@@ -898,6 +999,8 @@ def run(args: argparse.Namespace) -> None:
         results_dir=str(results_dir_override) if results_dir_override else None,
         result_root=str(get_result_root()),
         dir_name=dir_name_override,
+        inject_c0=args.inject_c0,
+        c0_weight=args.c0_weight,
     )
 
     # Environment
@@ -918,6 +1021,9 @@ def run(args: argparse.Namespace) -> None:
     print(f"{'=' * 70}")
     print("Checkpoint-Based Failure Curve Runner")
     print(f"  Algorithm:       {args.alg_name}")
+    if args.inject_c0:
+        print(f"  C₀ injection:    ENABLED (α={args.c0_weight})")
+        print(f"  Variant name:    {ckpt_alg_name}")
     print(f"  Dataset:         {args.ds_name} (limit={args.dataset_size_limit})")
     print(f"  Num edits/batch: {args.num_edits}")
     print(f"  Total batches:   {total_batches}")
@@ -979,6 +1085,8 @@ def run(args: argparse.Namespace) -> None:
             "fast_checkpoint": args.fast_checkpoint,
             "eval_at_checkpoints_only": args.eval_at_checkpoints_only,
             "downstream_eval_steps": args.downstream_eval_steps,
+            "inject_c0": args.inject_c0,
+            "c0_weight": args.c0_weight if args.inject_c0 else None,
         },
     }
 
@@ -1045,6 +1153,13 @@ def main():
     parser.add_argument("--results_dir", default=None,
                         help="Override RESULTS_DIR so evaluate.py writes directly to project results/ "
                              "(default: auto-construct from experiment name, seed, edits, order)")
+
+    # C₀ injection (AlphaEdit+C₀ attribution experiment)
+    parser.add_argument("--inject_c0", action="store_true",
+                        help="Inject covariance regularizer (α·C₀) into AlphaEdit's LHS. "
+                             "For the 2×2 attribution experiment: tests P's effect in C₀'s presence.")
+    parser.add_argument("--c0_weight", type=float, default=15000.0,
+                        help="Weight for injected C₀ term (α in α·C₀). Default 15000 matches MEMIT's mom2_update_weight.")
 
     # Retention probes (for mechanism figure)
     parser.add_argument("--retention_probe_batches", type=str, default=None,

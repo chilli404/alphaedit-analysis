@@ -104,6 +104,32 @@ def apply_p_cache_patch(source: str) -> str:
     return source.replace(P_COMPUTE_ANCHOR, P_COMPUTE_CACHED, 1)
 
 
+MODEL_LOAD_ANCHOR = '        model = AutoModelForCausalLM.from_pretrained(model_name).cuda()'
+MODEL_LOAD_FP32 = (
+    '        _load_dtype = torch.float32 if "qwen" in model_name.lower() else None\n'
+    '        model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=_load_dtype).cuda()\n'
+    '        if _load_dtype: print(f"  [PATCH] Loaded {model_name} in {_load_dtype} (compute_z stability)")'
+)
+
+
+def apply_model_dtype_patch(source: str) -> str:
+    """
+    Patch evaluate.py to load Qwen models in float32 instead of default bf16.
+
+    Qwen2.5-7B's config specifies torch_dtype=bfloat16, but compute_z's
+    v-optimization (Adam lr=0.5, 25 steps) produces NaN when the forward
+    pass runs in bf16 due to imprecise gradients through log_softmax.
+    Loading in float32 fixes this; L40s (48GB) has headroom.
+
+    Only affects Qwen models — Llama-3 works fine in bf16.
+
+    Idempotent — returns source unchanged if already patched.
+    """
+    if MODEL_LOAD_ANCHOR not in source:
+        return source
+    return source.replace(MODEL_LOAD_ANCHOR, MODEL_LOAD_FP32, 1)
+
+
 def patch_evaluate_file(alphaedit_root: Path) -> None:
     """
     Apply runtime patches to vendor/AlphaEdit/experiments/evaluate.py on disk.
@@ -111,6 +137,7 @@ def patch_evaluate_file(alphaedit_root: Path) -> None:
     Idempotent — safe to call multiple times. Applies:
       - P-cache: loads null_space_project.pt if present instead of recomputing SVD
       - Model-list: adds Qwen2.5-7B to the cache_c/P shape initialization list
+      - Model-dtype: loads Qwen in float32 for compute_z stability
       - Layer stats: fixes deprecated Wikipedia dataset config (20200501.en → 20220301.en)
 
     Args:
@@ -120,9 +147,10 @@ def patch_evaluate_file(alphaedit_root: Path) -> None:
     source = eval_path.read_text()
     patched = apply_p_cache_patch(source)
     patched = apply_model_list_patch(patched)
+    patched = apply_model_dtype_patch(patched)
     if patched != source:
         eval_path.write_text(patched)
-        print("  Applied P-cache + model-list patches to evaluate.py")
+        print("  Applied P-cache + model-list + dtype patches to evaluate.py")
     # Also patch layer_stats.py (called by AlphaEdit_main.py for on-the-fly stats)
     patch_layer_stats_file(alphaedit_root)
 

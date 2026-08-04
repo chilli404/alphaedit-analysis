@@ -25,6 +25,8 @@ set -euo pipefail
 #   CACHE_STRATEGY            - For MEMIT-Seq: recent|all (default: from ALG name)
 #   CACHE_MAX                 - For MEMIT-Seq: max batches in cache (default: from ALG name)
 #   MOM2_OVERRIDE             - For MEMIT-Seq: override mom2_update_weight (set to 0 to ablate C₀)
+#   INJECT_C0                 - For AlphaEdit: if "true", inject α·C₀ into LHS (AlphaEdit+C₀ experiment)
+#   C0_WEIGHT                 - For AlphaEdit+C₀: weight α (default: 15000, matches MEMIT)
 #   DEBUG_BATCH               - For MEMIT-Seq: run same-state diagnostic at this batch
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -81,6 +83,15 @@ run_checkpointed() {
         EVAL_FLAG="--fast_checkpoint"
     fi
 
+    # Build C₀ injection args if set
+    local C0_ARGS=""
+    if [[ "${INJECT_C0:-false}" == "true" ]]; then
+        C0_ARGS="--inject_c0"
+        if [[ -n "${C0_WEIGHT:-}" ]]; then
+            C0_ARGS="$C0_ARGS --c0_weight $C0_WEIGHT"
+        fi
+    fi
+
     uv run python src/runners/checkpoint_runner.py \
         --seed "$seed" \
         --cuda_device "$CUDA_DEVICE" \
@@ -94,6 +105,7 @@ run_checkpointed() {
         --downstream_eval_steps 10 \
         --conserve_memory \
         $EVAL_FLAG \
+        $C0_ARGS \
         $CKPT_ARGS
 
     echo "--- $alg_name at $target edits: DONE ---"
