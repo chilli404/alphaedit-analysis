@@ -106,10 +106,19 @@ model = AutoModelForCausalLM.from_pretrained(
 )
 model.eval()
 
-# Load dataset (first 100 edits)
+# Load dataset (first 100 edits) — transform to algorithm format
 ds = MultiCounterFactDataset("data", tok=tok, size=100)
-requests = [ds[i] for i in range(100)]
+# evaluate.py flattens: {"case_id": ..., **requested_rewrite} for each record
+requests = []
+for record in ds:
+    rewrites = record["requested_rewrite"]
+    if not isinstance(rewrites, list):
+        rewrites = [rewrites]
+    for rw in rewrites:
+        requests.append({"case_id": record["case_id"], **rw})
+requests = requests[:100]  # cap at 100
 print(f"  Loaded {len(requests)} edit requests")
+print(f"  Sample: [{requests[0]['prompt']}] -> [{requests[0]['target_new']['str']}]")
 
 # Get context templates
 context_templates = get_context_templates(model, tok)
