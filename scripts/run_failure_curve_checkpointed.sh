@@ -24,6 +24,7 @@ set -euo pipefail
 #   FAST_CHECKPOINT           - If "true", evaluate only the edited batch
 #   CACHE_STRATEGY            - For MEMIT-Seq: recent|all (default: from ALG name)
 #   CACHE_MAX                 - For MEMIT-Seq: max batches in cache (default: from ALG name)
+#   MOM2_OVERRIDE             - For MEMIT-Seq: override mom2_update_weight (set to 0 to ablate C₀)
 #   DEBUG_BATCH               - For MEMIT-Seq: run same-state diagnostic at this batch
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -142,6 +143,12 @@ run_memit_seq() {
         DEBUG_ARG="--debug_freeze_batch $DEBUG_BATCH"
     fi
 
+    # Build mom2 override arg if set
+    local MOM2_ARG=""
+    if [[ -n "${MOM2_OVERRIDE:-}" ]]; then
+        MOM2_ARG="--mom2_override $MOM2_OVERRIDE"
+    fi
+
     uv run python src/runners/memit_sequential_runner.py \
         --seed "$seed" \
         --cuda_device "$CUDA_DEVICE" \
@@ -159,6 +166,7 @@ run_memit_seq() {
         --save_interval "$SAVE_INTERVAL" \
         $EVAL_FLAG \
         $DEBUG_ARG \
+        $MOM2_ARG \
         $CKPT_ARGS
 
     echo "--- $alg_name at $target edits: DONE ---"

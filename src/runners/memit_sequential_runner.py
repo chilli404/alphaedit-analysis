@@ -78,19 +78,20 @@ def _model_tag(model_name: str | None) -> str:
     return short
 
 
-def resolve_checkpoint_dir(explicit_dir: str | None, seed: int, lambda_prev: float, lambda_delta: float, cache_max: int | None = None, ordering: str | None = None, model_name: str | None = None) -> Path:
+def resolve_checkpoint_dir(explicit_dir: str | None, seed: int, lambda_prev: float, lambda_delta: float, cache_max: int | None = None, ordering: str | None = None, model_name: str | None = None, mom2_override: float | None = None) -> Path:
     """Resolve checkpoint directory for MEMIT+SeqReg.
 
     Convention:
-        Standard:         {CHECKPOINT_ROOT}/failure_curve/{model_tag}/MEMIT-Seq-lp{lp}-ld{ld}-cache{cm}/seed{N}/
-        Matched ordering: {CHECKPOINT_ROOT}/matched_ordering/{model_tag}/MEMIT-Seq-lp{lp}-ld{ld}-cache{cm}/{ordering}/seed{N}/
+        Standard:         {CHECKPOINT_ROOT}/failure_curve/{model_tag}/MEMIT-Seq-lp{lp}-ld{ld}-cache{cm}[-a{α}]/seed{N}/
+        Matched ordering: {CHECKPOINT_ROOT}/matched_ordering/{model_tag}/MEMIT-Seq-lp{lp}-ld{ld}-cache{cm}[-a{α}]/{ordering}/seed{N}/
     Non-default models get a model_tag subdirectory; Llama (default) has none for backwards compat.
     """
     if explicit_dir:
         return Path(explicit_dir)
 
     cache_max_str = str(cache_max) if cache_max is not None else "0"
-    variant_name = f"MEMIT-Seq-lp{lambda_prev}-ld{lambda_delta}-cache{cache_max_str}"
+    alpha_str = f"-a{mom2_override}" if mom2_override is not None else ""
+    variant_name = f"MEMIT-Seq-lp{lambda_prev}-ld{lambda_delta}-cache{cache_max_str}{alpha_str}"
     tag = _model_tag(model_name)
 
     if ordering:
@@ -169,6 +170,7 @@ def build_sequential_script(
     dataset_override: str | None = None,
     eval_results_dir: str = "",
     variant_name: str = "",
+    mom2_override: float | None = None,
 ) -> str:
     """
     Build inline Python script for MEMIT+SeqReg.
@@ -202,7 +204,8 @@ def build_sequential_script(
             _kpkp_norm = torch.linalg.norm(_kpkp_mat, ord='fro').item()
 
         # Base LHS (before augmentation)
-        _lhs_base = hparams.mom2_update_weight * cov.double() + layer_ks @ layer_ks.T
+        _mom2_w = _memit_mom2_override if _memit_mom2_override is not None else hparams.mom2_update_weight
+        _lhs_base = _mom2_w * cov.double() + layer_ks @ layer_ks.T
         _base_lhs_norm = torch.linalg.norm(_lhs_base, ord='fro').item()
 
         # Augmented LHS
@@ -217,6 +220,7 @@ def build_sequential_script(
             "base_lhs_norm": _base_lhs_norm,
             "kpkp_norm": _kpkp_norm,
             "identity_dim": _lhs.shape[0],
+            "mom2_weight_used": _mom2_w,
         }
 
         adj_k = torch.linalg.solve(_lhs, layer_ks)
@@ -530,6 +534,7 @@ sys.argv = {argv_str}
 # 3. MEMIT+SeqReg parameters (shared state)
 _memit_lambda_prev = {lambda_prev}
 _memit_lambda_delta = {lambda_delta}
+_memit_mom2_override = {repr(mom2_override)}
 _memit_prev_cache = {{}}
 _memit_cache_max = {cache_max_repr}
 _memit_cache_strategy = "{cache_strategy}"
@@ -578,6 +583,7 @@ def _ckpt_save(cnt, model, hparams):
         "batch_idx_counter": _memit_batch_idx[0],
         "lambda_prev": _memit_lambda_prev,
         "lambda_delta": _memit_lambda_delta,
+        "mom2_override": _memit_mom2_override,
         "cache_strategy": _memit_cache_strategy,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
     }}
@@ -684,6 +690,7 @@ _memit_ns = {{
     "__file__": "memit/memit_main.py",
     "_memit_lambda_prev": _memit_lambda_prev,
     "_memit_lambda_delta": _memit_lambda_delta,
+    "_memit_mom2_override": _memit_mom2_override,
     "_memit_prev_cache": _memit_prev_cache,
     "_memit_cache_max": _memit_cache_max,
     "_memit_cache_strategy": _memit_cache_strategy,
@@ -696,6 +703,7 @@ _patched_get_context_templates = _memit_ns["get_context_templates"]
 
 print("[SeqReg] memit_main.py patched successfully")
 print(f"  lambda_prev={{_memit_lambda_prev}}, lambda_delta={{_memit_lambda_delta}}")
+print(f"  mom2_override={{_memit_mom2_override}} (None=use hparams, 0=ablate C0)")
 print(f"  cache_strategy={{_memit_cache_strategy}}, cache_max={{_memit_cache_max}}")
 
 # 6. Read and patch evaluate.py
@@ -948,7 +956,9 @@ def run(args: argparse.Namespace) -> None:
     # evaluate.py appends {dir_name}/run_000/ to RESULTS_DIR, so we set results_dir
     # to the level ABOVE where variant_name gets appended.
     cache_max_str = str(cache_max) if cache_max is not None else "0"
-    variant_name = f"MEMIT-Seq-lp{args.lambda_prev}-ld{args.lambda_delta}-cache{cache_max_str}"
+    mom2_override = args.mom2_override
+    alpha_str = f"-a{mom2_override}" if mom2_override is not None else ""
+    variant_name = f"MEMIT-Seq-lp{args.lambda_prev}-ld{args.lambda_delta}-cache{cache_max_str}{alpha_str}"
     ordering = getattr(args, 'ordering', None)
     if ordering:
         # Matched ordering: evaluate.py writes to {results_dir}/{variant}/run_000/
@@ -972,7 +982,7 @@ def run(args: argparse.Namespace) -> None:
     # Resolve checkpoint directory and auto-detect resume point
     ordering = getattr(args, 'ordering', None)
     ckpt_dir = resolve_checkpoint_dir(
-        args.checkpoint_dir, args.seed, args.lambda_prev, args.lambda_delta, cache_max, ordering=ordering, model_name=args.model_name
+        args.checkpoint_dir, args.seed, args.lambda_prev, args.lambda_delta, cache_max, ordering=ordering, model_name=args.model_name, mom2_override=mom2_override
     )
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1018,6 +1028,7 @@ def run(args: argparse.Namespace) -> None:
         dataset_override=args.dataset_override,
         eval_results_dir=str(results_dir),
         variant_name=variant_name,
+        mom2_override=mom2_override,
     )
 
     # Environment
@@ -1032,6 +1043,7 @@ def run(args: argparse.Namespace) -> None:
     print(f"  Seed:           {args.seed}")
     print(f"  λ_prev:         {args.lambda_prev}")
     print(f"  λ_delta:        {args.lambda_delta}")
+    print(f"  α (mom2):       {mom2_override if mom2_override is not None else 'hparams default (15000)'}")
     print(f"  Cache strategy: {args.cache_strategy}")
     print(f"  Cache max:      {cache_max}")
     print(f"  Dataset:        {args.ds_name} (limit={args.dataset_size_limit})")
@@ -1064,6 +1076,7 @@ def run(args: argparse.Namespace) -> None:
         "order_id": args.order_id,
         "lambda_prev": args.lambda_prev,
         "lambda_delta": args.lambda_delta,
+        "mom2_override": mom2_override,
         "cache_strategy": args.cache_strategy,
         "cache_max": cache_max,
         "model_name": args.model_name,
@@ -1123,6 +1136,9 @@ def main():
                         help="Previous-key protection: λ_prev ||ΔK_prev||² (AlphaEdit Eq. 12 uses λ=1)")
     parser.add_argument("--lambda_delta", type=float, default=0.0,
                         help="Update size minimization: λ_delta ||Δ||² (AlphaEdit Eq. 12 uses λ=1)")
+    parser.add_argument("--mom2_override", type=float, default=None,
+                        help="Override mom2_update_weight (α·C₀ scaling). Set to 0 to ablate the "
+                             "covariance regularizer for C₀ attribution experiments.")
     parser.add_argument("--cache_strategy", default="all", choices=["recent", "all"],
                         help="Cache management strategy (default: all)")
     parser.add_argument("--cache_max", default="none",
