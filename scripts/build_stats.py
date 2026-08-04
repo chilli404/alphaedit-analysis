@@ -236,13 +236,21 @@ def load_hparams(model_spec, alg="AlphaEdit"):
     )
 
 
-def compute_stats_for_layer(model, tok, layer_name, stats_dir, hparams, sample_size=100000):
-    """Compute covariance stats for a single layer using the vendor layer_stats code."""
+def compute_stats_for_layer(model, tok, layer_name, stats_dir, hparams, sample_size=100000,
+                            model_name=None):
+    """Compute covariance stats for a single layer using the vendor layer_stats code.
+
+    Args:
+        model_name: Override for the model directory name in stats path.
+            If None, layer_stats derives it from model.config._name_or_path
+            (which may have different case than our stats_dir_name convention).
+    """
     from rome.layer_stats import layer_stats
 
     print(f"\n{'='*60}")
     print(f"Computing stats for: {layer_name}")
     print(f"  Output dir: {stats_dir}")
+    print(f"  Model name: {model_name or '(auto from _name_or_path)'}")
     print(f"  Samples: {sample_size}")
     print(f"{'='*60}")
 
@@ -255,6 +263,7 @@ def compute_stats_for_layer(model, tok, layer_name, stats_dir, hparams, sample_s
         stats_dir,
         ds_name=hparams.mom2_dataset,
         to_collect=["mom2"],
+        model_name=model_name,
         sample_size=sample_size,
         precision=hparams.mom2_dtype,
         batch_tokens=None,
@@ -269,25 +278,29 @@ def compute_stats_for_layer(model, tok, layer_name, stats_dir, hparams, sample_s
 def compute_projector(cov_matrix, threshold=0.02):
     """Compute null-space projector from covariance via SVD.
 
+    Uses GPU if available for significantly faster SVD on large matrices.
+
     Returns:
-        P: The null-space projector matrix (d x d)
+        P: The null-space projector matrix (d x d), on CPU
         info: Dict with retained_dims, total_dims, fraction
     """
-    U, S, _ = torch.linalg.svd(cov_matrix.float(), full_matrices=False)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    cov_gpu = cov_matrix.float().to(device)
+    U, S, _ = torch.linalg.svd(cov_gpu, full_matrices=False)
     small_singular_indices = (S < threshold).nonzero(as_tuple=True)[0]
     total_dims = S.shape[0]
     retained_dims = small_singular_indices.shape[0]
 
-    P = U[:, small_singular_indices] @ U[:, small_singular_indices].T
+    P = (U[:, small_singular_indices] @ U[:, small_singular_indices].T).cpu()
 
     info = {
-        "total_dims": total_dims,
-        "retained_dims": retained_dims,
+        "total_dims": int(total_dims),
+        "retained_dims": int(retained_dims),
         "fraction": retained_dims / total_dims,
         "threshold": threshold,
         "min_singular": S.min().item(),
         "max_singular": S.max().item(),
-        "n_above_threshold": (S >= threshold).sum().item(),
+        "n_above_threshold": int((S >= threshold).sum().item()),
     }
 
     return P, info
@@ -466,6 +479,7 @@ def main():
                             "mom2_dtype": hparams_dict.get("mom2_dtype", "float32"),
                         })(),
                         sample_size=args.sample_size,
+                        model_name=spec.stats_dir_name,
                     )
 
                     # Record in manifest
