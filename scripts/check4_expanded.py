@@ -415,9 +415,21 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 # Vendor imports
 from memit import MEMITHyperParams
 from memit.compute_ks import compute_ks
-from memit.memit_main import get_context_templates, get_cov
+from memit.memit_main import get_context_templates
 from util.globals import *
 from dsets import MultiCounterFactDataset
+
+def load_cov_direct(layer_name):
+    """Load covariance directly from NPZ, bypassing layer_stats recomputation."""
+    stats_path = Path("data/stats/Qwen2.5-7B-Instruct/wikipedia_stats") / f"{layer_name}_float32_mom2_100000.npz"
+    if not stats_path.exists():
+        raise FileNotFoundError(f"Stats not found: {stats_path}")
+    data = np.load(str(stats_path), allow_pickle=True)
+    raw_mom2 = torch.from_numpy(data["mom2.mom2"])
+    count = int(data["mom2.count"])
+    cov = (raw_mom2 / count).float().cuda()
+    print(f"    Loaded C0 for {layer_name}: shape={cov.shape}, count={count}")
+    return cov
 
 # Load hparams
 hparams = MEMITHyperParams.from_json(HPARAMS_DIR / "MEMIT" / "Qwen2.5-7B.json")
@@ -471,9 +483,8 @@ for i, layer in enumerate(hparams.layers):
     resid = torch.randn(d_out, B, device="cuda")
     resid = resid * (25.0 * np.sqrt(B) / torch.linalg.norm(resid).item())
 
-    # Load C0
-    cov = get_cov(model, tok, hparams.rewrite_module_tmp.format(layer),
-                  hparams.mom2_dataset, hparams.mom2_n_samples, hparams.mom2_dtype)
+    # Load C0 directly from NPZ (bypasses layer_stats recomputation)
+    cov = load_cov_direct(hparams.rewrite_module_tmp.format(layer))
 
     K = layer_ks.float()
     resid_f = resid.float()
