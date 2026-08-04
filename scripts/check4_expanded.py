@@ -238,7 +238,7 @@ def run_config(config, num_batches=2):
         "A": "AlphaEdit + abs-tau P (official, float32)",
         "B": "AlphaEdit + rel-tau P (near-identity, float32)",
         "C": "AlphaEdit + rel-tau P + alpha*C0 (float32)",
-        "D": "AlphaEdit + rel-tau P + alpha*C0 (FLOAT64 solve)",
+        "D": "AlphaEdit + rel-tau P + alpha*C0 (float32, multi-batch stability test)",
         "E": "MEMIT-Seq (float64 solve, has alpha*C0)",
     }
 
@@ -292,23 +292,11 @@ def run_config(config, num_batches=2):
 
     # Build the instrumented script
     use_c0 = config in ["C", "D"]
-    use_f64 = config == "D"
+    use_f64 = False  # FP64 impractical on L40s for 18944x18944 solve (~40min each)
 
     # Build the solve and instrumentation patches
-    if use_f64:
-        solve_patch = textwrap.dedent("""\
-        # === FLOAT64 SOLVE (injected) ===
-        _lhs = P[i,:,:].cuda().double() @ (layer_ks.double() @ layer_ks.double().T + cache_c[i,:,:].cuda().double())
-        _lhs = _lhs + hparams.L2 * torch.eye(layer_ks.shape[0], dtype=torch.double, device="cuda")
-        _lhs = _lhs + hparams.mom2_update_weight * get_cov(model, tok, hparams.rewrite_module_tmp.format(layer), hparams.mom2_dataset, hparams.mom2_n_samples, hparams.mom2_dtype).double()
-        _rhs = P[i,:,:].cuda().double() @ layer_ks.double() @ resid.double().T
-        upd_matrix = torch.linalg.solve(_lhs, _rhs).float()
-        # === END FLOAT64 SOLVE ===
-""")
-    elif use_c0:
-        solve_patch = None  # Will use string replacement on original solve
-    else:
-        solve_patch = None
+    # Note: FP64 solve removed — impractical on L40s for 18944×18944 (~40 min each)
+    # Config D is now a multi-batch stability test of C (same f32 solve, more batches)
 
     forensics_code = textwrap.dedent("""\
         # === MAGNITUDE FORENSICS (injected) ===
@@ -364,40 +352,7 @@ ae_source = ae_path.read_text()
 ae_original = ae_source
 """)
 
-    if use_f64:
-        # Replace the entire solve with float64 version
-        inner_script += textwrap.dedent(f"""\
-# Replace solve with float64 version
-original_solve_line = 'upd_matrix = torch.linalg.solve('
-solve_end = 'upd_matrix = upd_matrix_match_shape(upd_matrix, weights[weight_name].shape)'
-# Find the solve block and replace it
-import re
-# The solve spans lines 130-132 in the original
-_old_solve = '''        upd_matrix = torch.linalg.solve(
-            P[i,:,:].cuda() @ (layer_ks @ layer_ks.T + cache_c[i,:,:].cuda()) + hparams.L2*torch.eye(layer_ks.shape[0], dtype=torch.float,device="cuda"), P[i,:,:].cuda() @ layer_ks @ resid.T
-            )'''
-_new_solve = '''        # === FLOAT64 SOLVE (injected) ===
-        _lhs = P[i,:,:].cuda().double() @ (layer_ks.double() @ layer_ks.double().T + cache_c[i,:,:].cuda().double())
-        _lhs = _lhs + hparams.L2 * torch.eye(layer_ks.shape[0], dtype=torch.double, device="cuda")
-        _lhs = _lhs + hparams.mom2_update_weight * get_cov(model, tok, hparams.rewrite_module_tmp.format(layer), hparams.mom2_dataset, hparams.mom2_n_samples, hparams.mom2_dtype).double()
-        _rhs = P[i,:,:].cuda().double() @ layer_ks.double() @ resid.double().T
-        upd_matrix = torch.linalg.solve(_lhs, _rhs).float()
-        del _lhs, _rhs
-        # === END FLOAT64 SOLVE ==='''
-if _old_solve in ae_source:
-    ae_source = ae_source.replace(_old_solve, _new_solve, 1)
-else:
-    print("WARNING: Could not find exact solve pattern for f64 patch")
-    print("  Trying single-line variant...")
-    _old_solve2 = 'P[i,:,:].cuda() @ (layer_ks @ layer_ks.T + cache_c[i,:,:].cuda()) + hparams.L2*torch.eye(layer_ks.shape[0], dtype=torch.float,device="cuda"), P[i,:,:].cuda() @ layer_ks @ resid.T'
-    if _old_solve2 in ae_source:
-        # Replace just the LHS+RHS args within solve()
-        ae_source = ae_source.replace(
-            'upd_matrix = torch.linalg.solve(\\n            ' + _old_solve2 + '\\n            )',
-            _new_solve, 1)
-
-""")
-    elif use_c0:
+    if use_c0:
         inner_script += textwrap.dedent("""\
 # Add alpha*C0 to the solve LHS
 _original_lhs = 'P[i,:,:].cuda() @ (layer_ks @ layer_ks.T + cache_c[i,:,:].cuda()) + hparams.L2*torch.eye(layer_ks.shape[0], dtype=torch.float,device=\"cuda\")'
@@ -440,10 +395,11 @@ finally:
 
 
 def run_parity():
-    """Item 4: Magnitude parity — same batch, MEMIT-Seq vs AlphaEdit(P=I)+C0, both f64."""
+    """Item 4: Magnitude parity — same batch, MEMIT-Seq vs AlphaEdit(P=I)+C0, both float32."""
     print("=" * 72)
     print("CHECK 4.4: MAGNITUDE PARITY")
-    print("  MEMIT-Seq vs AlphaEdit(P=I)+C0, both float64, same 100 edits")
+    print("  MEMIT-Seq vs AlphaEdit(P=I)+C0, both FLOAT32, same 100 edits")
+    print("  (float32 used for both — L40s FP64 too slow for 18944x18944 solve)")
     print("=" * 72)
     print()
 
@@ -459,9 +415,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 # Vendor imports
 from memit import MEMITHyperParams
 from memit.compute_ks import compute_ks
-from memit.memit_main import get_context_templates, get_cov, compute_z
+from memit.memit_main import get_context_templates, get_cov
 from util.globals import *
-from dsets import MultiCounterFactDataset, AttributeSnippets, get_tfidf_vectorizer
+from dsets import MultiCounterFactDataset
 
 # Load hparams
 hparams = MEMITHyperParams.from_json(HPARAMS_DIR / "MEMIT" / "Qwen2.5-7B.json")
@@ -498,48 +454,60 @@ for layer in hparams.layers:
     print(f"    Layer {layer}: K shape {layer_ks.shape}, ||K||_F={torch.linalg.norm(layer_ks):.4e}")
 
 # Use random residuals (matching real scale)
-# In real runs: ||resid per layer|| ≈ 20-30 for 5-layer spread
 torch.manual_seed(42)
 d_out = model.config.hidden_size  # 3584
 B = 100
 
 print("\n" + "=" * 72)
-print("  PARITY TEST: per-layer ||dW|| comparison (float64)")
+print("  PARITY TEST: per-layer ||dW|| comparison (FLOAT32)")
+print("  Both formulas use same precision — tests structural difference only")
 print("=" * 72)
 
 for i, layer in enumerate(hparams.layers):
     layer_ks = all_keys[layer]
     d_in = layer_ks.shape[0]
 
-    # Random resid scaled to realistic magnitude
-    n_layers_remaining = len(hparams.layers) - i
-    resid = torch.randn(d_out, B, device="cuda") * (25.0 / torch.linalg.norm(torch.randn(d_out, B)))
-    resid = resid * torch.linalg.norm(torch.randn(d_out, B)).item()  # ≈ 25*sqrt(d_out*B)
-    # Normalize to ||resid||_F ≈ 25 * sqrt(B)
+    # Random resid scaled to realistic magnitude (||resid||_F ≈ 250 = 25*sqrt(B))
+    resid = torch.randn(d_out, B, device="cuda")
     resid = resid * (25.0 * np.sqrt(B) / torch.linalg.norm(resid).item())
 
     # Load C0
     cov = get_cov(model, tok, hparams.rewrite_module_tmp.format(layer),
                   hparams.mom2_dataset, hparams.mom2_n_samples, hparams.mom2_dtype)
 
-    K_d = layer_ks.double()
-    resid_d = resid.double()
-    cov_d = cov.double()
-    KKT_d = K_d @ K_d.T
+    K = layer_ks.float()
+    resid_f = resid.float()
+    cov_f = cov.float()
+    KKT = K @ K.T
 
-    # --- MEMIT-Seq solve (float64): adj_k = solve(alpha*C0 + K@K^T, K); dW = resid @ adj_k^T ---
-    lhs_memit = alpha * cov_d + KKT_d
-    adj_k_memit = torch.linalg.solve(lhs_memit, K_d)
-    dW_memit = (resid_d @ adj_k_memit.T).float().cpu()
+    # --- MEMIT solve (float32): adj_k = solve(alpha*C0 + K@K^T, K); dW = resid @ adj_k^T ---
+    lhs_memit = alpha * cov_f + KKT
+    adj_k_memit = torch.linalg.solve(lhs_memit, K)
+    dW_memit = (resid_f @ adj_k_memit.T).cpu()
     cond_memit = torch.linalg.cond(lhs_memit).item()
-    del adj_k_memit, lhs_memit
+    del adj_k_memit
 
-    # --- AlphaEdit(P=I)+C0 solve (float64): dW = solve(K@K^T + L2*I + alpha*C0, K@resid^T)^T ---
-    eye_d = torch.eye(d_in, device="cuda", dtype=torch.double)
-    lhs_ae = KKT_d + L2 * eye_d + alpha * cov_d
-    dW_ae = torch.linalg.solve(lhs_ae, K_d @ resid_d.T).T.float().cpu()
+    # --- AlphaEdit(P=I)+C0 solve (float32): dW = solve(K@K^T + L2*I + alpha*C0, K@resid^T)^T ---
+    eye_f = torch.eye(d_in, device="cuda", dtype=torch.float)
+    lhs_ae = KKT + L2 * eye_f + alpha * cov_f
+    dW_ae = torch.linalg.solve(lhs_ae, K @ resid_f.T).T.cpu()
     cond_ae = torch.linalg.cond(lhs_ae).item()
-    del lhs_ae, eye_d, KKT_d, K_d, resid_d, cov_d
+
+    # --- AlphaEdit(P=I) NO C0 solve (float32): dW = solve(K@K^T + L2*I, K@resid^T)^T ---
+    lhs_noC0 = KKT + L2 * eye_f
+    cond_noC0 = torch.linalg.cond(lhs_noC0).item()
+    try:
+        dW_noC0 = torch.linalg.solve(lhs_noC0, K @ resid_f.T).T.cpu()
+        norm_noC0 = torch.linalg.norm(dW_noC0).item()
+        max_noC0 = dW_noC0.abs().max().item()
+        nan_noC0 = torch.isnan(dW_noC0).any().item()
+        del dW_noC0
+    except Exception as e:
+        norm_noC0 = float('inf')
+        max_noC0 = float('inf')
+        nan_noC0 = True
+
+    del lhs_memit, lhs_ae, lhs_noC0, eye_f, KKT, K, resid_f, cov_f
     torch.cuda.empty_cache()
 
     # --- Report ---
@@ -550,13 +518,12 @@ for i, layer in enumerate(hparams.layers):
     max_ae = dW_ae.abs().max().item()
 
     print(f"\n  Layer {layer}:")
-    print(f"    MEMIT-Seq:         ||dW||_F = {norm_memit:.6e}, max|dW| = {max_memit:.6e}")
-    print(f"    AlphaEdit(P=I)+C0: ||dW||_F = {norm_ae:.6e}, max|dW| = {max_ae:.6e}")
-    print(f"    ||diff|| / ||dW_memit|| = {diff/norm_memit:.6e}")
-    print(f"    ||dW_ae|| / ||dW_memit|| = {norm_ae/norm_memit:.6f}  (ratio)")
-    print(f"    cond(MEMIT LHS): {cond_memit:.4e}")
-    print(f"    cond(AE+C0 LHS): {cond_ae:.4e}")
-    print(f"    L2 contribution to ratio: {(cond_memit/cond_ae):.6f}")
+    print(f"    (a) MEMIT (α*C₀+KKT):        ||dW||_F = {norm_memit:.6e}, max|dW| = {max_memit:.6e}, cond = {cond_memit:.4e}")
+    print(f"    (b) AE(P=I)+C₀ (KKT+L2+αC₀): ||dW||_F = {norm_ae:.6e}, max|dW| = {max_ae:.6e}, cond = {cond_ae:.4e}")
+    print(f"    (c) AE(P=I) NO C₀ (KKT+L2):  ||dW||_F = {norm_noC0:.6e}, max|dW| = {max_noC0:.6e}, cond = {cond_noC0:.4e}, NaN={nan_noC0}")
+    print(f"    ||a-b|| / ||a|| = {diff/norm_memit:.6e}  (formula structure + L2 effect)")
+    print(f"    ||b|| / ||a|| = {norm_ae/norm_memit:.6f}  (should be ≈1.0)")
+    print(f"    ||c|| / ||a|| = {norm_noC0/norm_memit:.4e}  (blowup factor without C₀)")
 
     del dW_memit, dW_ae
 
@@ -565,14 +532,15 @@ print("=" * 72)
 print("INTERPRETATION")
 print("=" * 72)
 print()
-print("  If ||diff||/||dW_memit|| ≈ 0 and ratio ≈ 1.0:")
-print("    → The two formulas produce identical updates (as proved algebraically)")
-print("    → The L2=1 term makes negligible difference")
-print("    → Check 3 batch 2 crash is due to float32 precision, NOT formula structure")
+print("  If ||a-b||/||a|| ≈ 0 and ||b||/||a|| ≈ 1.0:")
+print("    → MEMIT and AlphaEdit(P=I)+C₀ produce IDENTICAL updates")
+print("    → The formulas are algebraically equivalent (LHS symmetric)")
+print("    → L2=1 is negligible relative to α*C₀")
 print()
-print("  If ratio ≈ 1.0 but not exactly:")
-print("    → L2=1 provides marginal additional shrinkage")
-print("    → Still confirms: P (not formula structure) is what bounds Qwen updates")
+print("  ||c||/||a|| is the KEY NUMBER:")
+print("    → Shows how much larger updates are WITHOUT C₀")
+print("    → This is what AlphaEdit's tight P must compensate for")
+print("    → If large: confirms P is doing magnitude bounding")
 print()
 """)
 
