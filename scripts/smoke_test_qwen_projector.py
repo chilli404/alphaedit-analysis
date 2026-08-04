@@ -99,25 +99,18 @@ def main():
     torch.save(P, str(p_path))
     print(f"\nSaved projector to: {p_path} [shape={list(P.shape)}]")
 
-    # Now run a minimal AlphaEdit experiment
+    # Now run a minimal AlphaEdit experiment via seeded_runner (subprocess)
     print(f"\n=== Running {args.num_edits}-edit smoke test ===")
     print(f"  Threshold mode: {args.threshold}")
     print(f"  Batch size: {args.batch_size}")
+    print()
 
-    # Change to vendor directory for relative imports
-    os.chdir(str(VENDOR_DIR))
+    import subprocess
 
-    # Apply source patches
-    from source_patches import patch_evaluate_file, patch_glue_eval_file
-    patch_evaluate_file(VENDOR_DIR)
-    patch_glue_eval_file(VENDOR_DIR)
-
-    # Read and exec evaluate.py
-    eval_source = (VENDOR_DIR / "experiments" / "evaluate.py").read_text()
-
-    # Build minimal argv
-    sys.argv = [
-        "evaluate.py",
+    # seeded_runner.py handles all source patching and proper exec context
+    cmd = [
+        sys.executable, str(PROJECT_DIR / "src" / "runners" / "seeded_runner.py"),
+        "--seed", "42",
         "--alg_name", "AlphaEdit",
         "--model_name", "Qwen/Qwen2.5-7B-Instruct",
         "--hparams_fname", "Qwen2.5-7B.json",
@@ -125,18 +118,22 @@ def main():
         "--dataset_size_limit", str(args.num_edits),
         "--num_edits", str(args.batch_size),
         "--use_cache",
+        "--skip_generation_tests",
     ]
 
-    # Add hparams path
-    hparams_dir = PROJECT_DIR / "configs" / "hparams"
-    os.environ["HPARAMS_DIR"] = str(hparams_dir)
+    env = os.environ.copy()
+    env["HPARAMS_DIR"] = str(PROJECT_DIR / "configs" / "hparams")
+    # Ensure the projector we just saved is found
+    env["PYTHONPATH"] = str(VENDOR_DIR) + ":" + env.get("PYTHONPATH", "")
 
-    print(f"\n  Launching evaluate.py with argv: {sys.argv[1:]}")
-    print(f"  This will load the model and run {args.num_edits // args.batch_size} edit batches.")
+    print(f"  Command: {' '.join(cmd[-10:])}")
+    print(f"  Projector at: {p_path}")
     print()
 
-    # Execute — results will be printed by evaluate.py
-    exec(compile(eval_source, "evaluate.py", "exec"))
+    result = subprocess.run(cmd, env=env, cwd=str(VENDOR_DIR))
+    if result.returncode != 0:
+        print(f"\n  ERROR: Experiment exited with code {result.returncode}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
