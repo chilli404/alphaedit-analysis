@@ -17,8 +17,9 @@ from pathlib import Path
 
 
 def get_project_root() -> Path:
-    """Return the alphaedit_replication/ directory."""
-    return Path(__file__).resolve().parent.parent
+    """Return the project root directory (alphaedit-analysis/)."""
+    # This file is at src/util/setup_hparams.py → 3 levels up to project root
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def get_alphaedit_root() -> Path:
