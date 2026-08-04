@@ -420,7 +420,7 @@ from util.globals import *
 from dsets import MultiCounterFactDataset
 
 def load_cov_direct(layer_name):
-    """Load covariance directly from NPZ, bypassing layer_stats recomputation."""
+    # Load covariance directly from NPZ, bypassing layer_stats recomputation.
     stats_path = Path("data/stats/Qwen2.5-7B-Instruct/wikipedia_stats") / f"{layer_name}_float32_mom2_100000.npz"
     if not stats_path.exists():
         raise FileNotFoundError(f"Stats not found: {stats_path}")
