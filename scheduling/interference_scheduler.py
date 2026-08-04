@@ -30,16 +30,19 @@ def build_ordering(
     batch_size: int = 100,
     seed: int = 42,
     n_clusters: int = 50,
+    kappa_max: float = 40.0,
     verbose: bool = True,
 ) -> list:
     """Build an optimized ordering of N edits.
 
     Args:
-        keys: (N, D) float32 array. Must be L2-normalized.
-        method: Scheduling algorithm — "greedy_minmax", "cluster_topo", or "random".
-        batch_size: Number of edits per batch (affects cluster_topo grouping).
+        keys: (N, D) array. Must be L2-normalized.
+        method: Scheduling algorithm — "greedy_minmax", "greedy_constrained",
+                "cluster_topo", or "random".
+        batch_size: Number of edits per batch.
         seed: Random seed for determinism.
         n_clusters: Number of spherical k-means clusters (cluster_topo only).
+        kappa_max: Per-batch Gram condition number cap (greedy_constrained only).
         verbose: Print progress.
 
     Returns:
@@ -54,6 +57,18 @@ def build_ordering(
         if verbose:
             print(f"  [scheduler] Running greedy_minmax (N={N})...")
         ordering = _greedy_minmax(cos_matrix, seed=seed, verbose=verbose)
+    elif method == "greedy_constrained":
+        if verbose:
+            print(f"  [scheduler] Computing {N}x{N} cosine matrix...")
+        cos_matrix = keys @ keys.T
+        np.fill_diagonal(cos_matrix, -np.inf)
+        if verbose:
+            print(f"  [scheduler] Running greedy_constrained (N={N}, "
+                  f"batch_size={batch_size}, κ_max={kappa_max})...")
+        ordering = _greedy_constrained(
+            cos_matrix, keys, batch_size=batch_size,
+            kappa_max=kappa_max, seed=seed, verbose=verbose,
+        )
     elif method == "cluster_topo":
         if verbose:
             print(f"  [scheduler] Running cluster_topo (N={N}, k={n_clusters})...")
@@ -64,7 +79,7 @@ def build_ordering(
         ordering = _random_shuffle(N, seed=seed)
     else:
         raise ValueError(f"Unknown scheduling method: {method!r}. "
-                         f"Choose from: greedy_minmax, cluster_topo, random")
+                         f"Choose from: greedy_minmax, greedy_constrained, cluster_topo, random")
 
     # Validate output
     assert len(ordering) == N, f"Ordering length {len(ordering)} != N={N}"
@@ -142,6 +157,218 @@ def _greedy_minmax(
         # (removing i_star can only decrease or maintain max, never increase)
         # BUT if argmax_idx[j] != i_star, then m[j] is still correct.
         # This is the key insight of lazy refresh.
+
+    return ordering
+
+
+def _greedy_constrained(
+    cos_matrix: np.ndarray,
+    keys: np.ndarray,
+    batch_size: int = 100,
+    kappa_max: float = 40.0,
+    seed: int = 42,
+    verbose: bool = True,
+) -> list:
+    """Greedy argmin-of-max-future-cosine with per-batch Gram κ constraint.
+
+    Same objective as greedy_minmax (minimize max cosine to remaining unscheduled)
+    but rejects any candidate whose addition would push the current batch's
+    cosine-normalized Gram condition number above kappa_max.
+
+    When all top candidates violate κ, accepts the lowest-exposure candidate
+    regardless (fallback — logged but not fatal).
+
+    Args:
+        cos_matrix: (N, N) pairwise cosine similarity with diagonal = -inf.
+        keys: (N, D) L2-normalized key vectors (for Gram κ computation).
+        batch_size: Edits per batch.
+        kappa_max: Maximum allowed per-batch Gram condition number.
+        seed: For deterministic tie-breaking.
+        verbose: Print progress.
+
+    Returns:
+        Permutation of range(N).
+    """
+    N = cos_matrix.shape[0]
+    rng = np.random.default_rng(seed + 7000)
+
+    # Same lazy-refresh state as greedy_minmax
+    scheduled = np.zeros(N, dtype=bool)
+    m = np.full(N, np.inf, dtype=np.float64)
+    argmax_idx = np.full(N, -1, dtype=np.int64)
+
+    for i in range(N):
+        row = cos_matrix[i].copy()
+        row[i] = -np.inf
+        argmax_idx[i] = row.argmax()
+        m[i] = row[argmax_idx[i]]
+
+    ordering = []
+    n_refreshes = 0
+    n_kappa_rejects = 0
+    n_kappa_fallbacks = 0
+    batch_kappas = []  # final κ of each completed batch
+    MAX_SEARCH = 30  # max candidates to try before fallback
+
+    n_batches = (N + batch_size - 1) // batch_size
+
+    for batch_idx in range(n_batches):
+        batch_keys_list = []  # keys of members added to this batch so far
+        batch_gram = None  # running normalized Gram (updated incrementally)
+
+        actual_batch_size = min(batch_size, N - len(ordering))
+
+        for slot in range(actual_batch_size):
+            # Find the best candidate(s) by exposure
+            m_masked = np.where(scheduled, np.inf, m)
+
+            selected = None
+            n_tried = 0
+
+            # Temporary mask: candidates rejected for this slot (restore after)
+            slot_rejects = []
+
+            while selected is None and n_tried < MAX_SEARCH:
+                i_star = int(m_masked.argmin())
+                if m_masked[i_star] == np.inf:
+                    break  # no more candidates
+
+                # κ check: skip for first few members (κ undefined for < 3)
+                if len(batch_keys_list) >= 3:
+                    # Compute κ with candidate added
+                    cand_key = keys[i_star]
+                    cand_norm = np.linalg.norm(cand_key)
+                    if cand_norm > 1e-8:
+                        cand_normed = cand_key / cand_norm
+                    else:
+                        cand_normed = cand_key
+
+                    # Incremental Gram: add row/column for new member
+                    n_cur = len(batch_keys_list)
+                    new_gram = np.empty((n_cur + 1, n_cur + 1), dtype=np.float64)
+                    new_gram[:n_cur, :n_cur] = batch_gram
+                    # New row/col: cosine of candidate with each existing member
+                    for k_idx in range(n_cur):
+                        existing_normed = batch_keys_list[k_idx]
+                        dot = float(np.dot(existing_normed, cand_normed))
+                        new_gram[n_cur, k_idx] = dot
+                        new_gram[k_idx, n_cur] = dot
+                    new_gram[n_cur, n_cur] = 1.0
+
+                    eigvals = np.linalg.eigvalsh(new_gram)
+                    eigvals_pos = eigvals[eigvals > 1e-10]
+                    if len(eigvals_pos) >= 2:
+                        kappa = float(eigvals_pos[-1] / eigvals_pos[0])
+                    else:
+                        kappa = 1.0
+
+                    if kappa > kappa_max:
+                        # Reject: temporarily mask this candidate for this slot
+                        n_kappa_rejects += 1
+                        n_tried += 1
+                        slot_rejects.append(i_star)
+                        m_masked[i_star] = np.inf
+                        continue
+
+                    # Passes κ — accept and update Gram
+                    batch_gram = new_gram
+                    batch_keys_list.append(cand_normed)
+                    selected = i_star
+                else:
+                    # Not enough members for κ check — accept unconditionally
+                    cand_key = keys[i_star]
+                    cand_norm = np.linalg.norm(cand_key)
+                    cand_normed = cand_key / cand_norm if cand_norm > 1e-8 else cand_key
+                    batch_keys_list.append(cand_normed)
+
+                    # Initialize or grow Gram
+                    n_cur = len(batch_keys_list)
+                    if n_cur == 1:
+                        batch_gram = np.array([[1.0]])
+                    else:
+                        new_gram = np.empty((n_cur, n_cur), dtype=np.float64)
+                        new_gram[:n_cur-1, :n_cur-1] = batch_gram
+                        for k_idx in range(n_cur - 1):
+                            dot = float(np.dot(batch_keys_list[k_idx], cand_normed))
+                            new_gram[n_cur-1, k_idx] = dot
+                            new_gram[k_idx, n_cur-1] = dot
+                        new_gram[n_cur-1, n_cur-1] = 1.0
+                        batch_gram = new_gram
+
+                    selected = i_star
+
+            # Fallback: if MAX_SEARCH exhausted, take the original best
+            if selected is None:
+                # Restore rejected candidates and just take the lowest-exposure one
+                m_masked_restore = np.where(scheduled, np.inf, m)
+                i_star = int(m_masked_restore.argmin())
+                if m_masked_restore[i_star] < np.inf:
+                    selected = i_star
+                    n_kappa_fallbacks += 1
+
+                    # Update Gram anyway (we're over κ, but must track state)
+                    cand_key = keys[selected]
+                    cand_norm = np.linalg.norm(cand_key)
+                    cand_normed = cand_key / cand_norm if cand_norm > 1e-8 else cand_key
+                    n_cur = len(batch_keys_list)
+                    new_gram = np.empty((n_cur + 1, n_cur + 1), dtype=np.float64)
+                    new_gram[:n_cur, :n_cur] = batch_gram
+                    for k_idx in range(n_cur):
+                        dot = float(np.dot(batch_keys_list[k_idx], cand_normed))
+                        new_gram[n_cur, k_idx] = dot
+                        new_gram[k_idx, n_cur] = dot
+                    new_gram[n_cur, n_cur] = 1.0
+                    batch_gram = new_gram
+                    batch_keys_list.append(cand_normed)
+
+            if selected is None:
+                break  # shouldn't happen unless all edits are scheduled
+
+            # Schedule selected
+            ordering.append(int(selected))
+            scheduled[selected] = True
+            m[selected] = np.inf
+
+            # Lazy refresh (same logic as unconstrained)
+            needs_refresh = (~scheduled) & (argmax_idx == selected)
+            refresh_indices = np.where(needs_refresh)[0]
+            n_refreshes += len(refresh_indices)
+
+            for j in refresh_indices:
+                row = cos_matrix[j].copy()
+                row[scheduled] = -np.inf
+                row[j] = -np.inf
+                best = row.argmax()
+                argmax_idx[j] = best
+                m[j] = row[best]
+
+        # Record final batch κ
+        if batch_gram is not None and batch_gram.shape[0] >= 2:
+            eigvals = np.linalg.eigvalsh(batch_gram)
+            eigvals_pos = eigvals[eigvals > 1e-10]
+            if len(eigvals_pos) >= 2:
+                batch_kappas.append(float(eigvals_pos[-1] / eigvals_pos[0]))
+            else:
+                batch_kappas.append(1.0)
+        else:
+            batch_kappas.append(1.0)
+
+        if verbose and (batch_idx + 1) % 10 == 0:
+            recent_kappas = batch_kappas[-10:]
+            print(f"    batch {batch_idx+1}/{n_batches}: "
+                  f"κ_max_recent={max(recent_kappas):.1f}, "
+                  f"rejects={n_kappa_rejects}, fallbacks={n_kappa_fallbacks}")
+
+    if verbose:
+        if batch_kappas:
+            print(f"  [constrained] Done. κ stats: "
+                  f"max={max(batch_kappas):.1f}, "
+                  f"mean={np.mean(batch_kappas):.1f}, "
+                  f"median={np.median(batch_kappas):.1f}")
+            violations = sum(1 for k in batch_kappas if k > kappa_max)
+            print(f"  [constrained] Batches > κ_max: {violations}/{len(batch_kappas)} "
+                  f"({n_kappa_rejects} total candidate rejections, "
+                  f"{n_kappa_fallbacks} fallbacks)")
 
     return ordering
 

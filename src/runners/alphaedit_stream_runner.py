@@ -284,6 +284,11 @@ _cc_batch_records = []
 _cc_cache_metrics = []
 _cc_projection_metrics = []
 
+# Circuit-breaker: track ||dW|| history for spike detection
+_cc_update_norm_history = []
+_CC_CIRCUIT_BREAKER_MULT = 2.0  # flag when norm > mult × trailing median
+_CC_CIRCUIT_BREAKER_WINDOW = 10  # trailing window for median baseline
+
 def _cc_record_batch(cnt, model, hparams, exec_time, record_chunks, cache_c):
     \"\"\"Called after each edit batch. Records mechanism metrics.\"\"\"
     record = {{
@@ -328,6 +333,23 @@ def _cc_record_batch(cnt, model, hparams, exec_time, record_chunks, cache_c):
             record["mechanism"]["aggregate"]["mean_fit_quality_projected"] = round(np.mean(fits_proj), 6)
             record["mechanism"]["aggregate"]["mean_fit_quality_raw"] = round(np.mean(fits_raw), 6)
         record["mechanism"]["projection_layers"] = list(_cc_projection_metrics)
+
+        # Circuit-breaker: flag if ||dW|| exceeds 2× trailing median
+        current_norm = record["mechanism"]["aggregate"]["mean_update_norm"]
+        _cc_update_norm_history.append(current_norm)
+        if len(_cc_update_norm_history) > _CC_CIRCUIT_BREAKER_WINDOW:
+            trailing = _cc_update_norm_history[-_CC_CIRCUIT_BREAKER_WINDOW - 1:-1]
+            trailing_median = float(np.median(trailing))
+            if trailing_median > 0 and current_norm > _CC_CIRCUIT_BREAKER_MULT * trailing_median:
+                record["circuit_breaker"] = {{
+                    "flagged": True,
+                    "current_norm": current_norm,
+                    "trailing_median": trailing_median,
+                    "ratio": round(current_norm / trailing_median, 2),
+                }}
+                print(f"  [CB] ⚠ CIRCUIT BREAKER: batch {{cnt}} ||dW||={{current_norm:.4f}} > "
+                      f"{{_CC_CIRCUIT_BREAKER_MULT}}× median={{trailing_median:.4f}} "
+                      f"(ratio={{current_norm/trailing_median:.1f}}×)")
 
     # Evaluation placeholder (filled by milestone eval if applicable)
     record["evaluation"] = {{

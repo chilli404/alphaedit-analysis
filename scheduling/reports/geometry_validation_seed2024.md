@@ -1,40 +1,40 @@
 # Geometric Validation Report — Seed 2024
 
-Generated: 2026-08-03 17:32 UTC
+Generated: 2026-08-04 17:49 UTC
 
 ## Gate Criterion
 
-**PASSED**: GATE PASSED: greedy_minmax frac>0.3 = 0.0000 < key_clustered = 0.4440 (improvement: 0.4440)
+**PASSED**: GATE PASSED: greedy_minmax frac>0.3 = 0.0000 < key_clustered = 0.8060 (improvement: 0.8060)
 
 ## First-1K Cohort Metrics
 
 | Ordering | max_cos_mean | frac > 0.3 | frac > 0.4 | n_high_mean | within_batch_cos |
 |----------|:------------:|:----------:|:----------:|:-----------:|:----------------:|
-| cluster_topo     | 0.3283 | 0.5970 | 0.1450 | 3.9 | 0.1907 |
-| greedy_minmax    | 0.2417 | 0.0000 | 0.0000 | 0.0 | 0.1142 |
-| key_clustered    | 0.2987 | 0.4440 | 0.0580 | 2.3 | 0.1803 |
-| key_dispersed    | 0.4230 | 0.8080 | 0.4350 | 20.7 | 0.1024 |
-| random           | 0.4146 | 0.8080 | 0.4060 | 22.4 | 0.1021 |
+| cluster_topo     | 0.3173 | 0.5410 | 0.1340 | 2.9 | 0.1813 |
+| greedy_minmax    | 0.2421 | 0.0000 | 0.0000 | 0.0 | 0.1139 |
+| key_clustered    | 0.4345 | 0.8060 | 0.4450 | 22.3 | 0.1023 |
+| key_dispersed    | 0.4278 | 0.8110 | 0.4430 | 21.6 | 0.1024 |
+| random           | 0.4217 | 0.8050 | 0.4170 | 21.2 | 0.1023 |
 
 ## First-5K Cohort Metrics
 
 | Ordering | max_cos_mean | frac > 0.3 | frac > 0.4 | n_high_mean |
 |----------|:------------:|:----------:|:----------:|:-----------:|
-| cluster_topo     | 0.2573 | 0.2644 | 0.0366 | 1.6 |
-| greedy_minmax    | 0.2936 | 0.4880 | 0.0000 | 2.7 |
-| key_clustered    | 0.3029 | 0.4594 | 0.0778 | 2.8 |
-| key_dispersed    | 0.3683 | 0.6856 | 0.2862 | 10.5 |
-| random           | 0.3942 | 0.7532 | 0.3562 | 12.2 |
+| cluster_topo     | 0.2437 | 0.1910 | 0.0196 | 0.5 |
+| greedy_minmax    | 0.2944 | 0.4888 | 0.0000 | 2.9 |
+| key_clustered    | 0.4018 | 0.7518 | 0.3674 | 12.1 |
+| key_dispersed    | 0.4019 | 0.7486 | 0.3626 | 12.1 |
+| random           | 0.4026 | 0.7556 | 0.3634 | 12.0 |
 
 ## Age-Binned Max-Cos (first 5 cohorts)
 
 | Ordering | 0-1K | 1K-2K | 2K-3K | 3K-4K | 4K-5K |
 |----------|:----:|:-----:|:-----:|:-----:|:-----:|
-| cluster_topo     | 0.328 | 0.303 | 0.315 | 0.266 | 0.280 |
-| greedy_minmax    | 0.242 | 0.286 | 0.309 | 0.330 | 0.348 |
-| key_clustered    | 0.299 | 0.306 | 0.358 | 0.321 | 0.327 |
-| key_dispersed    | 0.423 | 0.424 | 0.416 | 0.389 | 0.376 |
-| random           | 0.415 | 0.403 | 0.405 | 0.409 | 0.388 |
+| cluster_topo     | 0.317 | 0.316 | 0.295 | 0.264 | 0.245 |
+| greedy_minmax    | 0.242 | 0.287 | 0.310 | 0.330 | 0.351 |
+| key_clustered    | 0.435 | 0.427 | 0.410 | 0.405 | 0.395 |
+| key_dispersed    | 0.428 | 0.418 | 0.421 | 0.411 | 0.401 |
+| random           | 0.422 | 0.427 | 0.419 | 0.415 | 0.400 |
 
 ## Interpretation
 

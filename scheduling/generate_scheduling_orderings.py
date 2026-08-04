@@ -40,7 +40,7 @@ from scheduling.interference_scheduler import build_ordering
 RESULT_ROOT = Path(os.environ.get("RESULT_ROOT", PROJECT_ROOT / "results"))
 ORDERINGS_DIR = RESULT_ROOT / "matched_ordering" / "orderings"
 
-ALL_METHODS = ["greedy_minmax", "cluster_topo", "random"]
+ALL_METHODS = ["greedy_minmax", "greedy_constrained", "cluster_topo", "random"]
 
 
 def load_existing_record_pool(seed: int) -> list:
@@ -174,6 +174,8 @@ def main():
                         help="Output directory (default: results/matched_ordering/orderings/)")
     parser.add_argument("--keys_file", type=str, default=None,
                         help="Explicit path to key vectors .npz (overrides seed-based resolution)")
+    parser.add_argument("--kappa_max", type=float, default=40.0,
+                        help="Per-batch Gram κ cap for greedy_constrained (default: 40)")
     parser.add_argument("--n_clusters", type=int, default=50,
                         help="Number of clusters for cluster_topo method")
     parser.add_argument("--batch_size", type=int, default=100,
@@ -221,6 +223,7 @@ def main():
             batch_size=args.batch_size,
             seed=args.seed,
             n_clusters=args.n_clusters,
+            kappa_max=args.kappa_max,
             verbose=True,
         )
 
