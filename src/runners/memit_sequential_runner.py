@@ -63,22 +63,43 @@ from eval_config import hash_eval_config
 from paths import get_project_root, get_alphaedit_root, get_result_root, get_checkpoint_root
 
 
-def resolve_checkpoint_dir(explicit_dir: str | None, seed: int, lambda_prev: float, lambda_delta: float, cache_max: int | None = None, ordering: str | None = None) -> Path:
+_DEFAULT_MODEL = "meta-llama/Meta-Llama-3-8B-Instruct"
+
+
+def _model_tag(model_name: str | None) -> str:
+    """Return a short model tag for checkpoint subdirectory, empty for default model."""
+    if not model_name or model_name == _DEFAULT_MODEL:
+        return ""
+    short = model_name.rsplit("/", 1)[-1].lower()
+    if "qwen2.5-7b" in short:
+        return "qwen2.5-7b"
+    if "gpt-j" in short:
+        return "gpt-j-6b"
+    return short
+
+
+def resolve_checkpoint_dir(explicit_dir: str | None, seed: int, lambda_prev: float, lambda_delta: float, cache_max: int | None = None, ordering: str | None = None, model_name: str | None = None) -> Path:
     """Resolve checkpoint directory for MEMIT+SeqReg.
 
     Convention:
-        Standard:         {CHECKPOINT_ROOT}/failure_curve/MEMIT-Seq-lp{lp}-ld{ld}-cache{cm}/seed{N}/
-        Matched ordering: {CHECKPOINT_ROOT}/matched_ordering/MEMIT-Seq-lp{lp}-ld{ld}-cache{cm}/{ordering}/seed{N}/
+        Standard:         {CHECKPOINT_ROOT}/failure_curve/{model_tag}/MEMIT-Seq-lp{lp}-ld{ld}-cache{cm}/seed{N}/
+        Matched ordering: {CHECKPOINT_ROOT}/matched_ordering/{model_tag}/MEMIT-Seq-lp{lp}-ld{ld}-cache{cm}/{ordering}/seed{N}/
+    Non-default models get a model_tag subdirectory; Llama (default) has none for backwards compat.
     """
     if explicit_dir:
         return Path(explicit_dir)
 
     cache_max_str = str(cache_max) if cache_max is not None else "0"
     variant_name = f"MEMIT-Seq-lp{lambda_prev}-ld{lambda_delta}-cache{cache_max_str}"
+    tag = _model_tag(model_name)
 
     if ordering:
+        if tag:
+            return get_checkpoint_root() / "matched_ordering" / tag / variant_name / ordering / f"seed{seed}"
         return get_checkpoint_root() / "matched_ordering" / variant_name / ordering / f"seed{seed}"
 
+    if tag:
+        return get_checkpoint_root() / "failure_curve" / tag / variant_name / f"seed{seed}"
     return get_checkpoint_root() / "failure_curve" / variant_name / f"seed{seed}"
 
 
@@ -951,7 +972,7 @@ def run(args: argparse.Namespace) -> None:
     # Resolve checkpoint directory and auto-detect resume point
     ordering = getattr(args, 'ordering', None)
     ckpt_dir = resolve_checkpoint_dir(
-        args.checkpoint_dir, args.seed, args.lambda_prev, args.lambda_delta, cache_max, ordering=ordering
+        args.checkpoint_dir, args.seed, args.lambda_prev, args.lambda_delta, cache_max, ordering=ordering, model_name=args.model_name
     )
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 

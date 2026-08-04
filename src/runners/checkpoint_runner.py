@@ -76,22 +76,43 @@ POST_EDIT_ANCHOR = '        exec_time = time() - start'
 CUDA_PATCH_TARGET = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
 
 
-def resolve_checkpoint_dir(explicit_dir: str | None, alg_name: str, seed: int, order_id: int = 0) -> Path:
+_DEFAULT_MODEL = "meta-llama/Meta-Llama-3-8B-Instruct"
+
+
+def _model_tag(model_name: str | None) -> str:
+    """Return a short model tag for checkpoint subdirectory, empty for default model."""
+    if not model_name or model_name == _DEFAULT_MODEL:
+        return ""
+    short = model_name.rsplit("/", 1)[-1].lower()
+    if "qwen2.5-7b" in short:
+        return "qwen2.5-7b"
+    if "gpt-j" in short:
+        return "gpt-j-6b"
+    return short
+
+
+def resolve_checkpoint_dir(explicit_dir: str | None, alg_name: str, seed: int, order_id: int = 0, model_name: str | None = None) -> Path:
     """Resolve the checkpoint directory in priority order.
 
     If explicit_dir is provided, use it as-is (the caller sets the full path).
     Otherwise, auto-resolve using CHECKPOINT_ROOT env var:
         Ordering runs (order_id > 0):  {CHECKPOINT_ROOT}/comparison_ordered/{alg}/seed{N}/order{M}/
-        Standard failure curve:        {CHECKPOINT_ROOT}/failure_curve/{alg}/seed{N}/
+        Standard failure curve:        {CHECKPOINT_ROOT}/failure_curve/{model_tag}/{alg}/seed{N}/
+    Non-default models get a model_tag subdirectory; Llama (default) has none for backwards compat.
     """
     if explicit_dir:
         return Path(explicit_dir)
 
     base = get_checkpoint_root()
+    tag = _model_tag(model_name)
 
     if order_id > 0:
+        if tag:
+            return base / "comparison_ordered" / tag / alg_name / f"seed{seed}" / f"order{order_id}"
         return base / "comparison_ordered" / alg_name / f"seed{seed}" / f"order{order_id}"
     else:
+        if tag:
+            return base / "failure_curve" / tag / alg_name / f"seed{seed}"
         return base / "failure_curve" / alg_name / f"seed{seed}"
 
 
@@ -825,7 +846,7 @@ def run(args: argparse.Namespace) -> None:
             sys.exit(1)
 
     # Resolve checkpoint directory
-    ckpt_dir = resolve_checkpoint_dir(args.checkpoint_dir, args.alg_name, args.seed, args.order_id)
+    ckpt_dir = resolve_checkpoint_dir(args.checkpoint_dir, args.alg_name, args.seed, args.order_id, model_name=args.model_name)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     # Resolve results directory (where evaluate.py writes per-case JSONs)

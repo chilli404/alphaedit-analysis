@@ -17,12 +17,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Preserve caller's MODEL_NAME before sourcing .env (which may override it)
+_CALLER_MODEL_NAME="${MODEL_NAME:-}"
+
 # Load environment config
 if [[ -f "$PROJECT_DIR/.env" ]]; then
     set -a; source "$PROJECT_DIR/.env"; set +a
 fi
 
-MODEL_NAME="${MODEL_NAME:-Qwen/Qwen2.5-7B-Instruct}"
+# Force Qwen for this script (caller override > hardcoded > .env)
+MODEL_NAME="${_CALLER_MODEL_NAME:-Qwen/Qwen2.5-7B-Instruct}"
 
 SEED="${1:-42}"
 LAMBDA_PREV="${2:-${LAMBDA_PREV:-1}}"

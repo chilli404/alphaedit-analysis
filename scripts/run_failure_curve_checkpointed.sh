@@ -29,13 +29,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Preserve caller's overrides before sourcing .env (which may clobber them)
+_CALLER_MODEL_NAME="${MODEL_NAME:-}"
+_CALLER_HPARAMS="${HPARAMS_FNAME:-}"
+
 # Load environment config
 if [[ -f "$PROJECT_DIR/.env" ]]; then
     set -a; source "$PROJECT_DIR/.env"; set +a
 fi
 
-MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
-HPARAMS_FNAME="${HPARAMS_FNAME:-Llama3-8B.json}"
+# Caller's explicit values take priority over .env defaults
+MODEL_NAME="${_CALLER_MODEL_NAME:-${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}}"
+HPARAMS_FNAME="${_CALLER_HPARAMS:-${HPARAMS_FNAME:-Llama3-8B.json}}"
 
 SEED="${1:-42}"
 ALG="${2:-${ALG_NAME:-both}}"
