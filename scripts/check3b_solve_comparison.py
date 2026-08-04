@@ -101,9 +101,8 @@ print("Loading model...")
 model_path = "Qwen/Qwen2.5-7B-Instruct"
 
 tok = AutoTokenizer.from_pretrained(model_path)
-model = AutoModelForCausalLM.from_pretrained(
-    model_path, torch_dtype=torch.bfloat16, device_map="auto"
-)
+tok.pad_token = tok.eos_token
+model = AutoModelForCausalLM.from_pretrained(model_path).cuda()
 model.eval()
 
 # Load dataset (first 100 edits) — transform to algorithm format
