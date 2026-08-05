@@ -14,8 +14,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-export MODEL_NAME="${MODEL_NAME:-Qwen/Qwen2.5-7B-Instruct}"
-export HPARAMS_FNAME="${HPARAMS_FNAME:-Qwen2.5-7B.json}"
+export MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
+export HPARAMS_FNAME="Qwen2.5-7B.json"
 
 echo "=== Failure Curve (Qwen2.5-7B-Instruct) ==="
 echo "  Model: $MODEL_NAME"

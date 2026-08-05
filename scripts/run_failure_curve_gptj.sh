@@ -14,8 +14,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-export MODEL_NAME="${MODEL_NAME:-EleutherAI/gpt-j-6b}"
-export HPARAMS_FNAME="${HPARAMS_FNAME:-EleutherAI_gpt-j-6B.json}"
+export MODEL_NAME="EleutherAI/gpt-j-6b"
+export HPARAMS_FNAME="EleutherAI_gpt-j-6B.json"
 
 echo "=== Failure Curve (GPT-J-6B) ==="
 echo "  Model: $MODEL_NAME"

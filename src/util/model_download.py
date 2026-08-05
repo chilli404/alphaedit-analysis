@@ -179,7 +179,9 @@ def resolve_model_path(
         str: model_id (always). On corporate infra, HF_ENDPOINT is set
              so transformers routes through Artifactory automatically.
     """
-    if _artifactory_reachable():
+    if os.environ.get("HF_ENDPOINT"):
+        print(f"HF_ENDPOINT already set: {os.environ['HF_ENDPOINT']}")
+    elif _artifactory_reachable():
         os.environ["HF_ENDPOINT"] = HF_ENDPOINT
         print(f"Artifactory reachable — set HF_ENDPOINT={HF_ENDPOINT}")
     else:
