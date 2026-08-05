@@ -153,6 +153,10 @@ def patch_evaluate_file(alphaedit_root: Path) -> None:
         print("  Applied P-cache + model-list + dtype patches to evaluate.py")
     # Also patch layer_stats.py (called by AlphaEdit_main.py for on-the-fly stats)
     patch_layer_stats_file(alphaedit_root)
+    # Patch memit_main.py with NaN guard + kwargs for compute_z
+    patch_memit_file(alphaedit_root)
+    # Patch AlphaEdit_main.py with **_kwargs
+    patch_alphaedit_main_file(alphaedit_root)
 
 
 def patch_layer_stats_file(alphaedit_root: Path) -> None:
@@ -192,6 +196,92 @@ def patch_glue_eval_file(alphaedit_root: Path) -> None:
     if patched != source:
         glue_path.write_text(patched)
         print("  Applied GLUE context-length patch to useful_functions.py")
+
+
+# --- NaN guard for compute_z in memit_main.py ---
+COMPUTE_Z_RESULT_ANCHOR = """\
+            z_list.append(cur_z)
+
+            if cache_fname is not None:"""
+
+COMPUTE_Z_RESULT_GUARDED = """\
+            if torch.isnan(cur_z).any():
+                print(f"  [NaN GUARD] compute_z produced NaN for case_id={request.get('case_id', '?')}; skipping edit")
+                cur_z = get_module_input_output_at_words(
+                    model, tok, z_layer,
+                    context_templates=[request["prompt"]],
+                    words=[request["subject"]],
+                    module_template=hparams.layer_module_tmp,
+                    fact_token_strategy=hparams.fact_token,
+                )[1].squeeze()
+            z_list.append(cur_z)
+
+            if cache_fname is not None:"""
+
+
+def apply_nan_guard_patch(source: str) -> str:
+    """
+    Patch memit_main.py to skip edits where compute_z produces NaN.
+
+    Some token targets cause numerical overflow in the v-optimization
+    (particularly on Qwen2.5-7B). When NaN is detected, the edit is
+    effectively skipped by using the original (unedited) z representation,
+    making targets = zs - cur_zs ≈ 0 for that edit.
+
+    Idempotent — returns source unchanged if already patched.
+    """
+    if "NaN GUARD" in source:
+        return source  # Already patched
+    if COMPUTE_Z_RESULT_ANCHOR not in source:
+        return source
+    return source.replace(COMPUTE_Z_RESULT_ANCHOR, COMPUTE_Z_RESULT_GUARDED, 1)
+
+
+def patch_memit_file(alphaedit_root: Path) -> None:
+    """
+    Apply patches to vendor/AlphaEdit/memit/memit_main.py on disk.
+
+    Applies:
+      - NaN guard: skips edits where compute_z produces NaN
+      - kwargs: adds **_kwargs to accept return_orig_weights_device from evaluate.py
+
+    Idempotent — safe to call multiple times.
+
+    Args:
+        alphaedit_root: Path to vendor/AlphaEdit/ directory.
+    """
+    memit_path = alphaedit_root / "memit" / "memit_main.py"
+    source = memit_path.read_text()
+    patched = apply_nan_guard_patch(source)
+    # Add **_kwargs to accept extra kwargs from evaluate.py
+    _kwargs_anchor = "    cache_template: Optional[str] = None,\n) -> Tuple[AutoModelForCausalLM"
+    _kwargs_replacement = "    cache_template: Optional[str] = None, **_kwargs,\n) -> Tuple[AutoModelForCausalLM"
+    if _kwargs_anchor in patched and "**_kwargs" not in patched:
+        patched = patched.replace(_kwargs_anchor, _kwargs_replacement, 1)
+    if patched != source:
+        memit_path.write_text(patched)
+        print("  Applied NaN guard + kwargs patches to memit/memit_main.py")
+
+
+def patch_alphaedit_main_file(alphaedit_root: Path) -> None:
+    """
+    Apply **_kwargs patch to vendor/AlphaEdit/AlphaEdit/AlphaEdit_main.py on disk.
+
+    evaluate.py passes return_orig_weights_device kwarg which the function doesn't accept.
+
+    Idempotent — safe to call multiple times.
+
+    Args:
+        alphaedit_root: Path to vendor/AlphaEdit/ directory.
+    """
+    ae_path = alphaedit_root / "AlphaEdit" / "AlphaEdit_main.py"
+    source = ae_path.read_text()
+    _anchor = "    P = None,\n) -> Dict[str, Tuple[torch.Tensor]]:"
+    _replacement = "    P = None, **_kwargs,\n) -> Dict[str, Tuple[torch.Tensor]]:"
+    if _anchor in source and "**_kwargs" not in source:
+        patched = source.replace(_anchor, _replacement, 1)
+        ae_path.write_text(patched)
+        print("  Applied kwargs patch to AlphaEdit/AlphaEdit_main.py")
 
 
 # --- Source anchor used by order shuffle injection ---
