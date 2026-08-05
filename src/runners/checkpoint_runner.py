@@ -711,7 +711,7 @@ _presync_injection = '''    print(f"Results will be stored at {{run_dir}}")
                 for _ef in _existing_evals:
                     _dest = run_dir / _ef.name
                     if not _dest.exists():
-                        _shutil_mod.copy2(str(_ef), str(_dest))
+                        _shutil_mod.copyfile(str(_ef), str(_dest))
                         _synced += 1
                 print(f"  [CHECKPOINT] Pre-synced {{_synced}} eval results from S3 ({{len(_existing_evals)}} total in source)")
         else:
