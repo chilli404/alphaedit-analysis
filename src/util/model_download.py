@@ -155,6 +155,24 @@ def _artifactory_reachable() -> bool:
         return False
 
 
+def _model_on_artifactory(model_id: str) -> bool:
+    """Check if a specific model exists on the Artifactory mirror."""
+    import urllib.request
+    import urllib.error
+
+    # Check for the config.json as a lightweight probe
+    url = f"{HF_ENDPOINT}/{model_id}/resolve/main/config.json"
+    token = os.getenv("HF_TOKEN", "")
+    try:
+        req = urllib.request.Request(url, method="HEAD")
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
+        urllib.request.urlopen(req, timeout=10)
+        return True
+    except (urllib.error.URLError, OSError):
+        return False
+
+
 def resolve_model_path(
     model_id: str,
     cache_dir: Path | str | None = None,
@@ -162,13 +180,8 @@ def resolve_model_path(
     """
     Resolve a model identifier to a usable path.
 
-    On corporate infrastructure (Artifactory reachable), sets HF_ENDPOINT
-    so that transformers downloads through Artifactory natively. This keeps
-    model.config._name_or_path as the original model_id, which is required
-    for stats lookup and GLUE eval context length mapping.
-
-    Locally (Artifactory unreachable), returns the model_id unchanged for
-    standard HuggingFace access.
+    Tries Artifactory first (corporate infra). If the model isn't available
+    there, falls back to standard HuggingFace.
 
     Args:
         model_id: HuggingFace model identifier, e.g.
@@ -176,14 +189,15 @@ def resolve_model_path(
         cache_dir: Unused, kept for API compatibility.
 
     Returns:
-        str: model_id (always). On corporate infra, HF_ENDPOINT is set
-             so transformers routes through Artifactory automatically.
+        str: model_id unchanged.
     """
-    if _artifactory_reachable():
+    if _artifactory_reachable() and _model_on_artifactory(model_id):
         os.environ["HF_ENDPOINT"] = HF_ENDPOINT
-        print(f"Artifactory reachable — set HF_ENDPOINT={HF_ENDPOINT}")
+        print(f"Artifactory has {model_id} — routing through Artifactory")
     else:
-        print(f"Artifactory not reachable — using standard HuggingFace")
+        # Ensure HF_ENDPOINT is not set (use standard HuggingFace)
+        os.environ.pop("HF_ENDPOINT", None)
+        print(f"Using standard HuggingFace for {model_id}")
 
     print(f"Model: {model_id}")
     return model_id
