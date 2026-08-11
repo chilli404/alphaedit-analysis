@@ -17,12 +17,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Load environment config
+# Load environment config (for HF_TOKEN etc, but NOT MODEL_NAME)
 if [[ -f "$PROJECT_DIR/.env" ]]; then
     set -a; source "$PROJECT_DIR/.env"; set +a
 fi
 
-MODEL_NAME="${MODEL_NAME:-EleutherAI/gpt-j-6b}"
+# Always GPT-J for this script — ignore .env MODEL_NAME
+MODEL_NAME="EleutherAI/gpt-j-6b"
 
 SEED="${1:-42}"
 LAMBDA_PREV="${2:-${LAMBDA_PREV:-1}}"

@@ -328,7 +328,7 @@ source = source.replace(
 
     # Mega-batch eval injection (outside f-string to avoid Python 3.10 nested-quote issues)
     mega_batch_eval_injection = '''    # === MEGA-BATCH EVAL: batched multi-token scoring (injected by checkpoint_runner) ===
-    def _mega_batch_eval(model, tok, records, case_result_template, num_edits, case_ids, exec_time, batch_size=8):
+    def _mega_batch_eval(model, tok, records, case_result_template, num_edits, case_ids, exec_time, batch_size=4):
         # Evaluate records with batched forward passes using full multi-token scoring.
         # Produces IDENTICAL results to per-record compute_rewrite_quality_counterfact
         # (same log-prob scoring, same argmax correctness) but batches the expensive
