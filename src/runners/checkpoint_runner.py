@@ -203,6 +203,7 @@ def build_checkpoint_script(
     dir_name: str | None = None,
     inject_c0: bool = False,
     c0_weight: float = 15000.0,
+    continue_from_run: str | None = None,
 ) -> str:
     """
     Build an inline Python script that:
@@ -229,6 +230,8 @@ def build_checkpoint_script(
     ]
     if conserve_memory:
         argv_parts.append("--conserve_memory")
+    if continue_from_run:
+        argv_parts.append(f"--continue_from_run={continue_from_run}")
 
     argv_str = repr(argv_parts)
 
@@ -698,24 +701,17 @@ assert _presync_anchor in source, (
     "Upstream code has changed from pinned commit b84624f."
 )
 _presync_injection = '''    print(f"Results will be stored at {{run_dir}}")
-    # === CHECKPOINT: pre-sync partial eval results from previous runs (injected) ===
-    if _ckpt_start_batch > 0:
-        import glob as _glob_mod
-        _s3_results_base = Path("{result_root}") / "failure_curve_checkpointed"
-        _s3_eval_dir = _s3_results_base / f"seed{{_ckpt_seed}}" / f"{{_ckpt_dataset_size_limit}}edits" / dir_name / "run_000"
-        if _s3_eval_dir.exists():
-            _existing_evals = list(_s3_eval_dir.glob("*_edits-case_*.json"))
-            if _existing_evals:
-                import shutil as _shutil_mod
-                _synced = 0
-                for _ef in _existing_evals:
-                    _dest = run_dir / _ef.name
-                    if not _dest.exists():
-                        _shutil_mod.copyfile(str(_ef), str(_dest))
-                        _synced += 1
-                print(f"  [CHECKPOINT] Pre-synced {{_synced}} eval results from S3 ({{len(_existing_evals)}} total in source)")
-        else:
-            print(f"  [CHECKPOINT] No S3 eval results found at {{_s3_eval_dir}}")
+    # === CHECKPOINT: count existing eval results for resume (injected) ===
+    _existing_count = len(list(run_dir.glob("*_edits-case_*.json"))) if run_dir.exists() else 0
+    if _existing_count > 0:
+        print(f"  [CHECKPOINT] Continuing in {{run_dir.name}}: {{_existing_count}} cases already evaluated, will skip them")
+    # Ensure params.json exists when continuing from a run that lacks it
+    if not (run_dir / "params.json").exists():
+        _hparams_fallback = HPARAMS_DIR / ("MEMIT" if "MEMIT" in alg_name else alg_name) / hparams_fname
+        if _hparams_fallback.exists():
+            import shutil as _shutil_mod
+            _shutil_mod.copyfile(str(_hparams_fallback), str(run_dir / "params.json"))
+            print(f"  [CHECKPOINT] Copied params.json from {{_hparams_fallback}}")
     # === END pre-sync ==='''
 source = source.replace(_presync_anchor, _presync_injection, 1)
 
@@ -784,10 +780,10 @@ source = source.replace(
     1,
 )
 
-# 7. Inject SKIP guard before the per-batch edit call
-pre_anchor = '        start = time()\\n        if any(alg in alg_name for alg in ["AlphaEdit", "MEMIT_seq", "NSE"]):'
-assert pre_anchor in source, (
-    "Pre-edit anchor not found in evaluate.py source. "
+# 7. Inject SKIP guard at the TOP of the edit loop (before header print and already_finished check)
+skip_anchor = '        case_result_template = str(run_dir / "{{}}_edits-case_{{}}.json")'
+assert skip_anchor in source, (
+    "Skip anchor (case_result_template) not found in evaluate.py source. "
     "Upstream code has changed from pinned commit b84624f."
 )
 
@@ -796,10 +792,10 @@ skip_injection = '''        # === CHECKPOINT: skip already-processed batches (in
             cnt += 1
             continue
         # === END checkpoint skip ===
-'''
+        case_result_template = str(run_dir / "{{}}_edits-case_{{}}.json")'''
 source = source.replace(
-    pre_anchor,
-    skip_injection + pre_anchor,
+    skip_anchor,
+    skip_injection,
     1,
 )
 
@@ -979,6 +975,11 @@ def run(args: argparse.Namespace) -> None:
         # AlphaEdit+C₀: keep AlphaEdit as eval algorithm (for ALG_DICT), use variant for dir_name
         dir_name_override = ckpt_alg_name
 
+    # Continue from an existing run directory (avoids creating new run_NNN)
+    continue_from_run = os.environ.get("CONTINUE_FROM_RUN", "").strip() or None
+    if continue_from_run:
+        print(f"  CONTINUE_FROM_RUN={continue_from_run}")
+
     script = build_checkpoint_script(
         seed=args.seed,
         cuda_device=args.cuda_device,
@@ -1001,6 +1002,7 @@ def run(args: argparse.Namespace) -> None:
         dir_name=dir_name_override,
         inject_c0=args.inject_c0,
         c0_weight=args.c0_weight,
+        continue_from_run=continue_from_run,
     )
 
     # Environment
