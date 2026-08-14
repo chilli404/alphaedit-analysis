@@ -767,6 +767,8 @@ source = source.replace(loop_anchor, _fp_code + loop_anchor, 1)
 load_injection = '''    # === CHECKPOINT: load state from previous run (injected) ===
     exec_time = 0
     edited_model = model
+    case_result_template = str(run_dir / "{{}}_edits-case_{{}}.json")
+    case_ids = [r["case_id"] for r in ds]
     _ckpt_cache_c_loaded = None
     if _ckpt_start_batch > 0 and '_ckpt_load' in globals():
         _ckpt_cache_c_loaded = _ckpt_load(model, hparams, alg_name)
