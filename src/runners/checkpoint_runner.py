@@ -511,7 +511,7 @@ source = source.replace(
         # === CHECKPOINT: fast mode - filter to batch records only (injected) ===
         if _ckpt_fast_mode:
             _records_to_eval = [r for r in ds if r["case_id"] in case_ids]
-        _mega_batch_eval(edited_model, tok, _records_to_eval, case_result_template, num_edits, case_ids, exec_time)
+        _mega_batch_eval(edited_model, tok, _records_to_eval, case_result_template, num_edits, case_ids, exec_time, batch_size=2)
     # === END mega-batch eval ===
     _eval_skipped = 0
     for record in ds:
@@ -836,6 +836,19 @@ checkpoint_eval_skip = '''    # torch.save(hs, "post_edit_hs_memit.pt")
         print(f"  [CHECKPOINT] Skipping final evaluation (batch {{cnt-1}} not at checkpoint boundary)")
         print(f"  [CHECKPOINT] Evaluation will run when resumed and a checkpoint boundary is reached.")
     # === END checkpoint eval skip ===
+    # === CHECKPOINT: free editing-only tensors before eval (injected) ===
+    import gc as _gc
+    if "cache_c" in dir() and cache_c is not None:
+        del cache_c
+    if "P" in dir() and P is not None:
+        del P
+    if "_ckpt_cache_c_loaded" in dir() and _ckpt_cache_c_loaded is not None:
+        del _ckpt_cache_c_loaded
+    _gc.collect()
+    torch.cuda.empty_cache()
+    _mem_free = torch.cuda.mem_get_info()[0] / 1024**3
+    print(f"  [CHECKPOINT] Freed editing tensors before eval ({{_mem_free:.1f}} GiB free)")
+    # === END memory cleanup ===
     start = time()'''
 source = source.replace(
     eval_start_anchor,
