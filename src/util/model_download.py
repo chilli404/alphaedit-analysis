@@ -203,11 +203,17 @@ def resolve_model_path(
     Returns:
         str: Local path if S3 mount found, otherwise model_id for HF download.
     """
-    # 1. Check S3 FUSE mount
+    # 1. Check S3 FUSE mount (verify both config.json AND a weight file exist)
     s3_dir_name = _MODEL_ID_TO_S3_DIR.get(model_id)
     if s3_dir_name:
         s3_path = _S3_MODELS_ROOT / s3_dir_name
-        if s3_path.exists() and (s3_path / "config.json").exists():
+        _has_config = (s3_path / "config.json").exists()
+        _has_weights = (
+            any(s3_path.glob("*.safetensors"))
+            or (s3_path / "pytorch_model.bin").exists()
+            or any(s3_path.glob("pytorch_model-*.bin"))
+        )
+        if _has_config and _has_weights:
             print(f"S3 mount has {model_id} — loading from {s3_path}")
             print(f"Model: {s3_path}")
             return str(s3_path)
