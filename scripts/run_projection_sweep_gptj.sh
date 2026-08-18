@@ -22,6 +22,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Load environment config FIRST, then override with GPT-J specifics
+if [[ -f "$PROJECT_DIR/.env" ]]; then
+    set -a; source "$PROJECT_DIR/.env"; set +a
+fi
+
+# Force GPT-J model (overrides .env)
 export MODEL_NAME="EleutherAI/gpt-j-6b"
 export HPARAMS_FNAME="EleutherAI_gpt-j-6B.json"
 
@@ -42,11 +48,6 @@ echo "  Started: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo ""
 
 cd "$PROJECT_DIR"
-
-# Load environment
-if [[ -f "$PROJECT_DIR/.env" ]]; then
-    set -a; source "$PROJECT_DIR/.env"; set +a
-fi
 
 EVAL_FLAG=""
 if [[ "${EVAL_AT_CHECKPOINTS_ONLY:-true}" == "true" ]]; then
