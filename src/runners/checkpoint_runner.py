@@ -333,12 +333,16 @@ source = source.replace(
     # Nullspace threshold override injection
     if nullspace_threshold is not None:
         # Determine correct S3 stats path for this model
-        _model_stats_map = {
-            "EleutherAI/gpt-j-6b": "gpt-j-6b",
-            "meta-llama/Meta-Llama-3-8B-Instruct": "llama3-8b-instruct",
-            "Qwen/Qwen2.5-7B-Instruct": "qwen2.5-7b-instruct",
-        }
-        _stats_subdir = _model_stats_map.get(model_name, "llama3-8b-instruct")
+        # model_name can be HF ID or S3 path - normalize to stats subdir
+        _mn_lower = model_name.lower() if model_name else ""
+        if "gpt-j" in _mn_lower:
+            _stats_subdir = "gpt-j-6b"
+        elif "qwen2.5" in _mn_lower:
+            _stats_subdir = "qwen2.5-7b-instruct"
+        elif "llama" in _mn_lower or "meta-llama" in _mn_lower:
+            _stats_subdir = "llama3-8b-instruct"
+        else:
+            _stats_subdir = "llama3-8b-instruct"
         nullspace_threshold_injection = (
             f'# Override nullspace_threshold for projection capacity sweep\n'
             f'_ns_threshold_anchor = \'threshold = hparams.nullspace_threshold\'\n'
