@@ -332,6 +332,13 @@ source = source.replace(
 
     # Nullspace threshold override injection
     if nullspace_threshold is not None:
+        # Determine correct S3 stats path for this model
+        _model_stats_map = {
+            "EleutherAI/gpt-j-6b": "gpt-j-6b",
+            "meta-llama/Meta-Llama-3-8B-Instruct": "llama3-8b-instruct",
+            "Qwen/Qwen2.5-7B-Instruct": "qwen2.5-7b-instruct",
+        }
+        _stats_subdir = _model_stats_map.get(model_name, "llama3-8b-instruct")
         nullspace_threshold_injection = (
             f'# Override nullspace_threshold for projection capacity sweep\n'
             f'_ns_threshold_anchor = \'threshold = hparams.nullspace_threshold\'\n'
@@ -343,8 +350,14 @@ source = source.replace(
             f')\n'
             f'# Replace ALL occurrences of the P cache filename with per-threshold version\n'
             f'source = source.replace("null_space_project.pt", "null_space_project_t{nullspace_threshold}.pt")\n'
+            f'# Fix S3 P cache path to use correct model stats dir\n'
+            f'source = source.replace(\n'
+            f'    "/s3-data/continual-learning/alphaedit/stats/llama3-8b-instruct/null_space_project_t{nullspace_threshold}.pt",\n'
+            f'    "/s3-data/continual-learning/alphaedit/stats/{_stats_subdir}/null_space_project_t{nullspace_threshold}.pt",\n'
+            f')\n'
             f'print(f"  [THRESHOLD] nullspace_threshold overridden to {nullspace_threshold}")\n'
             f'print(f"  [THRESHOLD] P cache file: null_space_project_t{nullspace_threshold}.pt")\n'
+            f'print(f"  [THRESHOLD] S3 P cache: /s3-data/.../stats/{_stats_subdir}/null_space_project_t{nullspace_threshold}.pt")\n'
         )
     else:
         nullspace_threshold_injection = ""

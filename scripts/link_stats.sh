@@ -99,4 +99,16 @@ else
     echo "  No cached null-space projection found (will compute on first run)"
 fi
 
+# Link per-threshold P caches (projection capacity sweep)
+P_THRESHOLD_COUNT=0
+for p_file in "$STATS_SRC"/null_space_project_t*.pt; do
+    if [[ -f "$p_file" ]]; then
+        ln -sf "$p_file" "$PROJECT_DIR/vendor/AlphaEdit/$(basename "$p_file")"
+        P_THRESHOLD_COUNT=$((P_THRESHOLD_COUNT + 1))
+    fi
+done
+if [[ $P_THRESHOLD_COUNT -gt 0 ]]; then
+    echo "  Linked $P_THRESHOLD_COUNT per-threshold P cache(s)"
+fi
+
 echo "=== Done ==="
