@@ -204,6 +204,7 @@ def build_checkpoint_script(
     inject_c0: bool = False,
     c0_weight: float = 15000.0,
     continue_from_run: str | None = None,
+    nullspace_threshold: float | None = None,
 ) -> str:
     """
     Build an inline Python script that:
@@ -328,6 +329,35 @@ source = source.replace(
     else:
         c0_injection = ""
         c0_exec_ns_injection = ""
+
+    # Nullspace threshold override injection
+    if nullspace_threshold is not None:
+        # Two patches:
+        # 1. Override hparams.nullspace_threshold after hparams is loaded
+        # 2. Change P cache filename to include threshold (avoid stale cache conflicts)
+        _t_str = f"{nullspace_threshold}"
+        nullspace_threshold_injection = (
+            f'# Override nullspace_threshold for projection capacity sweep\n'
+            f'_ns_threshold_anchor = \'threshold = hparams.nullspace_threshold\'\n'
+            f'assert _ns_threshold_anchor in source, "nullspace_threshold anchor not found"\n'
+            f'source = source.replace(\n'
+            f'    _ns_threshold_anchor,\n'
+            f'    \'threshold = {nullspace_threshold}  # overridden by checkpoint_runner (was hparams.nullspace_threshold)\',\n'
+            f'    1,\n'
+            f')\n'
+            f'# Use per-threshold P cache filename\n'
+            f'source = source.replace(\n'
+            f'    \'Path("null_space_project.pt")\',\n'
+            f'    \'Path("null_space_project_t{nullspace_threshold}.pt")\',\n'
+            f')\n'
+            f'source = source.replace(\n'
+            f'    \'torch.save(P, "null_space_project.pt")\',\n'
+            f'    \'torch.save(P, "null_space_project_t{nullspace_threshold}.pt")\',\n'
+            f')\n'
+            f'print(f"  [THRESHOLD] nullspace_threshold overridden to {nullspace_threshold}")\n'
+        )
+    else:
+        nullspace_threshold_injection = ""
 
     # Mega-batch eval injection (outside f-string to avoid Python 3.10 nested-quote issues)
     mega_batch_eval_injection = '''    # === MEGA-BATCH EVAL: batched multi-token scoring (injected by checkpoint_runner) ===
@@ -649,6 +679,8 @@ with open("experiments/evaluate.py", "r") as f:
 
 # 4b. AlphaEdit+C₀ dual injection (if enabled)
 {c0_injection}
+# 4c. Nullspace threshold override (projection capacity sweep)
+{nullspace_threshold_injection}
 # 5. Patch CUDA_VISIBLE_DEVICES
 cuda_patch_target = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
 assert cuda_patch_target in source, (
@@ -951,10 +983,12 @@ def run(args: argparse.Namespace) -> None:
             sys.exit(1)
 
     # Resolve checkpoint directory
-    # When inject_c0 is active, use a variant name for directory isolation
+    # When inject_c0 or nullspace_threshold is active, use a variant name for directory isolation
     ckpt_alg_name = args.alg_name
     if args.inject_c0:
         ckpt_alg_name = f"{args.alg_name}-C0-{args.c0_weight}"
+    if args.nullspace_threshold is not None:
+        ckpt_alg_name = f"{ckpt_alg_name}-t{args.nullspace_threshold}"
     ckpt_dir = resolve_checkpoint_dir(args.checkpoint_dir, ckpt_alg_name, args.seed, args.order_id, model_name=args.model_name)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
@@ -986,8 +1020,8 @@ def run(args: argparse.Namespace) -> None:
     if args.alg_name.startswith("MEMIT-Seq"):
         eval_alg_name = "MEMIT"
         dir_name_override = args.alg_name
-    elif args.inject_c0:
-        # AlphaEdit+C₀: keep AlphaEdit as eval algorithm (for ALG_DICT), use variant for dir_name
+    elif args.inject_c0 or args.nullspace_threshold is not None:
+        # AlphaEdit+C₀ or threshold sweep: keep AlphaEdit as eval algorithm (for ALG_DICT), use variant for dir_name
         dir_name_override = ckpt_alg_name
 
     # Continue from an existing run directory (avoids creating new run_NNN)
@@ -1018,6 +1052,7 @@ def run(args: argparse.Namespace) -> None:
         inject_c0=args.inject_c0,
         c0_weight=args.c0_weight,
         continue_from_run=continue_from_run,
+        nullspace_threshold=args.nullspace_threshold,
     )
 
     # Environment
@@ -1177,6 +1212,12 @@ def main():
                              "For the 2×2 attribution experiment: tests P's effect in C₀'s presence.")
     parser.add_argument("--c0_weight", type=float, default=15000.0,
                         help="Weight for injected C₀ term (α in α·C₀). Default 15000 matches MEMIT's mom2_update_weight.")
+
+    # Projection capacity sweep
+    parser.add_argument("--nullspace_threshold", type=float, default=None,
+                        help="Override nullspace_threshold in hparams. Controls effective rank of P. "
+                             "Lower = more restrictive P (fewer null-space directions). "
+                             "Higher = more permissive P (more directions available for edits).")
 
     # Retention probes (for mechanism figure)
     parser.add_argument("--retention_probe_batches", type=str, default=None,

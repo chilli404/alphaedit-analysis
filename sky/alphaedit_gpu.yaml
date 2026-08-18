@@ -1,0 +1,122 @@
+resources:
+  accelerators: L40s:1
+  cpus: 8+
+  memory: 64+
+
+workdir: .
+
+file_mounts:
+  ~/sky_workdir/.env: ./.env
+  ~/sky_workdir/scripts/remote_setup.sh: ./scripts/remote_setup.sh
+  ~/sky_workdir/scripts/link_stats.sh: ./scripts/link_stats.sh
+  ~/sky_workdir/scripts/link_dsets.sh: ./scripts/link_dsets.sh
+  ~/sky_workdir/scripts/download_datasets.sh: ./scripts/download_datasets.sh
+  ~/sky_workdir/src/util/model_download.py: ./src/util/model_download.py
+
+setup: |
+  set -euo pipefail
+
+  cd ~/sky_workdir
+  bash scripts/remote_setup.sh
+
+run: |
+  set -e
+  export PATH="$HOME/.local/bin:$PATH"
+
+  cd ~/sky_workdir
+
+  if [[ -z "${EXPERIMENT_NAME:-}" ]]; then
+    echo "No EXPERIMENT_NAME set - interactive mode."
+    echo "SSH in with: sky ssh <cluster>"
+    echo "Then run:    cd ~/sky_workdir && bash scripts/run_mve1_alphaedit_mcf.sh 42"
+    exit 0
+  fi
+
+  # Always set MODEL_NAME and HPARAMS_FNAME from EXPERIMENT_NAME
+  # (overrides any stale value from .env to prevent cross-model contamination)
+  case "${EXPERIMENT_NAME}" in
+    *qwen*)  MODEL_NAME="Qwen/Qwen2.5-7B-Instruct" ; HPARAMS_FNAME="Qwen2.5-7B.json" ;;
+    *gptj*)  MODEL_NAME="EleutherAI/gpt-j-6b" ; HPARAMS_FNAME="EleutherAI_gpt-j-6B.json" ;;
+    *)       MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}" ; HPARAMS_FNAME="${HPARAMS_FNAME:-Llama3-8B.json}" ;;
+  esac
+  export MODEL_NAME
+  export HPARAMS_FNAME
+
+  echo "Linking covariance stats..."
+  bash scripts/link_stats.sh
+
+  echo "Linking datasets..."
+  bash scripts/link_dsets.sh
+
+  echo "Patching vendor submodule for compatibility..."
+  # Reset vendor files to clean state before patching (makes patches idempotent for sky exec reruns)
+  cd vendor/AlphaEdit && git checkout -- glue_eval/useful_functions.py memit/memit_main.py AlphaEdit/AlphaEdit_main.py rome/layer_stats.py 2>/dev/null || true && cd ~/sky_workdir
+  # Add NousResearch model name variants + cross-model entries to context length map
+  sed -i 's/"llama3-8b-instruct": 4096,/"llama3-8b-instruct": 4096, "meta-llama-3-8b-instruct": 4096, "nousresearch--meta-llama-3-8b-instruct": 4096, "qwen2.5-7b-instruct": 4096, "gpt-j-6b": 2048,/' vendor/AlphaEdit/glue_eval/useful_functions.py
+  # Add Qwen2.5-7B to the model-name list for cache_c/P shape initialization
+  sed -i 's/\["EleutherAI_gpt-j-6B","Llama3-8B","phi-1.5"\]/["EleutherAI_gpt-j-6B","Llama3-8B","phi-1.5","Qwen2.5-7B"]/' vendor/AlphaEdit/experiments/evaluate.py
+  # Fix MEMIT and AlphaEdit: accept extra kwargs (return_orig_weights_device) passed by evaluate.py
+  sed -i 's/    cache_template: Optional\[str\] = None,/    cache_template: Optional[str] = None, **_kwargs,/' vendor/AlphaEdit/memit/memit_main.py
+  sed -i 's/    P = None,/    P = None, **_kwargs,/' vendor/AlphaEdit/AlphaEdit/AlphaEdit_main.py
+  # Fix deprecated Wikipedia dataset config (20200501.en removed from HuggingFace, now 20220301.en)
+  sed -i 's/20200501.en/20220301.en/' vendor/AlphaEdit/rome/layer_stats.py
+
+  echo "Downloading NLTK data..."
+  uv run python -c "import nltk; [nltk.download(pkg, quiet=True) for pkg in ('punkt', 'punkt_tab')]"
+
+  # Pre-cache models from S3 FUSE mount (avoids slow downloads from HF/Artifactory)
+  S3_MODEL_CACHE="/s3-data/continual-learning/alphaedit/models/hub"
+  if [[ -d "$S3_MODEL_CACHE" ]]; then
+    mkdir -p ~/.cache/huggingface/hub
+    for model_dir in "$S3_MODEL_CACHE"/models--*; do
+      local_dir=~/.cache/huggingface/hub/$(basename "$model_dir")
+      if [[ -d "$model_dir" && ! -e "$local_dir" ]]; then
+        ln -s "$model_dir" "$local_dir"
+        echo "  Linked model cache: $(basename "$model_dir")"
+      fi
+    done
+  fi
+
+  echo "Clearing stale HF cache locks..."
+  find ~/.cache/huggingface/hub/ -name "*.lock" -delete 2>/dev/null || true
+
+  echo "=== Running experiment: ${EXPERIMENT_NAME} seed=${SEED} ==="
+  echo "GPU info:"
+  nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
+
+  export CUDA_DEVICE
+  export TOKENIZERS_PARALLELISM
+  export RESULT_ROOT="${RESULT_ROOT:-/s3-data/continual-learning/alphaedit/results}"
+  export CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-/s3-data/continual-learning/alphaedit/checkpoints}"
+  export TARGET_EDITS="${TARGET_EDITS:-}"
+  export SAVE_INTERVAL="${SAVE_INTERVAL:-10}"
+  export CHECKPOINT_DIR="${CHECKPOINT_DIR:-}"
+  export ALG_NAME="${ALG_NAME:-both}"
+  export LAMBDA_PREV="${LAMBDA_PREV:-}"
+  export LAMBDA_DELTA="${LAMBDA_DELTA:-}"
+  export MOM2_OVERRIDE="${MOM2_OVERRIDE:-}"
+  export INJECT_C0="${INJECT_C0:-false}"
+  export C0_WEIGHT="${C0_WEIGHT:-}"
+  export FAST_CHECKPOINT="${FAST_CHECKPOINT:-false}"
+  export EVAL_AT_CHECKPOINTS_ONLY="${EVAL_AT_CHECKPOINTS_ONLY:-false}"
+  export CONTINUE_FROM_RUN="${CONTINUE_FROM_RUN:-}"
+  export NULLSPACE_THRESHOLD="${NULLSPACE_THRESHOLD:-}"
+  export SWEEP_CELL="${SWEEP_CELL:-both}"
+  export CHECKPOINT_BATCH="${CHECKPOINT_BATCH:-}"
+  export KERNEL_DEGREE="${KERNEL_DEGREE:-2}"
+  export KERNEL_TYPE="${KERNEL_TYPE:-poly}"
+  export KERNEL_SIGMA="${KERNEL_SIGMA:-median}"
+  export STREAM_LENGTH="${STREAM_LENGTH:-5000}"
+  export STREAM="${STREAM:-both}"
+  export ORDER_ID="${ORDER_ID:-0}"
+  export ORDERING="${ORDERING:-clustered}"
+
+  bash "scripts/run_${EXPERIMENT_NAME}.sh" "$SEED"
+
+  echo ""
+  echo "=== Experiment complete ==="
+  echo "Results:"
+  find "$RESULT_ROOT/" \( -name "*.json" -o -name "*.jsonl" -o -name "*.pt" \) 2>/dev/null | wc -l
+  echo "output files generated."
+
+  echo "Results at: $RESULT_ROOT/"
