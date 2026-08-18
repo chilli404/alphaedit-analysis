@@ -64,19 +64,6 @@ run: |
   echo "Downloading NLTK data..."
   uv run python -c "import nltk; [nltk.download(pkg, quiet=True) for pkg in ('punkt', 'punkt_tab')]"
 
-  # Pre-cache models from S3 FUSE mount (avoids slow downloads from HF/Artifactory)
-  S3_MODEL_CACHE="/s3-data/continual-learning/alphaedit/models/hub"
-  if [[ -d "$S3_MODEL_CACHE" ]]; then
-    mkdir -p ~/.cache/huggingface/hub
-    for model_dir in "$S3_MODEL_CACHE"/models--*; do
-      local_dir=~/.cache/huggingface/hub/$(basename "$model_dir")
-      if [[ -d "$model_dir" && ! -e "$local_dir" ]]; then
-        ln -s "$model_dir" "$local_dir"
-        echo "  Linked model cache: $(basename "$model_dir")"
-      fi
-    done
-  fi
-
   echo "Clearing stale HF cache locks..."
   find ~/.cache/huggingface/hub/ -name "*.lock" -delete 2>/dev/null || true
 

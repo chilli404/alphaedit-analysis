@@ -173,6 +173,16 @@ def _model_on_artifactory(model_id: str) -> bool:
         return False
 
 
+_S3_MODELS_ROOT = Path("/s3-data/continual-learning/models")
+
+_MODEL_ID_TO_S3_DIR = {
+    "meta-llama/Meta-Llama-3-8B-Instruct": "Meta-Llama-3-8B",
+    "meta-llama/Meta-Llama-3-8B": "Meta-Llama-3-8B",
+    "EleutherAI/gpt-j-6b": "gpt-j-6b",
+    "Qwen/Qwen2.5-7B-Instruct": "Qwen2.5-7B-Instruct",
+}
+
+
 def resolve_model_path(
     model_id: str,
     cache_dir: Path | str | None = None,
@@ -180,8 +190,10 @@ def resolve_model_path(
     """
     Resolve a model identifier to a usable path.
 
-    Tries Artifactory first (corporate infra). If the model isn't available
-    there, falls back to standard HuggingFace.
+    Priority order:
+      1. S3 FUSE mount (/s3-data/continual-learning/models/{name}/)
+      2. Artifactory (corporate JFrog mirror)
+      3. Standard HuggingFace Hub
 
     Args:
         model_id: HuggingFace model identifier, e.g.
@@ -189,13 +201,23 @@ def resolve_model_path(
         cache_dir: Unused, kept for API compatibility.
 
     Returns:
-        str: model_id unchanged.
+        str: Local path if S3 mount found, otherwise model_id for HF download.
     """
+    # 1. Check S3 FUSE mount
+    s3_dir_name = _MODEL_ID_TO_S3_DIR.get(model_id)
+    if s3_dir_name:
+        s3_path = _S3_MODELS_ROOT / s3_dir_name
+        if s3_path.exists() and (s3_path / "config.json").exists():
+            print(f"S3 mount has {model_id} — loading from {s3_path}")
+            print(f"Model: {s3_path}")
+            return str(s3_path)
+
+    # 2. Artifactory
     if _artifactory_reachable() and _model_on_artifactory(model_id):
         os.environ["HF_ENDPOINT"] = HF_ENDPOINT
         print(f"Artifactory has {model_id} — routing through Artifactory")
     else:
-        # Ensure HF_ENDPOINT is not set (use standard HuggingFace)
+        # 3. Standard HuggingFace
         os.environ.pop("HF_ENDPOINT", None)
         print(f"Using standard HuggingFace for {model_id}")
 
