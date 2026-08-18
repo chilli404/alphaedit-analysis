@@ -332,10 +332,6 @@ source = source.replace(
 
     # Nullspace threshold override injection
     if nullspace_threshold is not None:
-        # Two patches:
-        # 1. Override hparams.nullspace_threshold after hparams is loaded
-        # 2. Change P cache filename to include threshold (avoid stale cache conflicts)
-        _t_str = f"{nullspace_threshold}"
         nullspace_threshold_injection = (
             f'# Override nullspace_threshold for projection capacity sweep\n'
             f'_ns_threshold_anchor = \'threshold = hparams.nullspace_threshold\'\n'
@@ -345,16 +341,10 @@ source = source.replace(
             f'    \'threshold = {nullspace_threshold}  # overridden by checkpoint_runner (was hparams.nullspace_threshold)\',\n'
             f'    1,\n'
             f')\n'
-            f'# Use per-threshold P cache filename\n'
-            f'source = source.replace(\n'
-            f'    \'Path("null_space_project.pt")\',\n'
-            f'    \'Path("null_space_project_t{nullspace_threshold}.pt")\',\n'
-            f')\n'
-            f'source = source.replace(\n'
-            f'    \'torch.save(P, "null_space_project.pt")\',\n'
-            f'    \'torch.save(P, "null_space_project_t{nullspace_threshold}.pt")\',\n'
-            f')\n'
+            f'# Replace ALL occurrences of the P cache filename with per-threshold version\n'
+            f'source = source.replace("null_space_project.pt", "null_space_project_t{nullspace_threshold}.pt")\n'
             f'print(f"  [THRESHOLD] nullspace_threshold overridden to {nullspace_threshold}")\n'
+            f'print(f"  [THRESHOLD] P cache file: null_space_project_t{nullspace_threshold}.pt")\n'
         )
     else:
         nullspace_threshold_injection = ""
