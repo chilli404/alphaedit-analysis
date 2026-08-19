@@ -147,7 +147,11 @@ launch_single_job() {
     local job_name="ae-${exp_name}-s${seed}"
     if [[ "$exp_name" == "failure_curve"* ]]; then
         if [[ -n "${ALG_NAME:-}" ]] && [[ "${ALG_NAME}" != "both" ]]; then
-            job_name="ae-${exp_name}-$(echo ${ALG_NAME} | tr '[:upper:]' '[:lower:]')-s${seed}"
+            local alg_tag="$(echo ${ALG_NAME} | tr '[:upper:]' '[:lower:]')"
+            if [[ "${INJECT_C0:-}" == "true" ]]; then
+                alg_tag="${alg_tag}-c0"
+            fi
+            job_name="ae-${exp_name}-${alg_tag}-s${seed}"
         fi
         if [[ -n "${TARGET_EDITS:-}" ]]; then
             job_name="${job_name}-${TARGET_EDITS}e"
@@ -333,7 +337,15 @@ case "$EXPERIMENT" in
     mve1_gptj) EXPERIMENTS=(mve1_gptj_mcf) ;;
     mve2_gptj) EXPERIMENTS=(mve2_gptj_memit_mcf) ;;
     failure_curve_gptj) EXPERIMENTS=(failure_curve_gptj) ;;
-    projection_sweep_gptj) EXPERIMENTS=(projection_sweep_gptj) ;;
+    projection_sweep_gptj)
+        # "both" launches two separate clusters for parallelism
+        if [[ "${SWEEP_CELL:-both}" == "both" ]]; then
+            EXPERIMENTS=(projection_sweep_gptj projection_sweep_gptj)
+            _SWEEP_CELLS=(AlphaEdit AlphaEdit-C0)
+        else
+            EXPERIMENTS=(projection_sweep_gptj)
+        fi
+        ;;
     memit_sequential_gptj) EXPERIMENTS=(memit_sequential_gptj) ;;
     # Cross-model bundles
     cross_model_qwen) EXPERIMENTS=(mve1_qwen_mcf mve2_qwen_memit_mcf) ;;
@@ -350,7 +362,14 @@ case "$EXPERIMENT" in
 esac
 
 # Launch jobs
+_exp_idx=0
 for exp in "${EXPERIMENTS[@]}"; do
+    # For projection_sweep_gptj "both": override SWEEP_CELL per iteration
+    if [[ -n "${_SWEEP_CELLS+x}" ]] && [[ $_exp_idx -lt ${#_SWEEP_CELLS[@]} ]]; then
+        export SWEEP_CELL="${_SWEEP_CELLS[$_exp_idx]}"
+    fi
+    _exp_idx=$((_exp_idx + 1))
+
     if [[ -n "$SINGLE_SEED" ]]; then
         launch_job "$exp" "$SINGLE_SEED"
     else
