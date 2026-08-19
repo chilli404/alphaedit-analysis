@@ -547,21 +547,21 @@ def _revive_init(model, hparams):
     _dtype_map = {{"float32": torch.float32, "float64": torch.float64, "float16": torch.float16}}
     _svd_dtype = _dtype_map.get(_revive_svd_dtype, torch.float32)
 
+    _all_params_rv = dict(model.named_parameters())
     for layer_idx in hparams.layers:
-        for key in ["mlp.down_proj.weight"]:
-            param_name = f"model.layers.{{layer_idx}}.{{key}}"
-            param = dict(model.named_parameters()).get(param_name)
-            if param is None:
-                continue
-            # Clone original pretrained weight (before any edits)
-            _revive_original_weights[param_name] = param.data.detach().clone().cpu()
-            # Compute compact SVD
-            w = param.data.to(dtype=_svd_dtype, device=_revive_svd_device)
-            U, S, Vh = torch.linalg.svd(w, full_matrices=False)
-            _revive_svd_cache[param_name] = (U, S, Vh)
-            print(f"  [REVIVE] SVD computed for {{param_name}}: "
-                  f"shape={{tuple(param.shape)}}, rank={{S.numel()}}, "
-                  f"dtype={{_svd_dtype}}")
+        param_name = hparams.rewrite_module_tmp.format(layer_idx) + ".weight"
+        param = _all_params_rv.get(param_name)
+        if param is None:
+            continue
+        # Clone original pretrained weight (before any edits)
+        _revive_original_weights[param_name] = param.data.detach().clone().cpu()
+        # Compute compact SVD
+        w = param.data.to(dtype=_svd_dtype, device=_revive_svd_device)
+        U, S, Vh = torch.linalg.svd(w, full_matrices=False)
+        _revive_svd_cache[param_name] = (U, S, Vh)
+        print(f"  [REVIVE] SVD computed for {{param_name}}: "
+              f"shape={{tuple(param.shape)}}, rank={{S.numel()}}, "
+              f"dtype={{_svd_dtype}}")
     _rv_elapsed = _rv_time.perf_counter() - _rv_t0
     print(f"  [REVIVE] Initialization complete: {{len(_revive_svd_cache)}} layers, "
           f"{{_rv_elapsed:.1f}}s")
@@ -651,14 +651,15 @@ def _ckpt_save(cnt, model, hparams):
     batch_dir = Path(_ckpt_dir) / f"batch_{{cnt}}"
     batch_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save edited layer weights only
+    # Save edited layer weights (use rewrite_module_tmp for architecture portability)
     layer_weights = {{}}
+    _all_params = dict(model.named_parameters())
     for layer_idx in hparams.layers:
-        for key in ["mlp.down_proj.weight", "mlp.up_proj.weight"]:
-            param_name = f"model.layers.{{layer_idx}}.{{key}}"
-            param = dict(model.named_parameters()).get(param_name)
-            if param is not None:
-                layer_weights[param_name] = param.data.cpu()
+        _rewrite_key = hparams.rewrite_module_tmp.format(layer_idx) + ".weight"
+        if _rewrite_key in _all_params:
+            layer_weights[_rewrite_key] = _all_params[_rewrite_key].data.cpu()
+    if not layer_weights:
+        print(f"  [CHECKPOINT] WARNING: No matching parameters for rewrite_module_tmp='{{hparams.rewrite_module_tmp}}'")
     torch.save(layer_weights, str(batch_dir / "model_weights.pt"))
 
     # Save prev_cache (dict of layer -> list of key tensors)

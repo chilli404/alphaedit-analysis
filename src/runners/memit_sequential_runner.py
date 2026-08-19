@@ -558,14 +558,15 @@ def _ckpt_save(cnt, model, hparams):
     batch_dir = Path(_ckpt_dir) / f"batch_{{cnt}}"
     batch_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save edited layer weights only
+    # Save edited layer weights (use rewrite_module_tmp for architecture portability)
     layer_weights = {{}}
+    _all_params = dict(model.named_parameters())
     for layer_idx in hparams.layers:
-        for key in ["mlp.down_proj.weight", "mlp.up_proj.weight"]:
-            param_name = f"model.layers.{{layer_idx}}.{{key}}"
-            param = dict(model.named_parameters()).get(param_name)
-            if param is not None:
-                layer_weights[param_name] = param.data.cpu()
+        _rewrite_key = hparams.rewrite_module_tmp.format(layer_idx) + ".weight"
+        if _rewrite_key in _all_params:
+            layer_weights[_rewrite_key] = _all_params[_rewrite_key].data.cpu()
+    if not layer_weights:
+        print(f"  [CHECKPOINT] WARNING: No matching parameters for rewrite_module_tmp='{{hparams.rewrite_module_tmp}}'")
     torch.save(layer_weights, str(batch_dir / "model_weights.pt"))
 
     # Save prev_cache (dict of layer -> list of key tensors)
