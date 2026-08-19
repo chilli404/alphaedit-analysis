@@ -638,14 +638,18 @@ def _ckpt_save(cnt, model, cache_c, hparams, alg_name):
     batch_dir.mkdir(parents=True, exist_ok=True)
 
     # Save only the edited layer weights (much smaller than full model)
+    # Use rewrite_module_tmp to find the correct parameter names for any architecture
     layer_weights = {{}}
+    _all_params = dict(model.named_parameters())
     for layer_idx in hparams.layers:
-        for key in ["mlp.down_proj.weight", "mlp.up_proj.weight"]:
-            param_name = f"model.layers.{{layer_idx}}.{{key}}"
-            param = dict(model.named_parameters()).get(param_name)
-            if param is not None:
-                layer_weights[param_name] = param.data.cpu()
+        # The rewrite target module (e.g. transformer.h.N.mlp.fc_out or model.layers.N.mlp.down_proj)
+        _rewrite_mod = hparams.rewrite_module_tmp.format(layer_idx)
+        _rewrite_key = _rewrite_mod + ".weight"
+        if _rewrite_key in _all_params:
+            layer_weights[_rewrite_key] = _all_params[_rewrite_key].data.cpu()
 
+    if not layer_weights:
+        print(f"  [CHECKPOINT] WARNING: No matching parameters found for rewrite_module_tmp='{{hparams.rewrite_module_tmp}}'")
     torch.save(layer_weights, str(batch_dir / "model_weights.pt"))
 
     # Save cache_c (AlphaEdit only)
@@ -688,7 +692,12 @@ def _ckpt_load(model, hparams, alg_name):
             if param_name in param_dict:
                 param_dict[param_name].data.copy_(param_data)
                 loaded_count += 1
-        print(f"  [CHECKPOINT] Loaded {{loaded_count}} parameter tensors from {{weights_file}}")
+        if loaded_count == 0:
+            print(f"  [CHECKPOINT] CRITICAL WARNING: Loaded 0 parameter tensors from {{weights_file}}!")
+            print(f"  [CHECKPOINT] This likely means the checkpoint was saved with wrong parameter names.")
+            print(f"  [CHECKPOINT] Model is UNEDITED — results will reflect the base model, not the edited model.")
+        else:
+            print(f"  [CHECKPOINT] Loaded {{loaded_count}} parameter tensors from {{weights_file}}")
     else:
         print(f"  [CHECKPOINT] WARNING: No model_weights.pt in {{batch_dir}}")
 
