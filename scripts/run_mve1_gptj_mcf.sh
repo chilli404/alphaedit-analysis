@@ -15,7 +15,7 @@ if [[ -f "$PROJECT_DIR/.env" ]]; then
     set -a; source "$PROJECT_DIR/.env"; set +a
 fi
 
-MODEL_NAME="${MODEL_NAME:-EleutherAI/gpt-j-6b}"
+MODEL_NAME="EleutherAI/gpt-j-6b"
 
 SEED="${1:-42}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"

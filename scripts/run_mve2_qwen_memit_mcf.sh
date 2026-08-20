@@ -15,7 +15,7 @@ if [[ -f "$PROJECT_DIR/.env" ]]; then
     set -a; source "$PROJECT_DIR/.env"; set +a
 fi
 
-MODEL_NAME="${MODEL_NAME:-Qwen/Qwen2.5-7B-Instruct}"
+MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
 
 SEED="${1:-42}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
