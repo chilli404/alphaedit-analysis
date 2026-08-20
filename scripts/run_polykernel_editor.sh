@@ -72,9 +72,20 @@ if [[ "${EVAL_ONLY:-false}" == "true" ]]; then
     EXTRA_ARGS="$EXTRA_ARGS --eval_only --load_checkpoint ${LOAD_CHECKPOINT:?LOAD_CHECKPOINT required for eval_only mode}"
 fi
 
+# C0 injection args
+C0_ARGS=""
+if [[ "${INJECT_C0:-false}" == "true" ]]; then
+    C0_ARGS="--inject_c0"
+    if [[ -n "${C0_WEIGHT:-}" ]]; then
+        C0_ARGS="$C0_ARGS --c0_weight $C0_WEIGHT"
+    fi
+fi
+
 uv run python src/polykernel/polykernel_editor_runner.py \
     --seed "$SEED" \
     --alg_name "$ALG_NAME" \
+    --model_name "${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}" \
+    --hparams_fname "${HPARAMS_FNAME:-Llama3-8B.json}" \
     --kernel_type "$KERNEL_TYPE" \
     --kernel_degree "$KERNEL_DEGREE" \
     --kernel_sigma "$KERNEL_SIGMA" \
@@ -84,6 +95,7 @@ uv run python src/polykernel/polykernel_editor_runner.py \
     --num_edits "$NUM_EDITS" \
     --downstream_eval_steps "$DOWNSTREAM_EVAL_STEPS" \
     --conserve_memory \
+    $C0_ARGS \
     $EXTRA_ARGS
 
 echo ""

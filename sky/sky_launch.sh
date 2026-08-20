@@ -177,6 +177,14 @@ launch_single_job() {
             job_name="ae-interf-${phase_short}-s${seed}"
         fi
     fi
+    # Polykernel editor GPT-J: include C0 in cluster name
+    if [[ "$exp_name" == "polykernel_editor_gptj" ]]; then
+        if [[ "${INJECT_C0:-}" == "true" ]]; then
+            job_name="ae-poly2-gptj-c0-s${seed}"
+        else
+            job_name="ae-poly2-gptj-s${seed}"
+        fi
+    fi
     # Include threshold and cell in cluster name for projection_sweep_gptj
     if [[ "$exp_name" == "projection_sweep_gptj" ]]; then
         local t_short="${NULLSPACE_THRESHOLD:-0.02}"
@@ -337,6 +345,7 @@ case "$EXPERIMENT" in
     mve1_gptj) EXPERIMENTS=(mve1_gptj_mcf) ;;
     mve2_gptj) EXPERIMENTS=(mve2_gptj_memit_mcf) ;;
     failure_curve_gptj) EXPERIMENTS=(failure_curve_gptj) ;;
+    polykernel_editor_gptj) EXPERIMENTS=(polykernel_editor_gptj) ;;
     projection_sweep_gptj)
         # "both" launches two separate clusters for parallelism
         if [[ "${SWEEP_CELL:-both}" == "both" ]]; then
