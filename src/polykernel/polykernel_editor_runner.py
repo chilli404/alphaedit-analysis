@@ -108,6 +108,8 @@ def build_editor_script(
     load_checkpoint: str = "",
     eval_results_dir: str = "",
     variant_name: str = "",
+    inject_c0: bool = False,
+    c0_weight: float = 15000.0,
 ) -> str:
     """
     Build inline Python script for the kernel editor.
@@ -158,6 +160,12 @@ def build_editor_script(
         _scale = (_trace_lin / _frob_inner).item()'''
 
     # --- AlphaEdit injection code ---
+    # When inject_c0 is enabled, add covariance prior to the LHS
+    if inject_c0:
+        _c0_lhs_term = f"_pk_c0_weight * get_cov(model, tok, hparams.rewrite_module_tmp.format(layer), hparams.mom2_dataset, hparams.mom2_n_samples, hparams.mom2_dtype).float() + "
+    else:
+        _c0_lhs_term = ""
+
     alphaedit_solve_replacement = r'''        # === KERNEL EDITOR: kernel-weighted solve (injected) ===
         _G_lin = layer_ks.T @ layer_ks  # (n, n)''' + kernel_gram_code + r'''
         _KKT_kernel = layer_ks @ (_G_kernel * _scale) @ layer_ks.T  # (d, d)
@@ -171,7 +179,7 @@ def build_editor_script(
                 "phase": "solve",
             })
         upd_matrix = torch.linalg.solve(
-                P[i,:,:].cuda() @ (_KKT_kernel + cache_c[i,:,:].cuda()) + hparams.L2*torch.eye(layer_ks.shape[0], dtype=torch.float,device="cuda"), P[i,:,:].cuda() @ layer_ks @ resid.T
+                P[i,:,:].cuda() @ (''' + _c0_lhs_term + r'''_KKT_kernel + cache_c[i,:,:].cuda()) + hparams.L2*torch.eye(layer_ks.shape[0], dtype=torch.float,device="cuda"), P[i,:,:].cuda() @ layer_ks @ resid.T
         )
         del _G_lin, _G_kernel, _KKT_kernel
         # === END kernel solve ==='''
@@ -280,6 +288,8 @@ _polykernel_sigma = "{kernel_sigma}"
 _polykernel_batch_idx = 0
 _polykernel_log = []
 _polykernel_output_jsonl = "{output_jsonl}"
+_pk_c0_weight = {c0_weight}
+_pk_inject_c0 = {inject_c0}
 _pk_edit_only = {edit_only}
 _pk_save_interval = {save_interval}
 _pk_checkpoint_dir = "{checkpoint_dir}"
@@ -295,14 +305,15 @@ def _pk_save_checkpoint(cnt, model, cache_c, hparams, alg_name):
     batch_dir = _Path(_pk_checkpoint_dir) / f"batch_{{cnt}}"
     batch_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save only edited layer weights
+    # Save edited layer weights (use rewrite_module_tmp for architecture portability)
     layer_weights = {{}}
+    _all_params = dict(model.named_parameters())
     for layer_idx in hparams.layers:
-        param_name = f"model.layers.{{layer_idx}}.mlp.down_proj.weight"
-        param = dict(model.named_parameters()).get(param_name)
-        if param is not None:
-            layer_weights[param_name] = param.data.cpu()
-
+        _rewrite_key = hparams.rewrite_module_tmp.format(layer_idx) + ".weight"
+        if _rewrite_key in _all_params:
+            layer_weights[_rewrite_key] = _all_params[_rewrite_key].data.cpu()
+    if not layer_weights:
+        print(f"  [PK-CKPT] WARNING: No matching parameters for rewrite_module_tmp='{{hparams.rewrite_module_tmp}}'")
     torch.save(layer_weights, str(batch_dir / "model_weights.pt"))
 
     # Save cache_c (AlphaEdit only)
@@ -380,6 +391,7 @@ _algo_ns = {{
     "_polykernel_sigma": _polykernel_sigma,
     "_polykernel_batch_idx": _polykernel_batch_idx,
     "_polykernel_log": _polykernel_log,
+    "_pk_c0_weight": _pk_c0_weight,
 }}
 exec(compile(_algo_source, "{algo_file}", "exec"), _algo_ns)
 _patched_apply = _algo_ns["{apply_fn_name}"]
@@ -574,6 +586,8 @@ def run(args: argparse.Namespace) -> None:
     # Output directory
     kernel_tag = f"{args.kernel_type}{args.kernel_degree}" if args.kernel_type == "poly" else f"rbf_{args.kernel_sigma}"
     variant_name = f"{args.alg_name}-{kernel_tag}"
+    if args.inject_c0:
+        variant_name = f"{variant_name}-C0-{args.c0_weight}"
     results_dir = (
         get_result_root() / "polykernel_editor"
         / f"seed{args.seed}" / f"{args.dataset_size_limit}edits" / variant_name
@@ -589,7 +603,7 @@ def run(args: argparse.Namespace) -> None:
         if args.checkpoint_dir:
             checkpoint_dir = args.checkpoint_dir
         else:
-            checkpoint_dir = str(get_checkpoint_root() / f"poly{args.kernel_degree}" / args.alg_name / f"seed{args.seed}")
+            checkpoint_dir = str(get_checkpoint_root() / f"poly{args.kernel_degree}" / variant_name / f"seed{args.seed}")
         Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
     # Resolve checkpoint path for eval_only mode
@@ -638,6 +652,8 @@ def run(args: argparse.Namespace) -> None:
         load_checkpoint=load_checkpoint,
         eval_results_dir=str(eval_results_dir),
         variant_name=variant_name,
+        inject_c0=args.inject_c0,
+        c0_weight=args.c0_weight,
     )
 
     # Environment
@@ -740,6 +756,12 @@ def main():
                         help="Polynomial kernel degree (default: 2). Only used with --kernel_type poly.")
     parser.add_argument("--kernel_sigma", default="median",
                         help="RBF bandwidth: 'median' for median heuristic, or a float value. Only used with --kernel_type rbf.")
+
+    # C₀ injection (adds pretrained covariance prior to LHS)
+    parser.add_argument("--inject_c0", action="store_true",
+                        help="Inject covariance prior (α·C₀) into the kernel-weighted solve.")
+    parser.add_argument("--c0_weight", type=float, default=15000.0,
+                        help="Weight for C₀ term (default: 15000, matches MEMIT's mom2_update_weight).")
 
     # Checkpoint / long-run modes
     parser.add_argument("--edit_only", action="store_true",
