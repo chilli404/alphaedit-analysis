@@ -583,25 +583,46 @@ def run(args: argparse.Namespace) -> None:
     print("Validating source anchors...")
     validate_anchors(args.alg_name)
 
-    # Output directory
+    # Output directory — include model tag for cross-model isolation
     kernel_tag = f"{args.kernel_type}{args.kernel_degree}" if args.kernel_type == "poly" else f"rbf_{args.kernel_sigma}"
     variant_name = f"{args.alg_name}-{kernel_tag}"
     if args.inject_c0:
         variant_name = f"{variant_name}-C0-{args.c0_weight}"
-    results_dir = (
-        get_result_root() / "polykernel_editor"
-        / f"seed{args.seed}" / f"{args.dataset_size_limit}edits" / variant_name
-    )
+
+    # Model tag: non-default models get a subdirectory (gpt-j-6b, qwen2.5-7b, etc.)
+    _default_model = "meta-llama/Meta-Llama-3-8B-Instruct"
+    _mn = (args.model_name or "").lower()
+    if _mn and _mn != _default_model.lower() and not _mn.endswith("meta-llama-3-8b-instruct"):
+        if "gpt-j" in _mn:
+            _model_subdir = "gpt-j-6b"
+        elif "qwen2.5-7b" in _mn:
+            _model_subdir = "qwen2.5-7b"
+        else:
+            _model_subdir = _mn.rsplit("/", 1)[-1]
+        results_dir = (
+            get_result_root() / f"polykernel_editor_{_model_subdir}"
+            / f"seed{args.seed}" / f"{args.dataset_size_limit}edits" / variant_name
+        )
+    else:
+        _model_subdir = ""
+        results_dir = (
+            get_result_root() / "polykernel_editor"
+            / f"seed{args.seed}" / f"{args.dataset_size_limit}edits" / variant_name
+        )
     results_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     output_jsonl = results_dir / f"log_{args.alg_name}_seed{args.seed}_{kernel_tag}_{timestamp}.jsonl"
 
     # Resolve checkpoint dir (always, for resume support)
+    # Include model subdir to isolate cross-model checkpoints
     if args.checkpoint_dir:
         checkpoint_dir = args.checkpoint_dir
     else:
-        checkpoint_dir = str(get_checkpoint_root() / f"poly{args.kernel_degree}" / variant_name / f"seed{args.seed}")
+        _ckpt_base = get_checkpoint_root() / f"poly{args.kernel_degree}"
+        if _model_subdir:
+            _ckpt_base = _ckpt_base / _model_subdir
+        checkpoint_dir = str(_ckpt_base / variant_name / f"seed{args.seed}")
     Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
     # Resolve checkpoint path for eval_only mode
