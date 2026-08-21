@@ -68,14 +68,17 @@ echo ""
 
 cd "$PROJECT_DIR"
 
-# Build extra args for edit_only / eval_only modes
-EXTRA_ARGS=""
-if [[ "${EDIT_ONLY:-false}" == "true" ]]; then
-    EXTRA_ARGS="$EXTRA_ARGS --edit_only --save_interval ${SAVE_INTERVAL:-10}"
-    if [[ -n "${CHECKPOINT_DIR:-}" ]]; then
-        EXTRA_ARGS="$EXTRA_ARGS --checkpoint_dir $CHECKPOINT_DIR"
-    fi
+# Always checkpoint (enables resume on crash/timeout)
+EXTRA_ARGS="--save_interval ${SAVE_INTERVAL:-10}"
+if [[ -n "${CHECKPOINT_DIR:-}" ]]; then
+    EXTRA_ARGS="$EXTRA_ARGS --checkpoint_dir $CHECKPOINT_DIR"
 fi
+
+# Edit-only mode: skip eval after editing
+if [[ "${EDIT_ONLY:-false}" == "true" ]]; then
+    EXTRA_ARGS="$EXTRA_ARGS --edit_only"
+fi
+# Eval-only mode: load checkpoint, skip editing
 if [[ "${EVAL_ONLY:-false}" == "true" ]]; then
     EXTRA_ARGS="$EXTRA_ARGS --eval_only --load_checkpoint ${LOAD_CHECKPOINT:?LOAD_CHECKPOINT required for eval_only mode}"
 fi

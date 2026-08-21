@@ -447,18 +447,18 @@ assert _post_anchor in _eval_source, "POST_EDIT_ANCHOR not found in evaluate.py.
 _batch_hook = {repr(batch_increment_hook)}
 _eval_source = _eval_source.replace(_post_anchor, _batch_hook + _post_anchor, 1)
 
-# --- EDIT-ONLY MODE: inject checkpoint save + skip eval ---
-if _pk_edit_only:
-    # Inject checkpoint save after exec_time (after edit completes)
-    _exec_anchor = {repr(EXEC_TIME_ANCHOR)}
-    assert _exec_anchor in _eval_source, "EXEC_TIME_ANCHOR not found in evaluate.py."
-    _save_hook = '''        # === PK-CKPT: save checkpoint at interval (injected) ===
-        if _pk_edit_only and (cnt + 1) % _pk_save_interval == 0:
+# --- ALWAYS inject checkpoint save (enables resume on crash/timeout) ---
+_exec_anchor = {repr(EXEC_TIME_ANCHOR)}
+assert _exec_anchor in _eval_source, "EXEC_TIME_ANCHOR not found in evaluate.py."
+_save_hook = '''        # === PK-CKPT: save checkpoint at interval (injected) ===
+        if _pk_save_interval > 0 and (cnt + 1) % _pk_save_interval == 0:
             _pk_save_checkpoint(cnt, model, cache_c if alg_name == "AlphaEdit" else None, hparams, alg_name)
         # === END PK-CKPT save ===
 '''
-    _eval_source = _eval_source.replace(_exec_anchor, _save_hook + _exec_anchor, 1)
+_eval_source = _eval_source.replace(_exec_anchor, _save_hook + _exec_anchor, 1)
 
+# --- EDIT-ONLY MODE: skip eval ---
+if _pk_edit_only:
     # Inject skip-eval: replace the evaluation loop to just break immediately
     _eval_start = {repr(EVAL_START_ANCHOR)}
     assert _eval_start in _eval_source, "EVAL_START_ANCHOR not found in evaluate.py."
@@ -597,14 +597,12 @@ def run(args: argparse.Namespace) -> None:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     output_jsonl = results_dir / f"log_{args.alg_name}_seed{args.seed}_{kernel_tag}_{timestamp}.jsonl"
 
-    # Resolve checkpoint dir for edit_only mode
-    checkpoint_dir = ""
-    if args.edit_only:
-        if args.checkpoint_dir:
-            checkpoint_dir = args.checkpoint_dir
-        else:
-            checkpoint_dir = str(get_checkpoint_root() / f"poly{args.kernel_degree}" / variant_name / f"seed{args.seed}")
-        Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+    # Resolve checkpoint dir (always, for resume support)
+    if args.checkpoint_dir:
+        checkpoint_dir = args.checkpoint_dir
+    else:
+        checkpoint_dir = str(get_checkpoint_root() / f"poly{args.kernel_degree}" / variant_name / f"seed{args.seed}")
+    Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
     # Resolve checkpoint path for eval_only mode
     # If load_checkpoint is relative (e.g. "batch_29"), resolve to:
