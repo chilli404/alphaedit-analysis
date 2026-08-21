@@ -59,6 +59,27 @@ sys.path.insert(0, str(_SRC_DIR / "util"))
 
 from model_download import resolve_model_path
 from setup_hparams import link_hparams
+
+
+def find_latest_checkpoint(ckpt_dir: Path) -> tuple | None:
+    """Find the latest checkpoint batch in the directory."""
+    if not ckpt_dir.exists():
+        return None
+    batch_dirs = sorted(
+        [d for d in ckpt_dir.glob("batch_*") if d.is_dir()],
+        key=lambda d: int(d.name.split("_")[1]) if d.name.split("_")[1].isdigit() else -1,
+    )
+    if not batch_dirs:
+        return None
+    for batch_dir in reversed(batch_dirs):
+        metadata_file = batch_dir / "metadata.json"
+        if metadata_file.exists():
+            try:
+                batch_idx = int(batch_dir.name.split("_")[1])
+                return (batch_idx, batch_dir)
+            except (ValueError, IndexError):
+                continue
+    return None
 from source_patches import patch_evaluate_file
 from paths import get_project_root, get_alphaedit_root, get_result_root, get_checkpoint_root
 
