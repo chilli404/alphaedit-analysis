@@ -355,6 +355,7 @@ case "$EXPERIMENT" in
             EXPERIMENTS=(projection_sweep_gptj)
         fi
         ;;
+    polykernel_seqreg_gptj) EXPERIMENTS=(polykernel_seqreg_gptj) ;;
     memit_sequential_gptj) EXPERIMENTS=(memit_sequential_gptj) ;;
     # Cross-model bundles
     cross_model_qwen) EXPERIMENTS=(mve1_qwen_mcf mve2_qwen_memit_mcf) ;;

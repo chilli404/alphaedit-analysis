@@ -117,6 +117,8 @@ cd "$PROJECT_DIR"
 uv run python src/polykernel/polykernel_seqreg_runner.py \
     --seed "$SEED" \
     --cuda_device "$CUDA_DEVICE" \
+    --model_name "${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}" \
+    --hparams_fname "${HPARAMS_FNAME:-Llama3-8B.json}" \
     --dataset_size_limit "$DATASET_SIZE_LIMIT" \
     --num_edits "$NUM_EDITS" \
     --lambda_prev "$LAMBDA_PREV" \
