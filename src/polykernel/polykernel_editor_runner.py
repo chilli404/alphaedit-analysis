@@ -110,6 +110,7 @@ def build_editor_script(
     variant_name: str = "",
     inject_c0: bool = False,
     c0_weight: float = 15000.0,
+    start_from_batch: int = 0,
 ) -> str:
     """
     Build inline Python script for the kernel editor.
@@ -295,6 +296,43 @@ _pk_save_interval = {save_interval}
 _pk_checkpoint_dir = "{checkpoint_dir}"
 _pk_eval_only = {eval_only}
 _pk_checkpoint_load_path = "{load_checkpoint}"
+_pk_start_from_batch = {start_from_batch}
+
+def _pk_should_skip(cnt):
+    \"\"\"Return True if this batch was already processed.\"\"\"
+    return cnt < _pk_start_from_batch
+
+def _pk_load_checkpoint(model, hparams, alg_name):
+    \"\"\"Load model weights + cache_c from checkpoint for resume.\"\"\"
+    from pathlib import Path as _Path
+    if _pk_start_from_batch <= 0:
+        return None
+    batch_dir = _Path(_pk_checkpoint_dir) / f"batch_{{_pk_start_from_batch - 1}}"
+    if not batch_dir.exists():
+        print(f"  [PK-CKPT] WARNING: checkpoint {{batch_dir}} not found, starting from scratch")
+        return None
+    # Load weights
+    wf = batch_dir / "model_weights.pt"
+    if wf.exists():
+        layer_weights = torch.load(str(wf), map_location="cuda")
+        param_dict = dict(model.named_parameters())
+        loaded = 0
+        for k, v in layer_weights.items():
+            if k in param_dict:
+                param_dict[k].data.copy_(v)
+                loaded += 1
+        if loaded == 0:
+            print(f"  [PK-CKPT] CRITICAL: Loaded 0 tensors from {{wf}} — model is unedited!")
+        else:
+            print(f"  [PK-CKPT] Loaded {{loaded}} weight tensors from {{wf}}")
+    # Load cache_c
+    cache_c_loaded = None
+    cf = batch_dir / "cache_c.pt"
+    if cf.exists():
+        cache_c_loaded = torch.load(str(cf), map_location="cpu")
+        print(f"  [PK-CKPT] Loaded cache_c (shape={{cache_c_loaded.shape}}) from {{cf}}")
+    print(f"  [PK-CKPT] Resuming from batch {{_pk_start_from_batch}} ({{_pk_start_from_batch * 100}} edits)")
+    return cache_c_loaded
 
 def _pk_save_checkpoint(cnt, model, cache_c, hparams, alg_name):
     \"\"\"Save model weights + cache_c at checkpoint boundary.\"\"\"
@@ -456,6 +494,33 @@ _save_hook = '''        # === PK-CKPT: save checkpoint at interval (injected) ==
         # === END PK-CKPT save ===
 '''
 _eval_source = _eval_source.replace(_exec_anchor, _save_hook + _exec_anchor, 1)
+
+# --- RESUME MODE: load checkpoint + skip already-done batches ---
+if _pk_start_from_batch > 0 and not _pk_eval_only:
+    # Inject load before the loop
+    _loop_anchor_r = {repr(LOOP_ANCHOR)}
+    assert _loop_anchor_r in _eval_source, "LOOP_ANCHOR not found in evaluate.py."
+    _resume_load = '''    # === PK-CKPT: resume from checkpoint (injected) ===
+    exec_time = 0
+    edited_model = model
+    if _pk_start_from_batch > 0:
+        _resume_cache = _pk_load_checkpoint(model, hparams, alg_name)
+        if _resume_cache is not None and alg_name == "AlphaEdit":
+            cache_c = _resume_cache
+    # === END PK-CKPT resume load ===
+'''
+    _eval_source = _eval_source.replace(_loop_anchor_r, _resume_load + _loop_anchor_r, 1)
+
+    # Inject skip guard inside the edit loop
+    _pre_anchor_r = {repr(PRE_EDIT_ANCHOR)}
+    assert _pre_anchor_r in _eval_source, "PRE_EDIT_ANCHOR not found in evaluate.py."
+    _skip_resume = '''        # === PK-CKPT: skip already-processed batches (injected) ===
+        if _pk_should_skip(cnt):
+            cnt += 1
+            continue
+        # === END PK-CKPT skip ===
+'''
+    _eval_source = _eval_source.replace(_pre_anchor_r, _skip_resume + _pre_anchor_r, 1)
 
 # --- EDIT-ONLY MODE: skip eval ---
 if _pk_edit_only:
@@ -646,6 +711,21 @@ def run(args: argparse.Namespace) -> None:
                         load_checkpoint = str(candidate)
                     break
 
+    # Auto-detect resume from latest checkpoint
+    start_from_batch = 0
+    if not args.eval_only:
+        latest = find_latest_checkpoint(Path(checkpoint_dir))
+        if latest:
+            total_batches = args.dataset_size_limit // args.num_edits
+            start_from_batch = latest[0] + 1
+            if start_from_batch > total_batches:
+                start_from_batch = total_batches
+                print(f"  Auto-detected: checkpoint at batch {latest[0]} exceeds target ({total_batches} batches). Will run eval only.")
+            else:
+                print(f"  Auto-detected: resume from batch {start_from_batch} (checkpoint at batch {latest[0]})")
+        else:
+            print("  No existing checkpoints found. Starting from batch 0.")
+
     # RESULTS_DIR for evaluate.py is the parent of variant_name dir
     eval_results_dir = results_dir.parent  # .../seed42/10000edits/
 
@@ -673,6 +753,7 @@ def run(args: argparse.Namespace) -> None:
         variant_name=variant_name,
         inject_c0=args.inject_c0,
         c0_weight=args.c0_weight,
+        start_from_batch=start_from_batch,
     )
 
     # Environment
