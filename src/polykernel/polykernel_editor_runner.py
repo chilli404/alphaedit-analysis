@@ -615,6 +615,9 @@ exec(compile(_eval_source, "experiments/evaluate.py", "exec"), {{
     "_pk_save_checkpoint": _pk_save_checkpoint,
     "_pk_load_from_checkpoint": _pk_load_from_checkpoint,
     "_pk_checkpoint_load_path": _pk_checkpoint_load_path,
+    "_pk_start_from_batch": _pk_start_from_batch,
+    "_pk_should_skip": _pk_should_skip,
+    "_pk_load_checkpoint": _pk_load_checkpoint,
 }})
 
 # 8. Write log to JSONL
