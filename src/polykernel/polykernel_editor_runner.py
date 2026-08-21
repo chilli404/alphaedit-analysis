@@ -142,6 +142,161 @@ def build_editor_script(
       - edit_only: apply all edits, checkpoint every save_interval batches, skip eval
       - eval_only: load checkpoint, skip editing, run full evaluation
     """
+    # Mega-batch eval: replaces slow per-record eval with batched forward passes (~10-30x speedup)
+    mega_batch_eval_code = '''    # === MEGA-BATCH EVAL (injected by polykernel_editor_runner) ===
+    def _mega_batch_eval(model, tok, records, case_result_template, num_edits, case_ids, exec_time, batch_size=2):
+        import torch as _mbe_torch
+        import numpy as _mbe_np
+        import json as _mbe_json
+        from time import time as _mbe_time
+        from pathlib import Path as _mbe_Path
+
+        _is_llama = 'llama' in model.config._name_or_path.lower()
+        _mbe_start = _mbe_time()
+        _mbe_total = len(records)
+        _mbe_done = 0
+        _mbe_skipped = 0
+
+        for batch_start in range(0, _mbe_total, batch_size):
+            batch_records = records[batch_start:batch_start + batch_size]
+            all_sequences = []
+            record_meta = []
+
+            for record in batch_records:
+                out_file = _mbe_Path(case_result_template.format(num_edits, record["case_id"]))
+                if out_file.exists():
+                    record_meta.append(None)
+                    _mbe_skipped += 1
+                    continue
+
+                subject = record["requested_rewrite"]["subject"]
+                target_new = record["requested_rewrite"]["target_new"]["str"]
+                target_true = record["requested_rewrite"]["target_true"]["str"]
+
+                rewrite_prompts = [record["requested_rewrite"]["prompt"].format(subject)]
+                paraphrase_prompts = record["paraphrase_prompts"]
+                neighborhood_prompts = record["neighborhood_prompts"]
+
+                prefixes = rewrite_prompts + paraphrase_prompts + neighborhood_prompts
+                which_correct = (
+                    [0] * len(rewrite_prompts)
+                    + [0] * len(paraphrase_prompts)
+                    + [1] * len(neighborhood_prompts)
+                )
+
+                a_tok = tok(f" {target_new}")["input_ids"]
+                b_tok = tok(f" {target_true}")["input_ids"]
+                if _is_llama:
+                    a_tok = a_tok[1:]
+                    b_tok = b_tok[1:]
+
+                prefix_lens = [len(n) for n in tok(prefixes)["input_ids"]]
+                if _is_llama:
+                    prefix_lens = [l - 1 for l in prefix_lens]
+
+                seqs = [f"{prefix} {suffix}" for prefix in prefixes for suffix in [target_new, target_true]]
+                seq_start_idx = len(all_sequences)
+                all_sequences.extend(seqs)
+
+                record_meta.append({
+                    "record": record, "out_file": out_file,
+                    "a_tok": a_tok, "b_tok": b_tok,
+                    "prefix_lens": prefix_lens, "which_correct": which_correct,
+                    "n_prefixes": len(prefixes),
+                    "n_rewrite": len(rewrite_prompts),
+                    "n_paraphrase": len(paraphrase_prompts),
+                    "n_neighborhood": len(neighborhood_prompts),
+                    "seq_start_idx": seq_start_idx, "n_seqs": len(seqs),
+                })
+
+            if not all_sequences:
+                _mbe_done += len(batch_records)
+                continue
+
+            prompt_tok = tok(all_sequences, padding=True, return_tensors="pt").to("cuda")
+            with _mbe_torch.no_grad():
+                logits = model(**prompt_tok).logits
+            if _is_llama:
+                logits = logits[:, 1:, :]
+
+            for meta in record_meta:
+                if meta is None:
+                    continue
+                record = meta["record"]
+                start_idx = meta["seq_start_idx"]
+                n_seqs = meta["n_seqs"]
+                a_tok = meta["a_tok"]
+                b_tok = meta["b_tok"]
+                prefix_lens = meta["prefix_lens"]
+                which_correct = meta["which_correct"]
+                choice_a_len = len(a_tok)
+                choice_b_len = len(b_tok)
+                rec_logits = logits[start_idx:start_idx + n_seqs]
+
+                probs = _mbe_np.zeros((n_seqs,), dtype=_mbe_np.float32)
+                targets_correct = []
+                for i in range(n_seqs):
+                    cur_len = choice_a_len if i % 2 == 0 else choice_b_len
+                    for j in range(cur_len):
+                        cur_tok = (a_tok if i % 2 == 0 else b_tok)[j]
+                        probs[i] += -_mbe_torch.nn.functional.log_softmax(
+                            rec_logits[i, prefix_lens[i // 2] + j - 1, :], dim=0
+                        )[cur_tok].item()
+                    probs[i] /= cur_len
+                    if (which_correct[i // 2] == 0 and i % 2 == 0) or (which_correct[i // 2] == 1 and i % 2 == 1):
+                        correct = True
+                        for j in range(cur_len):
+                            cur_tok = (a_tok if i % 2 == 0 else b_tok)[j]
+                            if rec_logits[i, prefix_lens[i // 2] + j - 1, :].argmax().item() != cur_tok:
+                                correct = False
+                                break
+                        targets_correct.append(correct)
+
+                ret_probs = [{"target_new": probs[i].item(), "target_true": probs[i + 1].item()} for i in range(0, n_seqs, 2)]
+                n_rw = meta["n_rewrite"]
+                n_para = meta["n_paraphrase"]
+                n_neigh = meta["n_neighborhood"]
+                cutoffs = [0, n_rw, n_rw + n_para, n_rw + n_para + n_neigh]
+                ret_corrects = [targets_correct[cutoffs[i]:cutoffs[i+1]] for i in range(3)]
+
+                post = {
+                    "rewrite_prompts_probs": ret_probs[:n_rw],
+                    "rewrite_prompts_correct": ret_corrects[0],
+                    "paraphrase_prompts_probs": ret_probs[n_rw:n_rw + n_para],
+                    "paraphrase_prompts_correct": ret_corrects[1],
+                    "neighborhood_prompts_probs": ret_probs[n_rw + n_para:],
+                    "neighborhood_prompts_correct": ret_corrects[2],
+                }
+                metrics = {
+                    "case_id": record["case_id"],
+                    "grouped_case_ids": case_ids,
+                    "num_edits": num_edits,
+                    "requested_rewrite": record["requested_rewrite"],
+                    "time": exec_time,
+                    "post": post,
+                }
+                with open(meta["out_file"], "w") as f:
+                    _mbe_json.dump(metrics, f, indent=1)
+
+            del prompt_tok, logits
+            _mbe_torch.cuda.empty_cache()
+            _mbe_done += len(batch_records)
+            _elapsed = _mbe_time() - _mbe_start
+            _rate = _mbe_done / _elapsed if _elapsed > 0 else 0
+            if _mbe_done % (batch_size * 4) < batch_size or _mbe_done >= _mbe_total:
+                print(f"  [MEGA-BATCH EVAL] {_mbe_done}/{_mbe_total} records "
+                      f"({_mbe_skipped} skipped, {_rate:.1f} rec/s, {_elapsed:.0f}s elapsed)")
+
+        print(f"  [MEGA-BATCH EVAL] Complete: {_mbe_total} records in {_mbe_time() - _mbe_start:.1f}s")
+
+    # --- Call mega-batch eval ---
+    if not _pk_edit_only:
+        _mega_batch_eval(edited_model, tok, list(ds), case_result_template, num_edits, case_ids, exec_time)
+    # === END MEGA-BATCH EVAL ===
+    for record in ds:
+        break  # Mega-batch handles all eval; skip vendor loop
+        out_file = Path(case_result_template.format(num_edits, record["case_id"]))'''
+
     argv_parts = [
         "experiments.evaluate",
         f"--alg_name={alg_name}",
@@ -524,6 +679,8 @@ if _pk_start_from_batch > 0 and not _pk_eval_only:
     _resume_load = '''    # === PK-CKPT: resume from checkpoint (injected) ===
     exec_time = 0
     edited_model = model
+    case_result_template = str(run_dir / "{{}}_edits-case_{{}}.json")
+    case_ids = [r["case_id"] for r in ds]
     if _pk_start_from_batch > 0:
         _resume_cache = _pk_load_checkpoint(model, hparams, alg_name)
         if _resume_cache is not None and alg_name == "AlphaEdit":
@@ -593,6 +750,14 @@ if _pk_eval_only:
         # === END PK-CKPT skip edit ===
 '''
     _eval_source = _eval_source.replace(_pre_anchor, _skip_edit_hook + _pre_anchor, 1)
+
+# --- MEGA-BATCH EVAL: replace slow per-record eval with batched scoring ---
+if not _pk_edit_only:
+    _mbe_anchor = {repr(EVAL_LOOP_ANCHOR)}
+    if _mbe_anchor in _eval_source:
+        _mega_batch_code = {repr(mega_batch_eval_code)}
+        _eval_source = _eval_source.replace(_mbe_anchor, _mega_batch_code, 1)
+        print("[Kernel Editor] Mega-batch eval injected")
 
 print("[Kernel Editor] evaluate.py patched successfully")
 
