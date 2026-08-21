@@ -91,12 +91,14 @@ def resolve_checkpoint_dir(
     kernel_prev: bool = True,
     revive: bool = False,
     revive_tau: float = 0.2,
+    model_name: str | None = None,
 ) -> Path:
     """Resolve checkpoint directory for Polykernel+SeqReg.
 
     Convention:
-        Standard:         {CHECKPOINT_ROOT}/polykernel_seqreg/{variant}/seed{N}/
-        Matched ordering: {CHECKPOINT_ROOT}/polykernel_seqreg/{variant}/{ordering}/seed{N}/
+        Standard:         {CHECKPOINT_ROOT}/polykernel_seqreg/{model_tag}/{variant}/seed{N}/
+        Matched ordering: {CHECKPOINT_ROOT}/polykernel_seqreg/{model_tag}/{variant}/{ordering}/seed{N}/
+    Non-default models get a model_tag subdirectory; Llama (default) has none for backwards compat.
     """
     if explicit_dir:
         return Path(explicit_dir)
@@ -109,10 +111,26 @@ def resolve_checkpoint_dir(
         kernel_tag += f"-REVIVE-tau{revive_tau}"
     variant_name = f"MEMIT-Seq-{kernel_tag}-lp{lambda_prev}-ld{lambda_delta}-cache{cache_max_str}"
 
-    if ordering:
-        return get_checkpoint_root() / "polykernel_seqreg" / variant_name / ordering / f"seed{seed}"
+    # Model tag for cross-model isolation
+    _default = "meta-llama/Meta-Llama-3-8B-Instruct"
+    _mn = (model_name or "").lower()
+    _model_tag = ""
+    if _mn and _mn != _default.lower() and not _mn.endswith("meta-llama-3-8b-instruct"):
+        if "gpt-j" in _mn:
+            _model_tag = "gpt-j-6b"
+        elif "qwen2.5-7b" in _mn:
+            _model_tag = "qwen2.5-7b"
+        else:
+            _model_tag = _mn.rsplit("/", 1)[-1]
 
-    return get_checkpoint_root() / "polykernel_seqreg" / variant_name / f"seed{seed}"
+    base = get_checkpoint_root() / "polykernel_seqreg"
+    if _model_tag:
+        base = base / _model_tag
+
+    if ordering:
+        return base / variant_name / ordering / f"seed{seed}"
+
+    return base / variant_name / f"seed{seed}"
 
 
 def find_latest_checkpoint(ckpt_dir: Path) -> tuple[int, Path] | None:
@@ -928,6 +946,8 @@ if _ds_override_path:
 _ckpt_load_injection = '''    # === CHECKPOINT: load state from previous run (injected) ===
     exec_time = 0  # Default: prevents UnboundLocalError if all batches skipped
     edited_model = model  # Default: if all batches skipped, model IS the edited model
+    case_result_template = str(run_dir / "{{}}_edits-case_{{}}.json")
+    case_ids = [r["case_id"] for r in ds]
     if _ckpt_start_batch > 0 and '_ckpt_load' in globals():
         _ckpt_load(model, hparams)
     # === END checkpoint load ===
@@ -1092,6 +1112,19 @@ def run(args: argparse.Namespace) -> None:
     variant_name = f"MEMIT-Seq-{kernel_tag}-lp{args.lambda_prev}-ld{args.lambda_delta}-cache{cache_max_str}"
 
     # Output directory — use failure_curve_checkpointed so method_comparison.py discovers it
+    # Non-default models get a model-tagged experiment name for isolation
+    _default_model = "meta-llama/Meta-Llama-3-8B-Instruct"
+    _mn = (args.model_name or "").lower()
+    if _mn and _mn != _default_model.lower() and not _mn.endswith("meta-llama-3-8b-instruct"):
+        if "gpt-j" in _mn:
+            _exp_name = "failure_curve_gptj"
+        elif "qwen2.5-7b" in _mn:
+            _exp_name = "failure_curve_qwen"
+        else:
+            _exp_name = f"failure_curve_{_mn.rsplit('/', 1)[-1]}"
+    else:
+        _exp_name = "failure_curve_checkpointed"
+
     ordering = getattr(args, 'ordering', None)
     if ordering:
         results_dir = (
@@ -1100,7 +1133,7 @@ def run(args: argparse.Namespace) -> None:
         )
     else:
         results_dir = (
-            get_result_root() / "failure_curve_checkpointed"
+            get_result_root() / _exp_name
             / f"seed{args.seed}" / f"{args.dataset_size_limit}edits"
         )
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -1118,6 +1151,7 @@ def run(args: argparse.Namespace) -> None:
         cache_max, args.kernel_type, args.kernel_degree, args.kernel_sigma,
         ordering=ordering, kernel_prev=args.kernel_prev,
         revive=args.revive, revive_tau=args.revive_tau,
+        model_name=args.model_name,
     )
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
