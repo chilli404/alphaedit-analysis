@@ -445,6 +445,25 @@ class TestBaselineScripts:
             assert func in source, f"patch_baselines.sh must patch {func}"
 
 
+class TestBaselineNumEditsOverride:
+    """Baseline scripts must support NUM_EDITS env var to override hardcoded batch size."""
+
+    @pytest.mark.parametrize("script", [
+        "run_evoedit_baseline.sh",
+        "run_nse_baseline.sh",
+        "run_rect_aligned_paper_replication.sh",
+    ])
+    def test_script_uses_num_edits_env_var(self, script):
+        path = PROJECT_ROOT / "scripts" / script
+        if not path.exists():
+            pytest.skip(f"{script} not present")
+        source = path.read_text()
+        assert "NUM_EDITS" in source, (
+            f"{script} must support NUM_EDITS env var for batch size override. "
+            f"Without this, smoke tests can't use small batches (10 edits) for fast testing."
+        )
+
+
 class TestCheckpointCompleteness:
     """Checkpoint files must contain all required components."""
 

@@ -32,6 +32,7 @@ case "$MODEL_NAME" in
     *)                           HPARAMS_FNAME="Llama3-8B.json" ;;
 esac
 TARGET_EDITS="${TARGET_EDITS:-10000}"
+NUM_EDITS="${NUM_EDITS:-100}"
 DEVICE="${CUDA_DEVICE:-0}"
 RESULT_ROOT="${RESULT_ROOT:-$PROJECT_DIR/results}"
 CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-${HOME}/.cache/alphaedit_checkpoints}"
@@ -180,7 +181,7 @@ sys.argv = [
     '--hparams_fname=$HPARAMS_FNAME',
     '--ds_name=mcf',
     '--dataset_size_limit=$TARGET_EDITS',
-    '--num_edits=100',
+    '--num_edits=$NUM_EDITS',
     '--downstream_eval_steps=0',
     '--save_every=1000',
     '--conserve_memory',

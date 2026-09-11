@@ -186,12 +186,9 @@ run_and_check "PathGuard" "PathGuard" "$CHECKPOINT_ROOT/polykernel_seqreg" \
 # GROUP 4: Baselines (EvoEdit, NSE, RECT via shell scripts)
 # -----------------------------------------------------------------------
 
-# Baselines hardcode --num_edits=100, so TARGET_EDITS=100 gives 1 batch
-BASELINE_EDITS=100
-
 log "START: EvoEdit (baselines)"
 t0=$(date +%s)
-if timeout "$TIMEOUT" bash -c "TARGET_EDITS=$BASELINE_EDITS bash scripts/run_evoedit_baseline.sh $SEED" 2>&1 | tail -15; then
+if timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash scripts/run_evoedit_baseline.sh $SEED" 2>&1 | tail -15; then
     elapsed=$(($(date +%s) - t0))
     log "✓ EvoEdit PASSED (${elapsed}s)"
     PASS=$((PASS+1))
@@ -209,7 +206,7 @@ fi
 
 log "START: NSE (baselines)"
 t0=$(date +%s)
-if timeout "$TIMEOUT" bash -c "TARGET_EDITS=$BASELINE_EDITS bash scripts/run_nse_baseline.sh $SEED" 2>&1 | tail -15; then
+if timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash scripts/run_nse_baseline.sh $SEED" 2>&1 | tail -15; then
     elapsed=$(($(date +%s) - t0))
     log "✓ NSE PASSED (${elapsed}s)"
     PASS=$((PASS+1))
@@ -227,7 +224,7 @@ fi
 
 log "START: RECT-Aligned (baselines)"
 t0=$(date +%s)
-if timeout "$TIMEOUT" bash -c "TARGET_EDITS=$BASELINE_EDITS bash scripts/run_rect_aligned_paper_replication.sh $SEED" 2>&1 | tail -15; then
+if timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash scripts/run_rect_aligned_paper_replication.sh $SEED" 2>&1 | tail -15; then
     elapsed=$(($(date +%s) - t0))
     log "✓ RECT-Aligned PASSED (${elapsed}s)"
     PASS=$((PASS+1))
