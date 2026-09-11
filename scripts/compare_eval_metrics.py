@@ -276,7 +276,7 @@ def main():
     parser.add_argument("--base_only", action="store_true",
                         help="Evaluate base model without any checkpoint (pre-edit baseline)")
     parser.add_argument("--model_name", type=str,
-                        default="NousResearch/Meta-Llama-3-8B-Instruct")
+                        default="meta-llama/Meta-Llama-3-8B-Instruct")
     parser.add_argument("--edits", type=int, required=True,
                         help="Number of edits to evaluate (selects first N records)")
     parser.add_argument("--stream_path", type=str, default=None,

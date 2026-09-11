@@ -265,7 +265,7 @@ def main():
     parser.add_argument("--checkpoint_dir", type=str, default=None,
                         help="Explicit checkpoint directory (overrides S3 download)")
     parser.add_argument("--model_name", type=str,
-                        default="NousResearch/Meta-Llama-3-8B-Instruct")
+                        default="meta-llama/Meta-Llama-3-8B-Instruct")
     parser.add_argument("--stream_path", type=str, default=None,
                         help="Path to ordering stream JSON (for exact fact matching)")
     parser.add_argument("--dataset_path", type=str, default=None,
@@ -387,7 +387,7 @@ def main():
         if not spec_close:
             print(f"         Specificity gap: {abs(prob_spec - pub_spec):.2f}pp (>5pp threshold)")
         print("         Note: differences may be due to ordering (fb_random0 vs default MCF)")
-        print("         or model variant (NousResearch vs meta-llama)")
+        print("         or model loading path")
     print(f"{'='*75}")
 
     # ------------------------------------------------------------------

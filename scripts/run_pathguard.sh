@@ -34,7 +34,7 @@ SEED="${1:?Usage: $0 SEED [VARIANT] [ORDERING]}"
 VARIANT="${2:-PathGuard-ED}"
 ORDERING="${3:-}"
 
-MODEL_NAME="${MODEL_NAME:-NousResearch/Meta-Llama-3-8B-Instruct}"
+MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 HPARAMS_FNAME="${HPARAMS_FNAME:-Llama3-8B.json}"
 TARGET_EDITS="${TARGET_EDITS:-10000}"
 SAVE_INTERVAL="${SAVE_INTERVAL:-10}"

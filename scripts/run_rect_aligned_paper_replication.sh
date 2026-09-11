@@ -15,7 +15,7 @@ fi
 if [[ -n "$_PRESET_MODEL" ]]; then MODEL_NAME="$_PRESET_MODEL"; fi
 
 SEED="${1:-42}"
-MODEL_NAME="${MODEL_NAME:-NousResearch/Meta-Llama-3-8B-Instruct}"
+MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 case "$MODEL_NAME" in
     *gpt-j*|*gptj*|*EleutherAI*) HPARAMS_FNAME="EleutherAI_gpt-j-6B.json" ;;
     *Qwen*|*qwen*)               HPARAMS_FNAME="Qwen2.5-7B.json" ;;

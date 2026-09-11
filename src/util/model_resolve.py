@@ -34,10 +34,8 @@ def resolve_model_path(model_name: str) -> str:
     short_name = model_name.split("/")[-1]
     dash_name = model_name.replace("/", "--")
     candidates = [short_name, dash_name, short_name.replace("EleutherAI-", "")]
-    # Also check shortened names and NousResearch mirror
+    # S3 stores Llama as "Meta-Llama-3-8B" (no -Instruct suffix)
     if "Meta-Llama" in short_name:
-        candidates.append(f"NousResearch--{short_name}")
-        # S3 stores as "Meta-Llama-3-8B" (no -Instruct suffix)
         candidates.append(short_name.replace("-Instruct", ""))
     for base in _S3_MODEL_PATHS:
         for candidate in candidates:

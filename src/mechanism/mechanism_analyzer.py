@@ -18,7 +18,7 @@ Usage:
     python src/mechanism_analyzer.py \\
         --seed 42 \\
         --checkpoint_base $CHECKPOINT_ROOT/failure_curve/AlphaEdit/seed42 \\
-        --model_name NousResearch/Meta-Llama-3-8B-Instruct \\
+        --model_name meta-llama/Meta-Llama-3-8B-Instruct \\
         --hparams_fname Llama3-8B.json
 
     # Analyze specific batch indices only
@@ -459,7 +459,7 @@ def main():
     parser.add_argument("--checkpoint_base", type=str, required=True,
                         help="Base directory containing batch_N/ checkpoint subdirs")
     parser.add_argument("--model_name", type=str,
-                        default="NousResearch/Meta-Llama-3-8B-Instruct")
+                        default="meta-llama/Meta-Llama-3-8B-Instruct")
     parser.add_argument("--hparams_fname", type=str, default="Llama3-8B.json")
     parser.add_argument("--batch_indices", type=int, nargs="*", default=None,
                         help="Specific batch indices to analyze (default: all found)")

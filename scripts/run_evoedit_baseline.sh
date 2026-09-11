@@ -24,7 +24,7 @@ if [[ -n "$_PRESET_MODEL" ]]; then MODEL_NAME="$_PRESET_MODEL"; fi
 
 SEED="${1:?Usage: $0 SEED [ORDERING]}"
 ORDERING="${2:-${ORDERING:-fb_random0}}"
-MODEL_NAME="${MODEL_NAME:-NousResearch/Meta-Llama-3-8B-Instruct}"
+MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 # Always derive hparams from model name — never from env
 case "$MODEL_NAME" in
     *gpt-j*|*gptj*|*EleutherAI*) HPARAMS_FNAME="EleutherAI_gpt-j-6B.json" ;;
@@ -111,17 +111,8 @@ else
     echo "  WARNING: No covariance stats found"
 fi
 
-# Create model-name variant symlinks for stats (MEMIT get_cov resolves model._name_or_path)
-for variant in Meta-Llama-3-8B Meta-Llama-3-8B-Instruct \
-    _s3-data_continual-learning_models_Meta-Llama-3-8B \
-    NousResearch_Meta-Llama-3-8B-Instruct \
-    NousResearch-Meta-Llama-3-8B-Instruct; do
-    ln -sf Llama3-8B "data/stats/${variant}" 2>/dev/null || true
-done
-
-# Add context length entries for NousResearch model name variants
-# (EvoEdit's useful_functions.py already has meta-llama-3-8b-instruct but not NousResearch variants)
-sed -i.bak 's/"meta-llama-3-8b-instruct": 8192,/"meta-llama-3-8b-instruct": 8192, "nousresearch--meta-llama-3-8b-instruct": 8192, "meta-llama-3-8b": 4096,/' glue_eval/useful_functions.py 2>/dev/null || true
+# Symlink canonical stats name (canonical name patch sets _name_or_path to "llama3-8b-instruct")
+ln -sf llama3-8b-instruct "data/stats/llama3-8b-instruct" 2>/dev/null || true
 
 # Patch EvoEdit to accept extra kwargs (return_orig_weights_device passed by evaluate.py)
 # Idempotent: skip if already patched

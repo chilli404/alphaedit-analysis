@@ -16,7 +16,7 @@ if [[ -f "$PROJECT_DIR/.env" ]]; then
     set -a; source "$PROJECT_DIR/.env"; set +a
 fi
 
-MODEL_NAME="${MODEL_NAME:-NousResearch/Meta-Llama-3-8B-Instruct}"
+MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 # Always derive HPARAMS from MODEL_NAME (don't use :- which keeps stale values)
 case "$MODEL_NAME" in
     *gpt-j*|*gptj*|*EleutherAI*) HPARAMS_FNAME="EleutherAI_gpt-j-6B.json" ;;

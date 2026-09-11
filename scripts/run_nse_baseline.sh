@@ -24,7 +24,7 @@ if [[ -n "$_PRESET_MODEL" ]]; then MODEL_NAME="$_PRESET_MODEL"; fi
 
 SEED="${1:?Usage: $0 SEED [ORDERING]}"
 ORDERING="${2:-${ORDERING:-fb_random0}}"
-MODEL_NAME="${MODEL_NAME:-NousResearch/Meta-Llama-3-8B-Instruct}"
+MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 case "$MODEL_NAME" in
     *gpt-j*|*gptj*|*EleutherAI*) HPARAMS_FNAME="EleutherAI_gpt-j-6B.json" ;;
     *Qwen*|*qwen*)               HPARAMS_FNAME="Qwen2.5-7B.json" ;;
@@ -139,23 +139,7 @@ else
     echo "  WARNING: No covariance stats found"
 fi
 
-# Model-name variant symlinks for stats
-if [[ "$_STATS_HPARAMS" == "Llama3-8B" ]]; then
-    for variant in Meta-Llama-3-8B Meta-Llama-3-8B-Instruct \
-        _s3-data_continual-learning_models_Meta-Llama-3-8B \
-        NousResearch_Meta-Llama-3-8B-Instruct \
-        NousResearch-Meta-Llama-3-8B-Instruct; do
-        ln -sf Llama3-8B "data/stats/${variant}" 2>/dev/null || true
-    done
-elif [[ "$_STATS_HPARAMS" == "EleutherAI_gpt-j-6B" ]]; then
-    for variant in gpt-j-6b EleutherAI_gpt-j-6b \
-        _s3-data_continual-learning_models_gpt-j-6b; do
-        ln -sf EleutherAI_gpt-j-6B "data/stats/${variant}" 2>/dev/null || true
-    done
-fi
-
-# Context length entries for NousResearch model name variants
-sed -i.bak 's/"meta-llama-3-8b-instruct": 8192,/"meta-llama-3-8b-instruct": 8192, "nousresearch--meta-llama-3-8b-instruct": 8192, "meta-llama-3-8b": 4096,/' glue_eval/useful_functions.py 2>/dev/null || true
+# Stats symlinks handled by link_stats.sh + canonical name normalization
 
 # Fix deprecated Wikipedia dataset config
 sed -i.bak 's/20200501.en/20220301.en/' rome/layer_stats.py 2>/dev/null || true

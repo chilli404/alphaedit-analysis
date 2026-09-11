@@ -46,7 +46,7 @@ bash scripts/link_dsets.sh
 
 # 8. Patch vendor submodule for compatibility
 echo "[8/8] Patching vendor submodule..."
-# Add NousResearch model name variants to context length map
+# Context length map updates (handled by source_patches.py)
 if ! grep -q "meta-llama-3-8b-instruct" vendor/AlphaEdit/glue_eval/useful_functions.py; then
     sed -i 's/"llama3-8b-instruct": 4096,/"llama3-8b-instruct": 4096, "meta-llama-3-8b-instruct": 4096, "nousresearch--meta-llama-3-8b-instruct": 4096,/' vendor/AlphaEdit/glue_eval/useful_functions.py
     echo "  Patched model name map"

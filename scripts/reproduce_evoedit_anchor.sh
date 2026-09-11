@@ -30,7 +30,7 @@ set -euo pipefail
 #
 # Environment variables:
 #   CUDA_DEVICE     GPU index (default: 0)
-#   MODEL_NAME      Model to use (default: NousResearch/Meta-Llama-3-8B-Instruct)
+#   MODEL_NAME      Model to use (default: meta-llama/Meta-Llama-3-8B-Instruct)
 #   RESULT_ROOT     Where to write results (default: ./results)
 #   TARGET_EDITS    For mode 2: how many edits to run (default: 10000)
 #
@@ -47,7 +47,7 @@ MODE="${1:-eval}"
 EDITS="${2:-10000}"
 SEED="${3:-42}"
 ORDERING="${4:-fb_random0}"
-MODEL_NAME="${MODEL_NAME:-NousResearch/Meta-Llama-3-8B-Instruct}"
+MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 DEVICE="${CUDA_DEVICE:-0}"
 RESULT_ROOT="${RESULT_ROOT:-$PROJECT_DIR/results}"
 TARGET_EDITS="${TARGET_EDITS:-10000}"
@@ -149,11 +149,7 @@ case "$MODE" in
         echo "  WARNING: No covariance stats found — will compute from scratch"
     fi
 
-    # Model name variant symlinks for stats
-    for variant in Meta-Llama-3-8B Meta-Llama-3-8B-Instruct \
-        NousResearch_Meta-Llama-3-8B-Instruct NousResearch-Meta-Llama-3-8B-Instruct; do
-        ln -sf Llama3-8B "data/stats/${variant}" 2>/dev/null || true
-    done
+    # Stats handled by link_stats.sh + canonical name normalization
 
     # Link null_space_project.pt if available
     for p in "$STATS_SRC/null_space_project.pt" \
