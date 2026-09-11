@@ -56,18 +56,20 @@ class TestKwargsAcceptance:
         return False
 
     def test_source_patches_add_kwargs_to_memit(self):
-        """After applying patches, memit_main must accept **_kwargs."""
+        """memit_main must accept **_kwargs (pre-patch anchor or already patched)."""
         source = (VENDOR_ROOT / "memit" / "memit_main.py").read_text()
-        # The kwargs anchor that patch_memit_file uses
-        anchor = "    cache_template: Optional[str] = None,\n) -> Tuple[AutoModelForCausalLM"
-        assert anchor in source, "memit_main.py kwargs anchor must be present for patching"
+        pre_patch = "cache_template: Optional[str] = None,\n) -> Tuple[AutoModelForCausalLM"
+        assert pre_patch in source or "**_kwargs" in source, (
+            "memit_main.py must have kwargs anchor (pre-patch) or already contain **_kwargs"
+        )
 
     def test_source_patches_add_kwargs_to_alphaedit(self):
-        """After applying source_patches, AlphaEdit_main must accept **_kwargs."""
+        """AlphaEdit_main must accept **_kwargs (pre-patch anchor or already patched)."""
         source = (VENDOR_ROOT / "AlphaEdit" / "AlphaEdit_main.py").read_text()
-        # The kwargs anchor used by patch_alphaedit_main_file
-        anchor = "    P = None,\n) -> Dict[str, Tuple[torch.Tensor]]:"
-        assert anchor in source, "AlphaEdit_main.py kwargs anchor must be present for patching"
+        pre_patch = "P = None,\n) -> Dict[str, Tuple[torch.Tensor]]:"
+        assert pre_patch in source or "**_kwargs" in source, (
+            "AlphaEdit_main.py must have kwargs anchor (pre-patch) or already contain **_kwargs"
+        )
 
     @pytest.mark.skipif(
         not (BASELINES_ROOT / "memit" / "memit_seq_rect_main.py").exists(),

@@ -1,4 +1,5 @@
 """Shared test fixtures for alphaedit-analysis test suite."""
+import os
 import sys
 import types
 from pathlib import Path
@@ -12,6 +13,9 @@ BASELINES_ROOT = PROJECT_ROOT / "baselines" / "EvoEdit"
 # Add src paths
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
+
+# Disable S3 path guard during tests (pytest may run on SkyPilot clusters)
+os.environ["_PYTEST_RUNNING"] = "1"
 
 
 @pytest.fixture

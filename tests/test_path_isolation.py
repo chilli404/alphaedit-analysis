@@ -156,29 +156,41 @@ class TestS3PathGuard:
     def test_result_root_requires_s3_on_skypilot(self, monkeypatch):
         monkeypatch.setenv("SKYPILOT_TASK_ID", "test-123")
         monkeypatch.delenv("RESULT_ROOT", raising=False)
+        monkeypatch.delenv("_PYTEST_RUNNING", raising=False)
         import paths
         importlib.reload(paths)
-        with pytest.raises(RuntimeError, match="S3"):
-            paths.get_result_root()
+        try:
+            with pytest.raises(RuntimeError, match="S3"):
+                paths.get_result_root()
+        finally:
+            monkeypatch.setenv("_PYTEST_RUNNING", "1")
 
     def test_checkpoint_root_requires_s3_on_skypilot(self, monkeypatch):
         monkeypatch.setenv("SKYPILOT_TASK_ID", "test-123")
         monkeypatch.delenv("CHECKPOINT_ROOT", raising=False)
+        monkeypatch.delenv("_PYTEST_RUNNING", raising=False)
         import paths
         importlib.reload(paths)
-        with pytest.raises(RuntimeError, match="S3"):
-            paths.get_checkpoint_root()
+        try:
+            with pytest.raises(RuntimeError, match="S3"):
+                paths.get_checkpoint_root()
+        finally:
+            monkeypatch.setenv("_PYTEST_RUNNING", "1")
 
     def test_s3_paths_accepted_on_skypilot(self, monkeypatch):
         monkeypatch.setenv("SKYPILOT_TASK_ID", "test-123")
         monkeypatch.setenv("RESULT_ROOT", "/s3-data/continual-learning/alphaedit/results")
         monkeypatch.setenv("CHECKPOINT_ROOT", "/s3-data/continual-learning/alphaedit/checkpoints")
+        monkeypatch.delenv("_PYTEST_RUNNING", raising=False)
         import paths
         importlib.reload(paths)
-        r = paths.get_result_root()
-        c = paths.get_checkpoint_root()
-        assert "/s3-data/" in str(r)
-        assert "/s3-data/" in str(c)
+        try:
+            r = paths.get_result_root()
+            c = paths.get_checkpoint_root()
+            assert "/s3-data/" in str(r)
+            assert "/s3-data/" in str(c)
+        finally:
+            monkeypatch.setenv("_PYTEST_RUNNING", "1")
 
     def test_local_paths_ok_without_skypilot(self, monkeypatch):
         monkeypatch.delenv("SKYPILOT_TASK_ID", raising=False)

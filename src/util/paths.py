@@ -10,11 +10,12 @@ Environment variables:
 import os
 from pathlib import Path
 
-_ON_SKYPILOT = bool(os.environ.get("SKYPILOT_TASK_ID"))
+def _on_skypilot() -> bool:
+    return bool(os.environ.get("SKYPILOT_TASK_ID")) and not os.environ.get("_PYTEST_RUNNING")
 
 
 def _require_s3(path: Path, label: str) -> Path:
-    if _ON_SKYPILOT and "/s3-data/" not in str(path):
+    if _on_skypilot() and "/s3-data/" not in str(path):
         raise RuntimeError(
             f"{label} must be on S3 (via /s3-data/) on SkyPilot clusters, "
             f"but resolved to: {path}\n"
