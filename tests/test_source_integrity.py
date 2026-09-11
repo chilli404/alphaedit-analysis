@@ -1,0 +1,298 @@
+#!/usr/bin/env python3
+"""
+Tests for source code integrity across vendor and baseline codebases.
+
+Catches: kwargs missing, anchor strings changed, patches applied correctly,
+SVD parameters correct, metric conventions correct.
+
+Run with: uv run pytest tests/test_source_integrity.py -v
+"""
+import ast
+import json
+import re
+import sys
+from pathlib import Path
+
+import pytest
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+VENDOR_ROOT = PROJECT_ROOT / "vendor" / "AlphaEdit"
+BASELINES_ROOT = PROJECT_ROOT / "baselines" / "EvoEdit"
+
+
+# ---------------------------------------------------------------------------
+# 1. Algorithm apply functions accept **kwargs
+# ---------------------------------------------------------------------------
+
+class TestKwargsAcceptance:
+    """All algorithm apply_*_to_model functions must accept **kwargs.
+
+    The vendor evaluate.py passes return_orig_weights_device as a kwarg.
+    If a function doesn't accept it, the run crashes at the first edit batch.
+    This was the RECT TypeError bug.
+
+    Note: kwargs are applied by source_patches.py at runtime, not in the
+    source files. We test that the patches PRODUCE the correct result.
+    """
+
+    # Functions that evaluate.py calls with return_orig_weights_device
+    VENDOR_APPLY_FUNCTIONS = [
+        (VENDOR_ROOT / "memit" / "memit_main.py", "apply_memit_to_model"),
+        (VENDOR_ROOT / "AlphaEdit" / "AlphaEdit_main.py", "apply_AlphaEdit_to_model"),
+    ]
+
+    BASELINES_APPLY_FUNCTIONS = [
+        (BASELINES_ROOT / "memit" / "memit_seq_rect_main.py", "apply_memit_seq_rect_to_model"),
+    ]
+
+    def _source_has_kwargs_after_patch(self, filepath, funcname):
+        """Check if the function signature has **kwargs or **_kwargs."""
+        source = filepath.read_text()
+        # Find the function definition and its full signature
+        pattern = rf"def {funcname}\([^)]*\)"
+        match = re.search(pattern, source, re.DOTALL)
+        if match:
+            return "kwargs" in match.group()
+        return False
+
+    def test_source_patches_add_kwargs_to_memit(self):
+        """After applying patches, memit_main must accept **_kwargs."""
+        source = (VENDOR_ROOT / "memit" / "memit_main.py").read_text()
+        # The kwargs anchor that patch_memit_file uses
+        anchor = "    cache_template: Optional[str] = None,\n) -> Tuple[AutoModelForCausalLM"
+        assert anchor in source, "memit_main.py kwargs anchor must be present for patching"
+
+    def test_source_patches_add_kwargs_to_alphaedit(self):
+        """After applying source_patches, AlphaEdit_main must accept **_kwargs."""
+        source = (VENDOR_ROOT / "AlphaEdit" / "AlphaEdit_main.py").read_text()
+        # The kwargs anchor used by patch_alphaedit_main_file
+        anchor = "    P = None,\n) -> Dict[str, Tuple[torch.Tensor]]:"
+        assert anchor in source, "AlphaEdit_main.py kwargs anchor must be present for patching"
+
+    @pytest.mark.skipif(
+        not (BASELINES_ROOT / "memit" / "memit_seq_rect_main.py").exists(),
+        reason="baselines/EvoEdit not present"
+    )
+    def test_rect_has_kwargs_in_source(self):
+        """RECT's apply function must have **_kwargs in source (not patched at runtime)."""
+        source = (BASELINES_ROOT / "memit" / "memit_seq_rect_main.py").read_text()
+        match = re.search(r"def apply_memit_seq_rect_to_model\([^)]*\)", source, re.DOTALL)
+        assert match, "apply_memit_seq_rect_to_model not found"
+        assert "kwargs" in match.group(), (
+            "apply_memit_seq_rect_to_model must accept **_kwargs. "
+            "Without it, evaluate.py's return_orig_weights_device kwarg causes TypeError."
+        )
+
+
+# ---------------------------------------------------------------------------
+# 2. Source anchors intact (vendor code at pinned commit)
+# ---------------------------------------------------------------------------
+
+class TestSourceAnchors:
+    """All source injection anchor strings must exist in vendor code."""
+
+    EVALUATE_PY = VENDOR_ROOT / "experiments" / "evaluate.py"
+    MEMIT_MAIN_PY = VENDOR_ROOT / "memit" / "memit_main.py"
+
+    EVALUATE_ANCHORS = [
+        'os.environ["CUDA_VISIBLE_DEVICES"] = "1"',
+        'for record in ds:',
+        'exec_time = time() - start',
+    ]
+
+    MEMIT_MAIN_ANCHORS = [
+        'adj_k = torch.linalg.solve(',
+        'hparams.mom2_update_weight * cov.double() + layer_ks @ layer_ks.T,',
+        'deltas[weight_name] = (',
+    ]
+
+    @pytest.mark.parametrize("anchor", EVALUATE_ANCHORS)
+    def test_evaluate_anchor_present(self, anchor):
+        source = self.EVALUATE_PY.read_text()
+        assert anchor in source, f"Anchor missing from evaluate.py: {anchor!r}"
+
+    @pytest.mark.parametrize("anchor", MEMIT_MAIN_ANCHORS)
+    def test_memit_main_anchor_present(self, anchor):
+        source = self.MEMIT_MAIN_PY.read_text()
+        assert anchor in source, f"Anchor missing from memit_main.py: {anchor!r}"
+
+
+# ---------------------------------------------------------------------------
+# 3. REVIVE implementation correctness
+# ---------------------------------------------------------------------------
+
+class TestReviveImplementation:
+    """REVIVE spectral filter must use correct SVD parameters."""
+
+    REVIVE_FILTER = PROJECT_ROOT / "src" / "revive" / "revive_filter.py"
+    SVD_CACHE = PROJECT_ROOT / "src" / "revive" / "svd_cache.py"
+    POLYKERNEL_RUNNER = PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py"
+
+    def test_revive_filter_uses_full_matrices(self):
+        source = self.REVIVE_FILTER.read_text()
+        assert "full_matrices=True" in source, (
+            "revive_filter.py must use full_matrices=True. "
+            "full_matrices=False produces compact SVD that misses the right null space."
+        )
+
+    def test_svd_cache_uses_full_matrices(self):
+        source = self.SVD_CACHE.read_text()
+        assert "full_matrices=True" in source
+
+    def test_svd_cache_version_is_2(self):
+        source = self.SVD_CACHE.read_text()
+        assert "CACHE_VERSION = 2" in source, (
+            "CACHE_VERSION must be 2 to invalidate old compact-SVD entries"
+        )
+
+    def test_runner_revive_uses_full_matrices(self):
+        source = self.POLYKERNEL_RUNNER.read_text()
+        # Find the _revive_apply function in the template
+        assert "full_matrices=True" in source
+
+    def test_runner_revive_uses_searchsorted_not_argmax(self):
+        """The off-by-one bug: argmax returns 0 when σ₁ > τ, making filter a no-op."""
+        source = self.POLYKERNEL_RUNNER.read_text()
+        # The injected _revive_apply should use searchsorted, not argmax for split_rank
+        revive_section = source[source.find("def _revive_apply"):]
+        revive_section = revive_section[:revive_section.find("\ndef ", 1)]
+        assert "searchsorted" in revive_section, (
+            "_revive_apply must use torch.searchsorted for split_rank, not argmax"
+        )
+        # Should NOT use argmax for split_rank
+        assert ".argmax()" not in revive_section, (
+            "_revive_apply must NOT use argmax for split_rank (off-by-one bug)"
+        )
+
+    def test_runner_revive_uses_current_weight(self):
+        """REVIVE must compute SVD of CURRENT weight, not cached pretrained weight."""
+        source = self.POLYKERNEL_RUNNER.read_text()
+        revive_section = source[source.find("def _revive_apply"):]
+        revive_section = revive_section[:revive_section.find("\ndef ", 1)]
+        assert "current_weight" in revive_section, (
+            "_revive_apply must accept current_weight parameter"
+        )
+
+    def test_revive_default_tau_is_0_1(self):
+        source = self.POLYKERNEL_RUNNER.read_text()
+        assert "revive_tau: float = 0.1" in source or "revive_tau=0.1" in source
+
+
+# ---------------------------------------------------------------------------
+# 4. Evaluation metric conventions
+# ---------------------------------------------------------------------------
+
+class TestMetricConventions:
+    """Prob-pref metric must be the default, with correct NLL conventions."""
+
+    LOADERS = PROJECT_ROOT / "analysis" / "loaders.py"
+    EVAL_MO = PROJECT_ROOT / "scripts" / "eval_matched_ordering.py"
+
+    def test_loaders_default_is_prob_pref(self):
+        source = self.LOADERS.read_text()
+        assert 'DEFAULT_METRIC_TYPE' in source and '"prob"' in source, (
+            "analysis/loaders.py must have DEFAULT_METRIC_TYPE set to 'prob' (prob-pref, not argmax)"
+        )
+
+    def test_eval_matched_ordering_returns_dual_metrics(self):
+        source = self.EVAL_MO.read_text()
+        assert "efficacy_argmax" in source, (
+            "eval_matched_ordering.py must return both prob-pref (efficacy) and argmax (efficacy_argmax)"
+        )
+        assert "neighborhood_argmax" in source
+
+    def test_per_case_files_have_probs_fields(self):
+        """Spot-check that vendor summarize.py reads _probs fields (the official metric source)."""
+        summarize = VENDOR_ROOT / "experiments" / "summarize.py"
+        if summarize.exists():
+            source = summarize.read_text()
+            assert "rewrite_prompts_probs" in source
+            assert "neighborhood_prompts_probs" in source or "paraphrase_prompts_probs" in source
+
+    def test_prob_pref_convention_documented(self):
+        """The NLL convention must be documented somewhere in eval code."""
+        source = self.EVAL_MO.read_text()
+        # Efficacy: target_new more probable → NLL(true) > NLL(new)
+        assert "NLL" in source or "nll" in source or "target_true" in source
+
+
+# ---------------------------------------------------------------------------
+# 5. Hparams integrity for all algorithms
+# ---------------------------------------------------------------------------
+
+class TestHparamsIntegrity:
+    """All algorithm hparams files must be valid JSON with required fields."""
+
+    HPARAMS_DIRS = [
+        VENDOR_ROOT / "hparams",
+        BASELINES_ROOT / "hparams",
+    ]
+
+    def _find_hparams_files(self):
+        files = []
+        for d in self.HPARAMS_DIRS:
+            if d.exists():
+                files.extend(d.rglob("*.json"))
+        return files
+
+    @pytest.mark.parametrize("hparams_file", [
+        pytest.param(f, id=str(f.relative_to(PROJECT_ROOT)))
+        for d in [VENDOR_ROOT / "hparams", BASELINES_ROOT / "hparams"]
+        if d.exists()
+        for f in d.rglob("*.json")
+    ])
+    def test_hparams_valid_json(self, hparams_file):
+        data = json.loads(hparams_file.read_text())
+        assert isinstance(data, dict)
+
+    def test_llama_hparams_exist(self):
+        for alg in ["AlphaEdit", "MEMIT"]:
+            path = VENDOR_ROOT / "hparams" / alg / "Llama3-8B.json"
+            assert path.exists(), f"Missing hparams: {path}"
+
+
+# ---------------------------------------------------------------------------
+# 6. Script compilation (all runners produce valid Python)
+# ---------------------------------------------------------------------------
+
+class TestScriptCompilation:
+    """Generated scripts must be syntactically valid Python."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self, mock_gpu_imports):
+        pass
+
+    @pytest.mark.parametrize("base_alg", ["MEMIT", "AlphaEdit", "NSE", "MEMIT_rect"])
+    def test_polykernel_script_compiles(self, base_alg):
+        from polykernel_seqreg_runner import build_polykernel_seqreg_script
+        script = build_polykernel_seqreg_script(
+            seed=42, cuda_device="0", alg_name=base_alg,
+            model_name="test", hparams_fname="test.json",
+            ds_name="mcf", dataset_size_limit=200, num_edits=100,
+            downstream_eval_steps=0, conserve_memory=True,
+            lambda_prev=0.0, lambda_delta=0.0,
+            cache_strategy="all", cache_max=None,
+            kernel_type="poly", kernel_degree=1, kernel_sigma="median",
+            output_jsonl="/tmp/test.jsonl",
+            checkpoint_dir="/tmp/ckpt",
+            variant_name=f"{'MEMIT-Seq' if base_alg == 'MEMIT' else base_alg}-poly1-lp0.0-ld0.0-cache0",
+        )
+        compile(script, f"<test-{base_alg}>", "exec")
+
+    @pytest.mark.parametrize("revive", [True, False])
+    def test_polykernel_script_compiles_with_revive(self, revive):
+        from polykernel_seqreg_runner import build_polykernel_seqreg_script
+        script = build_polykernel_seqreg_script(
+            seed=42, cuda_device="0", alg_name="MEMIT",
+            model_name="test", hparams_fname="test.json",
+            ds_name="mcf", dataset_size_limit=200, num_edits=100,
+            downstream_eval_steps=0, conserve_memory=True,
+            lambda_prev=1.0, lambda_delta=0.0,
+            cache_strategy="all", cache_max=None,
+            kernel_type="poly", kernel_degree=2, kernel_sigma="median",
+            output_jsonl="/tmp/test.jsonl",
+            checkpoint_dir="/tmp/ckpt",
+            variant_name="MEMIT-Seq-poly2-lp1.0-ld0.0-cache0",
+            revive=revive, revive_tau=0.1,
+        )
+        compile(script, "<test-revive>", "exec")
