@@ -660,7 +660,7 @@ def main():
                         help="Override checkpoint base directory")
     args = parser.parse_args()
 
-    from model_download import resolve_model_path
+    from model_resolve import resolve_model_path
     from setup_hparams import link_hparams
     from source_patches import patch_evaluate_file, patch_glue_eval_file
 

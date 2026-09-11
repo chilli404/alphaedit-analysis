@@ -44,7 +44,6 @@ from pathlib import Path
 _SRC_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_SRC_DIR / "util"))
 
-from model_download import resolve_model_path
 from setup_hparams import link_hparams
 from paths import get_project_root, get_alphaedit_root, get_result_root
 
@@ -70,11 +69,7 @@ def run(args: argparse.Namespace) -> None:
 
     link_hparams()
 
-    from model_download import download_model, _artifactory_reachable
-    if _artifactory_reachable():
-        model_name = download_model(args.model_name)
-    else:
-        model_name = args.model_name
+    model_name = os.environ.get("MODEL_PATH", args.model_name)
 
     # Parse lambda pairs
     if args.lambda_pairs:

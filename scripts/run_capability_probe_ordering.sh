@@ -14,8 +14,8 @@ set -euo pipefail
 #   bash scripts/run_capability_probe_ordering.sh 42 AlphaEdit cluster_topo
 #   bash scripts/run_capability_probe_ordering.sh 42 AlphaEdit key_clustered
 #
-# On SkyPilot (checkpoints on S3 FUSE mount):
-#   CHECKPOINT_ROOT=/s3-data/continual-learning/alphaedit/checkpoints \
+# On cloud (set CHECKPOINT_ROOT to your remote checkpoint path):
+#   CHECKPOINT_ROOT=/path/to/checkpoints \
 #     bash scripts/run_capability_probe_ordering.sh 42 AlphaEdit greedy_minmax
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -47,7 +47,7 @@ echo ""
 
 if [[ ! -d "$CKPT_DIR" ]]; then
     echo "ERROR: Checkpoint directory not found: $CKPT_DIR"
-    echo "  On SkyPilot, set CHECKPOINT_ROOT=/s3-data/continual-learning/alphaedit/checkpoints"
+    echo "  Set CHECKPOINT_ROOT to your checkpoint storage path"
     exit 1
 fi
 

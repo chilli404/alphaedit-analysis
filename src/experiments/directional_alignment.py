@@ -68,17 +68,10 @@ def extract_base_weight(model_name: str, layers: list[int] | None = None):
     if layers is None:
         layers = [DEFAULT_LAYER]
 
-    sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
-    from model_download import download_model, _artifactory_reachable  # patches filelock
-
     import torch
     from transformers import AutoModelForCausalLM
 
-    # Download model explicitly if on Artifactory infra, then load from local path
-    if _artifactory_reachable():
-        model_path = download_model(model_name)
-    else:
-        model_path = model_name
+    model_path = os.environ.get("MODEL_PATH", model_name)
 
     print(f"Loading base model: {model_path}")
     model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16)

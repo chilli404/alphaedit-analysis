@@ -45,11 +45,31 @@ vendor/AlphaEdit/null_space_project.pt
 sky/
 
 # Grainger-specific infrastructure (Artifactory, S3 paths)
-src/model_download.py
+src/util/model_download.py
 scripts/remote_setup.sh
+scripts/link_stats.sh
 scripts/link_dsets.sh
 scripts/download_datasets.sh
+scripts/download_mmlu.py
+scripts/download_wikitext.py
+scripts/build_submission.sh
+scheduling/forensics_mechanism.py
 install-agent.sh
+
+# Project-specific docs (not for sharing)
+claude.md
+CLAUDE.md
+.claude/
+
+# Submission package (regenerated from code)
+submission/
+
+# External baselines (cloned repos, not submodules)
+baselines/
+
+# Temp files
+*.log
+test_stats_cache.py
 
 # OS
 .DS_Store
@@ -57,6 +77,7 @@ Thumbs.db
 
 # uv
 .uv/
+uv.lock
 
 results/polykernel_diagnostic/*.json
 

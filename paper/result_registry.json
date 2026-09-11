@@ -1,0 +1,2706 @@
+{
+  "s3_mve_alphaedit_s42_eff": {
+    "value": 0.992,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve1_alphaedit_mcf/seed42/2000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_s42_neigh": {
+    "value": 0.6895,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve1_alphaedit_mcf/seed42/2000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_s42_para": {
+    "value": 0.928,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve1_alphaedit_mcf/seed42/2000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.paraphrase_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_s2024_eff": {
+    "value": 0.9915,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve1_alphaedit_mcf/seed2024/2000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_s2024_neigh": {
+    "value": 0.6786,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve1_alphaedit_mcf/seed2024/2000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_s2024_para": {
+    "value": 0.9445,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve1_alphaedit_mcf/seed2024/2000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.paraphrase_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_s137_eff": {
+    "value": 0.987,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve1_alphaedit_mcf/seed137/2000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_s137_neigh": {
+    "value": 0.6846,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve1_alphaedit_mcf/seed137/2000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_s137_para": {
+    "value": 0.941,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve1_alphaedit_mcf/seed137/2000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.paraphrase_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_s7_eff": {
+    "value": 0.99,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve1_alphaedit_mcf/seed7/2000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_s7_neigh": {
+    "value": 0.6873,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve1_alphaedit_mcf/seed7/2000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_s7_para": {
+    "value": 0.9353,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve1_alphaedit_mcf/seed7/2000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.paraphrase_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_s99_eff": {
+    "value": 0.9905,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve1_alphaedit_mcf/seed99/2000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_s99_neigh": {
+    "value": 0.6834,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve1_alphaedit_mcf/seed99/2000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_s99_para": {
+    "value": 0.9375,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve1_alphaedit_mcf/seed99/2000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.paraphrase_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_mean_eff": {
+    "value": 0.9902,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "5-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_mean_neigh": {
+    "value": 0.6847,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "5-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_alphaedit_mean_para": {
+    "value": 0.9373,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "5-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_s42_eff": {
+    "value": 0.653,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve2_memit_mcf/seed42/2000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_s42_neigh": {
+    "value": 0.5171,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve2_memit_mcf/seed42/2000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_s42_para": {
+    "value": 0.635,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve2_memit_mcf/seed42/2000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.paraphrase_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_s2024_eff": {
+    "value": 0.653,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve2_memit_mcf/seed2024/2000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_s2024_neigh": {
+    "value": 0.5075,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve2_memit_mcf/seed2024/2000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_s2024_para": {
+    "value": 0.6392,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve2_memit_mcf/seed2024/2000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.paraphrase_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_s137_eff": {
+    "value": 0.6415,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve2_memit_mcf/seed137/2000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_s137_neigh": {
+    "value": 0.5102,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve2_memit_mcf/seed137/2000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_s137_para": {
+    "value": 0.6235,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve2_memit_mcf/seed137/2000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.paraphrase_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_s7_eff": {
+    "value": 0.646,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve2_memit_mcf/seed7/2000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_s7_neigh": {
+    "value": 0.519,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve2_memit_mcf/seed7/2000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_s7_para": {
+    "value": 0.6442,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve2_memit_mcf/seed7/2000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.paraphrase_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_s99_eff": {
+    "value": 0.651,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve2_memit_mcf/seed99/2000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_s99_neigh": {
+    "value": 0.5172,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve2_memit_mcf/seed99/2000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_s99_para": {
+    "value": 0.6452,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/mve2_memit_mcf/seed99/2000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.paraphrase_success",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_mean_eff": {
+    "value": 0.6489,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "5-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_mean_neigh": {
+    "value": 0.5142,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "5-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_mve_memit_mean_para": {
+    "value": 0.6374,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "5-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_s42_eff": {
+    "value": 0.7263,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_s42_neigh": {
+    "value": 0.5273,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_s42_f1k": {
+    "value": 0.578,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "first_1k.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_s42_l1k": {
+    "value": 0.977,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "latest_1k.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_s2024_eff": {
+    "value": 0.6251,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed2024/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_s2024_neigh": {
+    "value": 0.5239,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed2024/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_s2024_f1k": {
+    "value": 0.503,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed2024/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "first_1k.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_s2024_l1k": {
+    "value": 0.949,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed2024/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "latest_1k.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_s137_eff": {
+    "value": 0.6369,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed137/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_s137_neigh": {
+    "value": 0.5238,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed137/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_s137_f1k": {
+    "value": 0.518,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed137/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "first_1k.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_s137_l1k": {
+    "value": 0.945,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed137/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "latest_1k.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_mean_eff": {
+    "value": 0.6628,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_mean_neigh": {
+    "value": 0.525,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_mean_f1k": {
+    "value": 0.533,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_mean_l1k": {
+    "value": 0.957,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_fc10k_alphaedit_age_gap": {
+    "value": 0.424,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "mean(l1k) - mean(f1k)",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_fc10k_memit_s42_eff": {
+    "value": 0.4748,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/10000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_memit_s42_neigh": {
+    "value": 0.5238,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/10000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_memit_s42_f1k": {
+    "value": 0.47,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/10000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "first_1k.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_memit_s42_l1k": {
+    "value": 0.494,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/10000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "latest_1k.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_memit_s2024_eff": {
+    "value": 0.4979,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed2024/10000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_memit_s2024_neigh": {
+    "value": 0.503,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed2024/10000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_memit_s2024_f1k": {
+    "value": 0.506,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed2024/10000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "first_1k.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_memit_s2024_l1k": {
+    "value": 0.492,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed2024/10000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "latest_1k.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_memit_s137_eff": {
+    "value": 0.556,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed137/10000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_memit_s137_neigh": {
+    "value": 0.5003,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed137/10000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_memit_s137_f1k": {
+    "value": 0.49,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed137/10000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "first_1k.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_memit_s137_l1k": {
+    "value": 0.715,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed137/10000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "latest_1k.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s3_fc10k_memit_mean_eff": {
+    "value": 0.5096,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_fc10k_memit_mean_neigh": {
+    "value": 0.509,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_fc10k_memit_mean_f1k": {
+    "value": 0.4887,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_fc10k_memit_mean_l1k": {
+    "value": 0.567,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_fc10k_memit_age_gap": {
+    "value": 0.0783,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "mean(l1k) - mean(f1k)",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s3_fc_ae_s42_2000_eff": {
+    "value": 0.992,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/2000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "2000edits",
+    "evaluator": null
+  },
+  "s3_fc_ae_s42_3000_eff": {
+    "value": 0.989,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/3000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "3000edits",
+    "evaluator": null
+  },
+  "s3_fc_ae_s42_5000_eff": {
+    "value": 0.9748,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/5000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "5000edits",
+    "evaluator": null
+  },
+  "s3_fc_ae_s42_7000_eff": {
+    "value": 0.9297,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/7000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "7000edits",
+    "evaluator": null
+  },
+  "s3_fc_ae_s42_10000_eff": {
+    "value": 0.7263,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "s4_fb_high_exposure_s42_eff": {
+    "value": 0.6945,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_high_exposure_s42_neigh": {
+    "value": 0.5743,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_high_exposure_s42_para": {
+    "value": 0.6024,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.paraphrase",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_high_exposure_s42_f1k": {
+    "value": 0.48,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_high_exposure_s42_l1k": {
+    "value": 0.935,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "latest_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_high_exposure_s2024_eff": {
+    "value": 0.7274,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_high_exposure_s2024_neigh": {
+    "value": 0.5882,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_high_exposure_s2024_para": {
+    "value": 0.6144,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.paraphrase",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_high_exposure_s2024_f1k": {
+    "value": 0.506,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed2024/full_eval_seed2024_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_high_exposure_s2024_l1k": {
+    "value": 0.962,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed2024/full_eval_seed2024_v2.json",
+    "field": "latest_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_high_exposure_s137_eff": {
+    "value": 0.8024,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_high_exposure_s137_neigh": {
+    "value": 0.6357,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_high_exposure_s137_para": {
+    "value": 0.7524,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.paraphrase",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_high_exposure_s137_f1k": {
+    "value": 0.633,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed137/full_eval_seed137_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_high_exposure_s137_l1k": {
+    "value": 0.988,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed137/full_eval_seed137_v2.json",
+    "field": "latest_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_high_exposure_mean_eff": {
+    "value": 0.7414,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s4_fb_high_exposure_mean_f1k": {
+    "value": 0.5397,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s4_fb_low_exposure_s42_eff": {
+    "value": 0.956,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_low_exposure_s42_neigh": {
+    "value": 0.6308,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_low_exposure_s42_para": {
+    "value": 0.8683,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.paraphrase",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_low_exposure_s42_f1k": {
+    "value": 0.809,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_low_exposure_s42_l1k": {
+    "value": 0.996,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "latest_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_low_exposure_s2024_eff": {
+    "value": 0.957,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_low_exposure_s2024_neigh": {
+    "value": 0.6376,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_low_exposure_s2024_para": {
+    "value": 0.8699,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.paraphrase",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_low_exposure_s2024_f1k": {
+    "value": 0.825,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed2024/full_eval_seed2024_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_low_exposure_s2024_l1k": {
+    "value": 0.999,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed2024/full_eval_seed2024_v2.json",
+    "field": "latest_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_low_exposure_s137_eff": {
+    "value": 0.8042,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_low_exposure_s137_neigh": {
+    "value": 0.6781,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_low_exposure_s137_para": {
+    "value": 0.7452,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.paraphrase",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_low_exposure_s137_f1k": {
+    "value": 0.618,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed137/full_eval_seed137_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_low_exposure_s137_l1k": {
+    "value": 1.0,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed137/full_eval_seed137_v2.json",
+    "field": "latest_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_low_exposure_mean_eff": {
+    "value": 0.9057,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s4_fb_low_exposure_mean_f1k": {
+    "value": 0.7507,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s4_fb_random0_s42_eff": {
+    "value": 0.9695,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random0_s42_neigh": {
+    "value": 0.6392,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random0_s42_para": {
+    "value": 0.8787,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.paraphrase",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random0_s42_f1k": {
+    "value": 0.897,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random0_s42_l1k": {
+    "value": 0.999,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "latest_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random0_s2024_eff": {
+    "value": 0.9706,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random0_s2024_neigh": {
+    "value": 0.6178,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random0_s2024_para": {
+    "value": 0.8882,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.paraphrase",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random0_s2024_f1k": {
+    "value": 0.89,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed2024/full_eval_seed2024_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random0_s2024_l1k": {
+    "value": 0.99,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed2024/full_eval_seed2024_v2.json",
+    "field": "latest_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random0_s137_eff": {
+    "value": 0.9459,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random0_s137_neigh": {
+    "value": 0.6198,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random0_s137_para": {
+    "value": 0.869,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.paraphrase",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random0_s137_f1k": {
+    "value": 0.835,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed137/full_eval_seed137_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random0_s137_l1k": {
+    "value": 0.999,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed137/full_eval_seed137_v2.json",
+    "field": "latest_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random0_mean_eff": {
+    "value": 0.962,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s4_fb_random0_mean_f1k": {
+    "value": 0.874,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s4_fb_random1_s42_eff": {
+    "value": 0.9575,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random1/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random1_s42_neigh": {
+    "value": 0.6298,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random1/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random1_s42_para": {
+    "value": 0.8656,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random1/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.paraphrase",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random1_s42_f1k": {
+    "value": 0.852,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random1/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random1_s42_l1k": {
+    "value": 0.998,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random1/seed42/full_eval_seed42_v2.json",
+    "field": "latest_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random1_s2024_eff": {
+    "value": 0.9676,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random1/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random1_s2024_neigh": {
+    "value": 0.6353,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random1/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random1_s2024_para": {
+    "value": 0.8819,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random1/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.paraphrase",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random1_s2024_f1k": {
+    "value": 0.883,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random1/seed2024/full_eval_seed2024_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random1_s2024_l1k": {
+    "value": 0.993,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random1/seed2024/full_eval_seed2024_v2.json",
+    "field": "latest_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random1_s137_eff": {
+    "value": 0.9495,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random1/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random1_s137_neigh": {
+    "value": 0.6284,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random1/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random1_s137_para": {
+    "value": 0.8703,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random1/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.paraphrase",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random1_s137_f1k": {
+    "value": 0.84,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random1/seed137/full_eval_seed137_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random1_s137_l1k": {
+    "value": 0.99,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random1/seed137/full_eval_seed137_v2.json",
+    "field": "latest_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random1_mean_eff": {
+    "value": 0.9582,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s4_fb_random1_mean_f1k": {
+    "value": 0.8583,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s4_fb_random2_s42_eff": {
+    "value": 0.9678,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random2/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random2_s42_neigh": {
+    "value": 0.632,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random2/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random2_s42_para": {
+    "value": 0.8829,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random2/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.paraphrase",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random2_s42_f1k": {
+    "value": 0.884,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random2/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random2_s42_l1k": {
+    "value": 0.997,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random2/seed42/full_eval_seed42_v2.json",
+    "field": "latest_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random2_s2024_eff": {
+    "value": 0.9658,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random2/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random2_s2024_neigh": {
+    "value": 0.6205,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random2/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random2_s2024_para": {
+    "value": 0.8812,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random2/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.paraphrase",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random2_s2024_f1k": {
+    "value": 0.827,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random2/seed2024/full_eval_seed2024_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random2_s2024_l1k": {
+    "value": 0.998,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random2/seed2024/full_eval_seed2024_v2.json",
+    "field": "latest_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random2_s137_eff": {
+    "value": 0.9559,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random2/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random2_s137_neigh": {
+    "value": 0.6245,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random2/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random2_s137_para": {
+    "value": 0.8814,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random2/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.paraphrase",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random2_s137_f1k": {
+    "value": 0.839,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random2/seed137/full_eval_seed137_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random2_s137_l1k": {
+    "value": 0.998,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random2/seed137/full_eval_seed137_v2.json",
+    "field": "latest_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s4_fb_random2_mean_eff": {
+    "value": 0.9632,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s4_fb_random2_mean_f1k": {
+    "value": 0.85,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s4_hi_lo_gap": {
+    "value": -0.1643,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "HIGH mean - LOW mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s4_hi_rnd_gap": {
+    "value": -0.2197,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "HIGH mean - RANDOM mean",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s42_cos_coef": {
+    "value": -1.0285,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.42.cosine_coef",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s42_cos_pval": {
+    "value": 0.0,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.42.cosine_pval",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s42_m0_r2": {
+    "value": 0.367,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.42.M0_R2",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s42_m1_r2": {
+    "value": 0.6071,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.42.M1_R2",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s42_m2_r2": {
+    "value": 0.6078,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.42.M2_R2",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s42_cos_effect_per01": {
+    "value": -0.1029,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.42.cosine_effect_per_01",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s2024_cos_coef": {
+    "value": -0.4038,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.2024.cosine_coef",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s2024_cos_pval": {
+    "value": 0.0112,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.2024.cosine_pval",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s2024_m0_r2": {
+    "value": 0.4009,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.2024.M0_R2",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s2024_m1_r2": {
+    "value": 0.5839,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.2024.M1_R2",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s2024_m2_r2": {
+    "value": 0.584,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.2024.M2_R2",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s2024_cos_effect_per01": {
+    "value": -0.0404,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.2024.cosine_effect_per_01",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s137_cos_coef": {
+    "value": -0.266,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.137.cosine_coef",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s137_cos_pval": {
+    "value": 0.1055,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.137.cosine_pval",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s137_m0_r2": {
+    "value": 0.3188,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.137.M0_R2",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s137_m1_r2": {
+    "value": 0.5636,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.137.M1_R2",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s137_m2_r2": {
+    "value": 0.5636,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.137.M2_R2",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_s137_cos_effect_per01": {
+    "value": -0.0266,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "per_trajectory.137.cosine_effect_per_01",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_loo_s42_r2_base": {
+    "value": 0.5639,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "leave_one_out.42.R2_base",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_loo_s42_r2_full": {
+    "value": 0.5643,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "leave_one_out.42.R2_full",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_loo_s137_r2_base": {
+    "value": 0.5435,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "leave_one_out.137.R2_base",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_loo_s137_r2_full": {
+    "value": 0.5436,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "leave_one_out.137.R2_full",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_loo_s2024_r2_base": {
+    "value": 0.5128,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "leave_one_out.2024.R2_base",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_margin_loo_s2024_r2_full": {
+    "value": 0.5129,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/margin_survival_model.json",
+    "field": "leave_one_out.2024.R2_full",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_ab_pooled_sign": {
+    "value": "47/60",
+    "metric": "continuous_logprob",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/pooled_ab_results.json",
+    "field": "summary.pooled.sign_count",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_ab_pooled_p": {
+    "value": 0.0,
+    "metric": "continuous_logprob",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/pooled_ab_results.json",
+    "field": "summary.pooled.sign_test_p",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_ab_pooled_mean": {
+    "value": -0.0034,
+    "metric": "continuous_logprob",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/pooled_ab_results.json",
+    "field": "summary.pooled.mean_delta",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_ab_diffbatch_sign": {
+    "value": "26/30",
+    "metric": "continuous_logprob",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/pooled_ab_results.json",
+    "field": "summary.different_batch.sign_count",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_ab_samefact_sign": {
+    "value": "21/30",
+    "metric": "continuous_logprob",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/pooled_ab_results.json",
+    "field": "summary.same_fact.sign_count",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_ab_samefact_p": {
+    "value": 0.0428,
+    "metric": "continuous_logprob",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/pooled_ab_results.json",
+    "field": "summary.same_fact.sign_test_p",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_ab_boot_ci_lo": {
+    "value": -0.0051,
+    "metric": "continuous_logprob",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/pooled_ab_results.json",
+    "field": "hierarchical_bootstrap.ci_lo",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_ab_boot_ci_hi": {
+    "value": -0.002,
+    "metric": "continuous_logprob",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/pooled_ab_results.json",
+    "field": "hierarchical_bootstrap.ci_hi",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_disp_N_vs_first1k_r": {
+    "value": -0.6,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/norm_vs_displacement_probpref.json",
+    "field": "correlations.N_vs_first1k.spearman_r",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_disp_N_vs_first1k_p": {
+    "value": 0.0876,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/norm_vs_displacement_probpref.json",
+    "field": "correlations.N_vs_first1k.p",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_disp_D_vs_first1k_r": {
+    "value": -0.7167,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/norm_vs_displacement_probpref.json",
+    "field": "correlations.D_vs_first1k.spearman_r",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_disp_D_vs_first1k_p": {
+    "value": 0.0298,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/norm_vs_displacement_probpref.json",
+    "field": "correlations.D_vs_first1k.p",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_disp_D_unrel_vs_first1k_r": {
+    "value": -0.5667,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/norm_vs_displacement_probpref.json",
+    "field": "correlations.D_unrel_vs_first1k.spearman_r",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_disp_D_unrel_vs_first1k_p": {
+    "value": 0.1116,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/norm_vs_displacement_probpref.json",
+    "field": "correlations.D_unrel_vs_first1k.p",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_disp_T_vs_first1k_r": {
+    "value": -0.4333,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/norm_vs_displacement_probpref.json",
+    "field": "correlations.T_vs_first1k.spearman_r",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_disp_T_vs_first1k_p": {
+    "value": 0.244,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/norm_vs_displacement_probpref.json",
+    "field": "correlations.T_vs_first1k.p",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_pdisp_D_given_N_vs_first1k_r": {
+    "value": -0.8196,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/norm_vs_displacement_probpref.json",
+    "field": "partial_correlations.D_given_N_vs_first1k.r",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_pdisp_D_given_N_vs_first1k_p": {
+    "value": 0.0069,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/norm_vs_displacement_probpref.json",
+    "field": "partial_correlations.D_given_N_vs_first1k.p",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_pdisp_N_given_D_vs_first1k_r": {
+    "value": 0.418,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/norm_vs_displacement_probpref.json",
+    "field": "partial_correlations.N_given_D_vs_first1k.r",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s5_pdisp_N_given_D_vs_first1k_p": {
+    "value": 0.2629,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/norm_vs_displacement_probpref.json",
+    "field": "partial_correlations.N_given_D_vs_first1k.p",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s6_alphaedit_high_eff": {
+    "value": 0.6945,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_alphaedit_high_neigh": {
+    "value": 0.5743,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_alphaedit_high_f1k": {
+    "value": 0.48,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_alphaedit_low_eff": {
+    "value": 0.956,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_alphaedit_low_neigh": {
+    "value": 0.6308,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_alphaedit_low_f1k": {
+    "value": 0.809,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_alphaedit_random0_eff": {
+    "value": 0.9695,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_alphaedit_random0_neigh": {
+    "value": 0.6392,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_alphaedit_random0_f1k": {
+    "value": 0.897,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_alphaedit_hi_rnd_gap": {
+    "value": -0.275,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "HIGH - RANDOM",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s6_evoedit_high_eff": {
+    "value": 0.8456,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/EvoEdit/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_evoedit_high_neigh": {
+    "value": 0.5968,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/EvoEdit/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_evoedit_high_f1k": {
+    "value": 0.615,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/EvoEdit/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_evoedit_low_eff": {
+    "value": 0.9803,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/EvoEdit/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_evoedit_low_neigh": {
+    "value": 0.6985,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/EvoEdit/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_evoedit_low_f1k": {
+    "value": 0.912,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/EvoEdit/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_evoedit_random0_eff": {
+    "value": 0.989,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/EvoEdit/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_evoedit_random0_neigh": {
+    "value": 0.6904,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/EvoEdit/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_evoedit_random0_f1k": {
+    "value": 0.966,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/EvoEdit/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_evoedit_hi_rnd_gap": {
+    "value": -0.1434,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "HIGH - RANDOM",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s6_memit_seq_high_eff": {
+    "value": 0.9749,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/MEMIT-Seq-lp1.0-ld0.0-cache0/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_memit_seq_high_neigh": {
+    "value": 0.6459,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/MEMIT-Seq-lp1.0-ld0.0-cache0/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_memit_seq_high_f1k": {
+    "value": 0.918,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/MEMIT-Seq-lp1.0-ld0.0-cache0/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_memit_seq_low_eff": {
+    "value": 0.9788,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/MEMIT-Seq-lp1.0-ld0.0-cache0/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_memit_seq_low_neigh": {
+    "value": 0.6935,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/MEMIT-Seq-lp1.0-ld0.0-cache0/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_memit_seq_low_f1k": {
+    "value": 0.905,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/MEMIT-Seq-lp1.0-ld0.0-cache0/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_memit_seq_random0_eff": {
+    "value": 0.9883,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/MEMIT-Seq-lp1.0-ld0.0-cache0/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_memit_seq_random0_neigh": {
+    "value": 0.6818,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/MEMIT-Seq-lp1.0-ld0.0-cache0/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_memit_seq_random0_f1k": {
+    "value": 0.965,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/MEMIT-Seq-lp1.0-ld0.0-cache0/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_memit_seq_hi_rnd_gap": {
+    "value": -0.0134,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "HIGH - RANDOM",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s6_pathguard_high_eff": {
+    "value": 0.9795,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/PathGuard-ED-M200-e0.1/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_pathguard_high_neigh": {
+    "value": 0.6699,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/PathGuard-ED-M200-e0.1/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_pathguard_high_f1k": {
+    "value": 0.931,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/PathGuard-ED-M200-e0.1/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_pathguard_low_eff": {
+    "value": 0.9759,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/PathGuard-ED-M200-e0.1/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_pathguard_low_neigh": {
+    "value": 0.7046,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/PathGuard-ED-M200-e0.1/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_pathguard_low_f1k": {
+    "value": 0.893,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/PathGuard-ED-M200-e0.1/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_pathguard_random0_eff": {
+    "value": 0.9825,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/PathGuard-ED-M200-e0.1/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_pathguard_random0_neigh": {
+    "value": 0.7029,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/PathGuard-ED-M200-e0.1/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_pathguard_random0_f1k": {
+    "value": 0.959,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/PathGuard-ED-M200-e0.1/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_pathguard_hi_rnd_gap": {
+    "value": -0.003,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "HIGH - RANDOM",
+    "checkpoint": null,
+    "evaluator": null
+  },
+  "s6_pathguard_poly2_low_eff": {
+    "value": 0.9758,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/PathGuard-ED-poly2-hybrid-M200-e0.1/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_pathguard_poly2_low_neigh": {
+    "value": 0.7202,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/PathGuard-ED-poly2-hybrid-M200-e0.1/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_pathguard_poly2_low_f1k": {
+    "value": 0.904,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/PathGuard-ED-poly2-hybrid-M200-e0.1/fb_low_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_pathguard_poly2_random0_eff": {
+    "value": 0.9841,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/PathGuard-ED-poly2-hybrid-M200-e0.1/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_pathguard_poly2_random0_neigh": {
+    "value": 0.7252,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/PathGuard-ED-poly2-hybrid-M200-e0.1/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "s6_pathguard_poly2_random0_f1k": {
+    "value": 0.965,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/PathGuard-ED-poly2-hybrid-M200-e0.1/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_sched_high_exposure_mean_eff": {
+    "value": 0.7414,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_sched_exposure_only_mean_eff": {
+    "value": 0.9509,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_sched_conditioning_only_mean_eff": {
+    "value": 0.9572,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_sched_balanced_mean_eff": {
+    "value": 0.9585,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_sched_random0_mean_eff": {
+    "value": 0.962,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_sched_low_exposure_mean_eff": {
+    "value": 0.9057,
+    "metric": "prob_pref",
+    "source": "computed",
+    "field": "3-seed mean",
+    "checkpoint": null,
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_high_exposure_s42_eff": {
+    "value": 0.6945,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_high_exposure_s42_f1k": {
+    "value": 0.48,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_high_exposure_s2024_eff": {
+    "value": 0.7274,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_high_exposure_s2024_f1k": {
+    "value": 0.506,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed2024/full_eval_seed2024_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_high_exposure_s137_eff": {
+    "value": 0.8024,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_high_exposure_s137_f1k": {
+    "value": 0.633,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_high_exposure/seed137/full_eval_seed137_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_random_s42_eff": {
+    "value": 0.7916,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_random/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_random_s42_f1k": {
+    "value": 0.574,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_random/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_random_s2024_eff": {
+    "value": 0.7637,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_random/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_random_s2024_f1k": {
+    "value": 0.542,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_random/seed2024/full_eval_seed2024_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_random_s137_eff": {
+    "value": 0.8053,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_random/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_random_s137_f1k": {
+    "value": 0.631,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_random/seed137/full_eval_seed137_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_spread_s42_eff": {
+    "value": 0.7228,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_spread/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_spread_s42_f1k": {
+    "value": 0.525,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_spread/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_spread_s2024_eff": {
+    "value": 0.7564,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_spread/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_spread_s2024_f1k": {
+    "value": 0.553,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_spread/seed2024/full_eval_seed2024_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_spread_s137_eff": {
+    "value": 0.7977,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_spread/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_spread_s137_f1k": {
+    "value": 0.621,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_spread/seed137/full_eval_seed137_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_random_late_s42_eff": {
+    "value": 0.6826,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_random_late/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_random_late_s42_f1k": {
+    "value": 0.489,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_random_late/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_random_late_s2024_eff": {
+    "value": 0.7476,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_random_late/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_random_late_s2024_f1k": {
+    "value": 0.521,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_random_late/seed2024/full_eval_seed2024_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_random_late_s137_eff": {
+    "value": 0.801,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_random_late/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_random_late_s137_f1k": {
+    "value": 0.638,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_random_late/seed137/full_eval_seed137_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_spread_late_s42_eff": {
+    "value": 0.6777,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_spread_late/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_spread_late_s42_f1k": {
+    "value": 0.476,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_spread_late/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_spread_late_s2024_eff": {
+    "value": 0.7496,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_spread_late/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_spread_late_s2024_f1k": {
+    "value": 0.54,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_spread_late/seed2024/full_eval_seed2024_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_spread_late_s137_eff": {
+    "value": 0.8073,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_spread_late/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_sfx_spread_late_s137_f1k": {
+    "value": 0.632,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/suffix_spread_late/seed137/full_eval_seed137_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_random0_s42_eff": {
+    "value": 0.9695,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_random0_s42_f1k": {
+    "value": 0.897,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_random0_s2024_eff": {
+    "value": 0.9706,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_random0_s2024_f1k": {
+    "value": 0.89,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed2024/full_eval_seed2024_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_random0_s137_eff": {
+    "value": 0.9459,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_suffix_random0_s137_f1k": {
+    "value": 0.835,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/fb_random0/seed137/full_eval_seed137_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_poly_poly2-hybrid_2000_eff": {
+    "value": 0.996,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/2000edits/MEMIT-Seq-poly2-hybrid-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "2000edits",
+    "evaluator": null
+  },
+  "app_poly_poly2-hybrid_5000_eff": {
+    "value": 0.9954,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/5000edits/MEMIT-Seq-poly2-hybrid-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "5000edits",
+    "evaluator": null
+  },
+  "app_poly_poly2-hybrid_10000_eff": {
+    "value": 0.9897,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/10000edits/MEMIT-Seq-poly2-hybrid-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_poly_poly3-hybrid_2000_eff": {
+    "value": 0.9955,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/2000edits/MEMIT-Seq-poly3-hybrid-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "2000edits",
+    "evaluator": null
+  },
+  "app_poly_poly3-hybrid_5000_eff": {
+    "value": 0.9938,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/5000edits/MEMIT-Seq-poly3-hybrid-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "5000edits",
+    "evaluator": null
+  },
+  "app_poly_poly3-hybrid_10000_eff": {
+    "value": 0.9831,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/10000edits/MEMIT-Seq-poly3-hybrid-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_poly_poly4-hybrid_2000_eff": {
+    "value": 0.995,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/2000edits/MEMIT-Seq-poly4-hybrid-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "2000edits",
+    "evaluator": null
+  },
+  "app_poly_poly4-hybrid_5000_eff": {
+    "value": 0.9918,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/5000edits/MEMIT-Seq-poly4-hybrid-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "5000edits",
+    "evaluator": null
+  },
+  "app_poly_poly4-hybrid_10000_eff": {
+    "value": 0.9054,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/10000edits/MEMIT-Seq-poly4-hybrid-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_poly_poly2_2000_eff": {
+    "value": 0.995,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/2000edits/MEMIT-Seq-poly2-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "2000edits",
+    "evaluator": null
+  },
+  "app_poly_poly2_5000_eff": {
+    "value": 0.983,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/5000edits/MEMIT-Seq-poly2-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "5000edits",
+    "evaluator": null
+  },
+  "app_poly_poly2_10000_eff": {
+    "value": 0.5492,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/10000edits/MEMIT-Seq-poly2-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_poly_lp1.0-ld0.0-cache0_2000_eff": {
+    "value": 0.9945,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/2000edits/MEMIT-Seq-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "2000edits",
+    "evaluator": null
+  },
+  "app_poly_lp1.0-ld0.0-cache0_5000_eff": {
+    "value": 0.994,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/5000edits/MEMIT-Seq-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "5000edits",
+    "evaluator": null
+  },
+  "app_poly_lp1.0-ld0.0-cache0_10000_eff": {
+    "value": 0.9361,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_checkpointed/seed42/10000edits/MEMIT-Seq-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_gptj_alphaedit_s42_eff": {
+    "value": 0.9566,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_gptj/seed42/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_gptj_alphaedit_s42_neigh": {
+    "value": 0.6156,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_gptj/seed42/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_gptj_alphaedit_s2024_eff": {
+    "value": 0.968,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_gptj/seed2024/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_gptj_alphaedit_s2024_neigh": {
+    "value": 0.6226,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_gptj/seed2024/10000edits/AlphaEdit/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_gptj_memit_s42_eff": {
+    "value": 0.3312,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_gptj/seed42/10000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_gptj_memit_s42_neigh": {
+    "value": 0.7357,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_gptj/seed42/10000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_gptj_memit_s2024_eff": {
+    "value": 0.5105,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_gptj/seed2024/10000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_gptj_memit_s2024_neigh": {
+    "value": 0.5151,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_gptj/seed2024/10000edits/MEMIT/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_gptj_alphaedit_c0_s42_eff": {
+    "value": 0.9914,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_gptj/seed42/10000edits/AlphaEdit-C0-15000.0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_gptj_alphaedit_c0_s42_neigh": {
+    "value": 0.6685,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_gptj/seed42/10000edits/AlphaEdit-C0-15000.0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_gptj_alphaedit_c0_s2024_eff": {
+    "value": 0.9942,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_gptj/seed2024/10000edits/AlphaEdit-C0-15000.0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_gptj_alphaedit_c0_s2024_neigh": {
+    "value": 0.6654,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_gptj/seed2024/10000edits/AlphaEdit-C0-15000.0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_gptj_mseq_s42_eff": {
+    "value": 0.993,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_gptj/seed42/10000edits/MEMIT-Seq-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.rewrite_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_gptj_mseq_s42_neigh": {
+    "value": 0.6466,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/failure_curve_gptj/seed42/10000edits/MEMIT-Seq-lp1.0-ld0.0-cache0/run_000/probpref_summary.json",
+    "field": "all_facts.prob_preference.neighborhood_success",
+    "checkpoint": "10000edits",
+    "evaluator": null
+  },
+  "app_key_clustered_s42_eff": {
+    "value": 0.9376,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/key_clustered/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_key_clustered_s42_neigh": {
+    "value": 0.5953,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/key_clustered/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_key_clustered_s42_f1k": {
+    "value": 0.835,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/key_clustered/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_key_clustered_s2024_eff": {
+    "value": 0.9428,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/key_clustered/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_key_clustered_s2024_neigh": {
+    "value": 0.5975,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/key_clustered/seed2024/full_eval_seed2024_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_key_clustered_s2024_f1k": {
+    "value": 0.85,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/key_clustered/seed2024/full_eval_seed2024_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_key_clustered_s137_eff": {
+    "value": 0.9842,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/key_clustered/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "5000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_key_clustered_s137_neigh": {
+    "value": 0.6752,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/key_clustered/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "5000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_key_clustered_s137_f1k": {
+    "value": 0.965,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/key_clustered/seed137/full_eval_seed137_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "5000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_key_dispersed_s42_eff": {
+    "value": 0.7226,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/key_dispersed/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_key_dispersed_s42_neigh": {
+    "value": 0.5409,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/key_dispersed/seed42/full_eval_seed42_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_key_dispersed_s42_f1k": {
+    "value": 0.538,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/key_dispersed/seed42/full_eval_seed42_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "10000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_key_dispersed_s137_eff": {
+    "value": 0.9126,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/key_dispersed/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.efficacy",
+    "checkpoint": "5000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_key_dispersed_s137_neigh": {
+    "value": 0.6009,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/key_dispersed/seed137/full_eval_seed137_v2.json",
+    "field": "all_facts.neighborhood",
+    "checkpoint": "5000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  },
+  "app_key_dispersed_s137_f1k": {
+    "value": 0.764,
+    "metric": "prob_pref",
+    "source": "/Users/xksc003/Documents/research-repos/alphaedit-analysis/results/matched_ordering/AlphaEdit/key_dispersed/seed137/full_eval_seed137_v2.json",
+    "field": "first_1k.efficacy",
+    "checkpoint": "5000_edits",
+    "evaluator": "eval_matched_ordering.py v2"
+  }
+}

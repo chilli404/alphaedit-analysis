@@ -1,7 +1,19 @@
 """Shared data loading for all paper figures.
 
-All loaders extract BOTH binary (_correct) and probability (_probs) metrics
-from the local results/ directory.
+All loaders extract BOTH argmax (_correct) and probability-preference (_probs)
+metrics from the local results/ directory.
+
+PRIMARY metric (used by published papers): probability-preference ("prob")
+  - Efficacy: P(target_new) > P(target_true)  [edit succeeded]
+  - Paraphrase: P(target_new) > P(target_true) on paraphrases [generalized]
+  - Neighborhood: P(target_true) > P(target_new) on neighbors [preserved]
+
+SECONDARY metric (diagnostic): argmax ("argmax")
+  - Binary: did the model's argmax prediction match the target?
+
+The vendor AlphaEdit summarize.py (lines 55-99) computes _probs entries as
+dicts with target_new and target_true NLL values.  Success comparisons use
+NLL ordering: lower NLL = higher probability.
 
 Expected local directory layout:
 ─────────────────────────────────
@@ -66,28 +78,80 @@ import numpy as np
 
 from analysis.style import PROJECT, RESULTS
 
+# ─── Metric Configuration ────────────────────────────────────────────────────
+
+# Module-level default metric type.  "prob" = probability-preference (official
+# AlphaEdit metric, used in published numbers).  "argmax" = binary argmax
+# correctness (secondary diagnostic).  All downstream code that calls
+# extract_case_metrics() inherits this default unless explicitly overridden.
+DEFAULT_METRIC_TYPE: str = "prob"
+
 # ─── Core Metric Extraction ──────────────────────────────────────────────────
 
 
-def extract_case_metrics(case_json: dict) -> dict:
+def _prob_pref_efficacy(probs_list: list) -> Optional[float]:
+    """Probability-preference efficacy: fraction where target_new is more probable.
+
+    For NLL-valued _probs dicts: success = target_true > target_new
+    (lower NLL = higher probability, so target_new wins).
+    Matches vendor AlphaEdit summarize.py lines 62-68.
+    """
+    if not probs_list:
+        return None
+    if isinstance(probs_list[0], dict):
+        return float(np.mean([
+            x["target_true"] > x["target_new"] for x in probs_list
+        ]))
+    # Fallback: scalar list (pre-aggregated, treat as-is)
+    return float(np.mean(probs_list))
+
+
+def _prob_pref_neighborhood(probs_list: list) -> Optional[float]:
+    """Probability-preference neighborhood: fraction where target_true is more probable.
+
+    For NLL-valued _probs dicts: success = target_true < target_new
+    (lower NLL = higher probability, so target_true is preserved).
+    Matches vendor AlphaEdit summarize.py lines 83-89.
+    """
+    if not probs_list:
+        return None
+    if isinstance(probs_list[0], dict):
+        return float(np.mean([
+            x["target_true"] < x["target_new"] for x in probs_list
+        ]))
+    # Fallback: scalar list (pre-aggregated, treat as-is)
+    return float(np.mean(probs_list))
+
+
+def extract_case_metrics(case_json: dict, metric_type: str = None) -> dict:
     """Extract all metrics from a single per-case JSON file.
 
+    Args:
+        case_json: Parsed per-case JSON dict.
+        metric_type: "prob" for probability-preference (official, default),
+                     "argmax" for binary correctness.
+                     Defaults to module-level DEFAULT_METRIC_TYPE.
+
     Returns dict with:
-      - efficacy, paraphrase, neighborhood (binary, 0-1)
-      - efficacy_prob, paraphrase_prob, neighborhood_prob (continuous)
+      - efficacy, paraphrase, neighborhood (primary metric per metric_type)
+      - efficacy_argmax, paraphrase_argmax, neighborhood_argmax (binary, 0-1)
+      - efficacy_prob, paraphrase_prob, neighborhood_prob (prob-preference, 0-1)
       - case_id, num_edits
     """
+    if metric_type is None:
+        metric_type = DEFAULT_METRIC_TYPE
+
     post = case_json.get("post", {})
     row = {
         "case_id": case_json.get("case_id"),
         "num_edits": case_json.get("num_edits"),
     }
 
-    # Binary metrics (mean of boolean list)
+    # ── Argmax metrics (mean of boolean list from _correct fields) ──
     for json_key, metric_name in [
-        ("rewrite_prompts_correct", "efficacy"),
-        ("paraphrase_prompts_correct", "paraphrase"),
-        ("neighborhood_prompts_correct", "neighborhood"),
+        ("rewrite_prompts_correct", "efficacy_argmax"),
+        ("paraphrase_prompts_correct", "paraphrase_argmax"),
+        ("neighborhood_prompts_correct", "neighborhood_argmax"),
     ]:
         vals = post.get(json_key)
         if isinstance(vals, list) and vals:
@@ -95,41 +159,50 @@ def extract_case_metrics(case_json: dict) -> dict:
         else:
             row[metric_name] = None
 
-    # Probability metrics (mean of target_new probabilities)
+    # ── Probability-preference metrics (from _probs fields) ──
+    # Efficacy & paraphrase: success = target_new more probable (NLL lower)
     for json_key, metric_name in [
         ("rewrite_prompts_probs", "efficacy_prob"),
         ("paraphrase_prompts_probs", "paraphrase_prob"),
-        ("neighborhood_prompts_probs", "neighborhood_prob"),
     ]:
         vals = post.get(json_key)
-        if isinstance(vals, list) and vals:
-            if isinstance(vals[0], dict):
-                row[metric_name] = np.mean([d["target_new"] for d in vals])
-            else:
-                row[metric_name] = np.mean(vals)
-        else:
-            row[metric_name] = None
+        row[metric_name] = _prob_pref_efficacy(vals) if vals else None
+
+    # Neighborhood: success = target_true more probable (preserved)
+    neigh_vals = post.get("neighborhood_prompts_probs")
+    row["neighborhood_prob"] = _prob_pref_neighborhood(neigh_vals) if neigh_vals else None
+
+    # ── Canonical names: point to the selected metric type ──
+    suffix = "_prob" if metric_type == "prob" else "_argmax"
+    for base in ("efficacy", "paraphrase", "neighborhood"):
+        row[base] = row.get(f"{base}{suffix}")
 
     return row
 
 
-def _aggregate_case_files(run_dir: Path) -> Optional[Dict[str, Any]]:
+def _aggregate_case_files(run_dir: Path, metric_type: str = None) -> Optional[Dict[str, Any]]:
     """Aggregate metrics from a directory of case JSON files.
 
-    Returns dict with: efficacy, paraphrase, neighborhood,
+    Returns dict with: efficacy, paraphrase, neighborhood (primary per metric_type),
+    efficacy_argmax, paraphrase_argmax, neighborhood_argmax,
     efficacy_prob, paraphrase_prob, neighborhood_prob, n_facts.
     """
     case_files = list(run_dir.glob("*_edits-case_*.json"))
     if not case_files:
         return None
 
+    _ALL_METRIC_KEYS = (
+        "efficacy", "paraphrase", "neighborhood",
+        "efficacy_argmax", "paraphrase_argmax", "neighborhood_argmax",
+        "efficacy_prob", "paraphrase_prob", "neighborhood_prob",
+    )
+
     metrics = defaultdict(list)
     for f_path in case_files:
         with open(f_path) as f:
             data = json.load(f)
-        row = extract_case_metrics(data)
-        for k in ("efficacy", "paraphrase", "neighborhood",
-                  "efficacy_prob", "paraphrase_prob", "neighborhood_prob"):
+        row = extract_case_metrics(data, metric_type=metric_type)
+        for k in _ALL_METRIC_KEYS:
             if row.get(k) is not None:
                 metrics[k].append(row[k])
 
@@ -169,25 +242,32 @@ def load_checkpoint_cohorts(
     edits: int,
     alg: str,
     batch_size: int = 100,
+    metric_type: str = None,
 ) -> Optional[Dict[int, Dict[str, Any]]]:
     """Load per-cohort metrics for a failure curve checkpoint.
 
     Groups facts by their insertion batch (case_id // batch_size).
-    Returns dict mapping cohort_index → {efficacy, paraphrase, neighborhood, n_facts}.
+    Returns dict mapping cohort_index → {efficacy, paraphrase, neighborhood, ..., n_facts}.
     """
     run_dir = _find_run_dir(seed, edits, alg)
     if run_dir is None:
         return None
 
+    _COHORT_KEYS = (
+        "efficacy", "paraphrase", "neighborhood",
+        "efficacy_argmax", "paraphrase_argmax", "neighborhood_argmax",
+        "efficacy_prob", "paraphrase_prob", "neighborhood_prob",
+    )
+
     cohorts = defaultdict(lambda: defaultdict(list))
     for f_path in run_dir.glob("*_edits-case_*.json"):
         with open(f_path) as f:
             data = json.load(f)
-        row = extract_case_metrics(data)
+        row = extract_case_metrics(data, metric_type=metric_type)
         if row["case_id"] is None:
             continue
         cohort_idx = row["case_id"] // batch_size
-        for k in ("efficacy", "paraphrase", "neighborhood"):
+        for k in _COHORT_KEYS:
             if row.get(k) is not None:
                 cohorts[cohort_idx][k].append(row[k])
 
@@ -278,7 +358,8 @@ def load_comparison_ordered(
                     data = json.load(f)
                 row = extract_case_metrics(data)
                 for k in ("efficacy", "paraphrase", "neighborhood",
-                          "neighborhood_prob"):
+                          "efficacy_argmax", "paraphrase_argmax", "neighborhood_argmax",
+                          "efficacy_prob", "paraphrase_prob", "neighborhood_prob"):
                     if row.get(k) is not None:
                         metrics[k].append(row[k])
 
@@ -342,6 +423,7 @@ def load_polykernel_cohorts(
     kernel: str = "poly2",
     alg: str = "AlphaEdit",
     batch_size: int = 100,
+    metric_type: str = None,
 ) -> Optional[Dict[int, Dict[str, Any]]]:
     """Load per-cohort metrics for polykernel editor."""
     base = RESULTS / "polykernel_editor" / f"seed{seed}" / f"{edits}edits"
@@ -352,15 +434,21 @@ def load_polykernel_cohorts(
     if not run_dir.exists():
         return None
 
+    _COHORT_KEYS = (
+        "efficacy", "paraphrase", "neighborhood",
+        "efficacy_argmax", "paraphrase_argmax", "neighborhood_argmax",
+        "efficacy_prob", "paraphrase_prob", "neighborhood_prob",
+    )
+
     cohorts = defaultdict(lambda: defaultdict(list))
     for f_path in run_dir.glob("*_edits-case_*.json"):
         with open(f_path) as f:
             data = json.load(f)
-        row = extract_case_metrics(data)
+        row = extract_case_metrics(data, metric_type=metric_type)
         if row["case_id"] is None:
             continue
         cohort_idx = row["case_id"] // batch_size
-        for k in ("efficacy", "paraphrase", "neighborhood"):
+        for k in _COHORT_KEYS:
             if row.get(k) is not None:
                 cohorts[cohort_idx][k].append(row[k])
 
@@ -545,7 +633,8 @@ def load_weight_drift(seed: int) -> Optional[Dict]:
 # ─── MVE (Reproduction) Loaders ──────────────────────────────────────────────
 
 
-def load_mve_metrics(experiment: str, seed: int, alg: str) -> Optional[Dict[str, Any]]:
+def load_mve_metrics(experiment: str, seed: int, alg: str,
+                     result_root=None) -> Optional[Dict[str, Any]]:
     """Load aggregate metrics for an MVE experiment.
 
     Args:
@@ -553,8 +642,10 @@ def load_mve_metrics(experiment: str, seed: int, alg: str) -> Optional[Dict[str,
                    "mve3_alphaedit_zsre"
         seed: random seed
         alg: "AlphaEdit" or "MEMIT"
+        result_root: Override result directory (default: standard RESULTS)
     """
-    seed_dir = RESULTS / experiment / f"seed{seed}"
+    base = Path(result_root) if result_root else RESULTS
+    seed_dir = base / experiment / f"seed{seed}"
     if not seed_dir.exists():
         return None
 

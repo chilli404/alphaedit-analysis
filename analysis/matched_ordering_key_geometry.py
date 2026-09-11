@@ -41,8 +41,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "mechanism"))
 
-# Import model_download early to apply filelock patch before transformers loads
-import model_download  # noqa: F401 — patches filelock globally
 
 
 # ─── Key Extraction (reuses compute_keys.py logic) ──────────────────────────
@@ -349,12 +347,7 @@ def main():
     else:
         # Load model and extract keys
         print(f"\n  Loading model: {args.model}")
-        from model_download import download_model, _artifactory_reachable
-
-        if _artifactory_reachable():
-            model_path = download_model(args.model)
-        else:
-            model_path = args.model
+        model_path = os.environ.get("MODEL_PATH", args.model)
 
         from transformers import AutoModelForCausalLM, AutoTokenizer
         token = os.environ.get("HF_TOKEN")

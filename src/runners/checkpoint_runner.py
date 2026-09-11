@@ -23,7 +23,7 @@ Checkpoint contents:
 
 Checkpoint dir resolution:
   1. --checkpoint_dir if provided
-  2. /s3-data/continual-learning/alphaedit/checkpoints/ if exists
+  2. $CHECKPOINT_ROOT env var if set
   3. ~/.cache/alphaedit_checkpoints/
 
 Usage:
@@ -53,7 +53,7 @@ from pathlib import Path
 _SRC_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_SRC_DIR / "util"))
 
-from model_download import resolve_model_path
+from model_resolve import resolve_model_path
 from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file, patch_glue_eval_file, build_order_shuffle_injection, SHUFFLE_ANCHOR
 from dataset_fingerprint import build_fingerprint_injection
@@ -205,6 +205,7 @@ def build_checkpoint_script(
     c0_weight: float = 15000.0,
     continue_from_run: str | None = None,
     nullspace_threshold: float | None = None,
+    dataset_override: str | None = None,
 ) -> str:
     """
     Build an inline Python script that:
@@ -354,10 +355,12 @@ source = source.replace(
             f')\n'
             f'# Replace ALL occurrences of the P cache filename with per-threshold version\n'
             f'source = source.replace("null_space_project.pt", "null_space_project_t{nullspace_threshold}.pt")\n'
-            f'# Fix S3 P cache path to use correct model stats dir\n'
+            f'# Fix P cache path to use correct model stats dir\n'
+            f'import os as _os\n'
+            f'_stats_root = _os.environ.get("STATS_ROOT", "data/stats")\n'
             f'source = source.replace(\n'
-            f'    "/s3-data/continual-learning/alphaedit/stats/llama3-8b-instruct/null_space_project_t{nullspace_threshold}.pt",\n'
-            f'    "/s3-data/continual-learning/alphaedit/stats/{_stats_subdir}/null_space_project_t{nullspace_threshold}.pt",\n'
+            f'    _stats_root + "/llama3-8b-instruct/null_space_project_t{nullspace_threshold}.pt",\n'
+            f'    _stats_root + "/{_stats_subdir}/null_space_project_t{nullspace_threshold}.pt",\n'
             f')\n'
             f'# Replace get_project() with SVD-cached version (avoids 45-min recomputation per threshold)\n'
             f'_get_project_anchor = "def get_project(model, tok, layer, hparams):"\n'
@@ -366,7 +369,8 @@ source = source.replace(
             f'    import numpy as _np\n'
             f'    # Check for cached SVD decomposition (U, S) — shared across all thresholds\n'
             f'    _layer_name = hparams.rewrite_module_tmp.format(layer)\n'
-            f'    _svd_cache = _P("/s3-data/continual-learning/alphaedit/stats/{_stats_subdir}") / f"svd_{{_layer_name.replace(chr(46), chr(95))}}.pt"\n'
+            f'    import os as _os2\n'
+            f'    _svd_cache = _P(_os2.environ.get("STATS_ROOT", "data/stats")) / "{_stats_subdir}" / f"svd_{{_layer_name.replace(chr(46), chr(95))}}.pt"\n'
             f'    if _svd_cache.exists():\n'
             f'        _cached = torch.load(str(_svd_cache), map_location="cpu")\n'
             f'        U, S = _cached["U"], _cached["S"]\n'
@@ -394,7 +398,7 @@ source = source.replace(
             f'source = source[:_gp_start] + _get_project_replacement + "\\n" + source[_gp_end:]\n'
             f'print(f"  [THRESHOLD] nullspace_threshold overridden to {nullspace_threshold}")\n'
             f'print(f"  [THRESHOLD] P cache file: null_space_project_t{nullspace_threshold}.pt")\n'
-            f'print(f"  [THRESHOLD] SVD cache: /s3-data/.../stats/{_stats_subdir}/svd_*.pt")\n'
+            f'print(f"  [THRESHOLD] SVD cache: $STATS_ROOT/{_stats_subdir}/svd_*.pt")\n'
         )
     else:
         nullspace_threshold_injection = ""
@@ -576,7 +580,8 @@ source = source.replace(
         print(f"  [MEGA-BATCH EVAL] Complete: {_mbe_total} records in {_mbe_time() - _mbe_start:.1f}s")
 
     # --- Call mega-batch eval or fall through to original loop ---
-    if _do_final_eval:
+    _use_mega_batch = (ds_name != "zsre")
+    if _do_final_eval and _use_mega_batch:
         _records_to_eval = list(ds)
         # === CHECKPOINT: fast mode - filter to batch records only (injected) ===
         if _ckpt_fast_mode:
@@ -585,7 +590,8 @@ source = source.replace(
     # === END mega-batch eval ===
     _eval_skipped = 0
     for record in ds:
-        break  # Mega-batch handles all eval above; skip vendor fallback loop
+        if _use_mega_batch:
+            break  # Mega-batch handles all eval above; skip vendor fallback loop
         # === CHECKPOINT: skip entire evaluation if _do_final_eval is False (injected) ===
         if not _do_final_eval:
             break
@@ -817,8 +823,34 @@ if _order_id > 0:
     )
     source = source.replace(loop_anchor, _shuffle_code + loop_anchor, 1)
 
+# Inject dataset override (for ordering streams — replaces/reorders dataset with external JSON)
+_ds_override_path = {repr(dataset_override) if dataset_override else 'None'}
+if _ds_override_path:
+    _ds_override_code = '''    # === DATASET OVERRIDE: reorder or replace dataset with external file (injected) ===
+    import json as _dsov_json
+    with open(''' + repr(_ds_override_path) + ''', "r") as _dsov_f:
+        _dsov_stream = _dsov_json.load(_dsov_f)
+    # Determine storage attribute: MCF uses ds.data, ZsRE uses ds._data
+    _dsov_attr = "_data" if hasattr(ds, "_data") else "data"
+    _dsov_existing = getattr(ds, _dsov_attr)
+    # Build index of existing records by case_id (for reordering with full fields)
+    _dsov_id_map = {{r["case_id"]: r for r in _dsov_existing}}
+    _dsov_stream_ids = [r["case_id"] for r in _dsov_stream]
+    # If stream case_ids match existing records, REORDER (preserves neighborhood_prompts etc)
+    # Otherwise fall back to direct REPLACEMENT
+    _dsov_matched = [_dsov_id_map[cid] for cid in _dsov_stream_ids if cid in _dsov_id_map]
+    if len(_dsov_matched) >= len(_dsov_stream_ids) * 0.95:
+        setattr(ds, _dsov_attr, _dsov_matched)
+        print(f"  [OVERRIDE] Reordered {{{{len(_dsov_matched)}}}} records from ''' + _ds_override_path + '''")
+    else:
+        setattr(ds, _dsov_attr, _dsov_stream)
+        print(f"  [OVERRIDE] Replaced with {{{{len(_dsov_stream)}}}} records from ''' + _ds_override_path + '''")
+    # === END dataset override ===
+'''
+    source = source.replace(loop_anchor, _ds_override_code + loop_anchor, 1)
+
 # Inject fingerprint
-_fp_code = '''    # === FINGERPRINT: compute dataset fingerprint (injected) ===
+_fp_code = \'\'\'    # === FINGERPRINT: compute dataset fingerprint (injected) ===
     import hashlib as _fp_hashlib
     import json as _fp_json
     _fp_case_ids = [r["case_id"] for r in ds]
@@ -1102,6 +1134,7 @@ def run(args: argparse.Namespace) -> None:
         c0_weight=args.c0_weight,
         continue_from_run=continue_from_run,
         nullspace_threshold=args.nullspace_threshold,
+        dataset_override=args.dataset_override,
     )
 
     # Environment
@@ -1194,11 +1227,16 @@ def run(args: argparse.Namespace) -> None:
     results_dir = get_result_root()
     metadata_dir = results_dir / "metadata"
     metadata_dir.mkdir(parents=True, exist_ok=True)
-    # JSONL: append one line per segment so multi-resume runs build a history
-    metadata_file = metadata_dir / f"run_seed{args.seed}_{args.alg_name}_ckpt_{args.dataset_size_limit}.jsonl"
-    with open(metadata_file, "a") as f:
-        f.write(json.dumps(metadata) + "\n")
-    print(f"Metadata appended to: {metadata_file}")
+    # JSONL: write each segment as a uniquely-named file (S3 FUSE doesn't support append)
+    _ts = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+    metadata_file = metadata_dir / f"run_seed{args.seed}_{args.alg_name}_ckpt_{args.dataset_size_limit}_{_ts}.json"
+    import tempfile, shutil
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as _tmp:
+        _tmp.write(json.dumps(metadata) + "\n")
+        _tmp_path = Path(_tmp.name)
+    shutil.copyfile(str(_tmp_path), str(metadata_file))
+    _tmp_path.unlink()
+    print(f"Metadata written to: {metadata_file}")
 
     print(f"\n{'=' * 70}")
     print("Checkpoint run completed.")
@@ -1267,6 +1305,11 @@ def main():
                         help="Override nullspace_threshold in hparams. Controls effective rank of P. "
                              "Lower = more restrictive P (fewer null-space directions). "
                              "Higher = more permissive P (more directions available for edits).")
+
+    # Dataset override (for ordering experiments with checkpoint_runner)
+    parser.add_argument("--dataset_override", type=str, default=None,
+                        help="Path to JSON file that replaces ds.data (for ordering streams). "
+                             "Records are loaded in the file's order, overriding canonical MCF order.")
 
     # Retention probes (for mechanism figure)
     parser.add_argument("--retention_probe_batches", type=str, default=None,

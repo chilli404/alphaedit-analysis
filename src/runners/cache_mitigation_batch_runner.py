@@ -41,7 +41,7 @@ from pathlib import Path
 _SRC_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_SRC_DIR / "util"))
 
-from model_download import resolve_model_path
+from model_resolve import resolve_model_path
 from setup_hparams import link_hparams
 
 

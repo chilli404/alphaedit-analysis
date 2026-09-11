@@ -809,10 +809,10 @@ $RESULT_ROOT/matched_ordering/key_geometry/
 
 ### Environment Variables
 
-| Variable | Local Default | SkyPilot |
-|----------|--------------|----------|
-| `RESULT_ROOT` | `./results` | `/s3-data/continual-learning/alphaedit/results` |
-| `CHECKPOINT_ROOT` | `~/.cache/alphaedit_checkpoints` | `/s3-data/continual-learning/alphaedit/checkpoints` |
+| Variable | Local Default | Cloud (set by orchestration) |
+|----------|--------------|-------------------------------|
+| `RESULT_ROOT` | `./results` | Set by cloud orchestration YAML |
+| `CHECKPOINT_ROOT` | `~/.cache/alphaedit_checkpoints` | Set by cloud orchestration YAML |
 
 ### Complete Results Directory
 ```
@@ -843,6 +843,77 @@ $CHECKPOINT_ROOT/
 ├── comparison_ordered/{ALG}/seed{N}/order{O}/batch_{B}/
 └── matched_ordering/{ALG}/{ORDERING}/seed{N}/batch_{B}/
 ```
+
+---
+
+## Fixed-Batch Ordering (Experiment: Isolation of Cross-Batch Exposure)
+
+**Scientific Question**: Does cross-batch future-key exposure cause selective forgetting *independently* of within-batch Gram matrix effects, semantic composition, and batch conditioning?
+
+**Motivation**: The reviewer's primary methodological concern is that the clustered/dispersed orderings simultaneously alter within-batch key geometry (K@K^T used in each solve), cross-batch exposure, and relation composition. This experiment holds batch membership constant while permuting only the temporal sequence of batches.
+
+**Design**:
+1. Assign 5K records to 50 fixed batches of 100 via seeded random shuffle
+2. Compute batch centroids (mean L2-normalized key vector per batch)
+3. Generate multiple batch-sequence permutations:
+   - **fb_high_exposure**: Greedy nearest-neighbor (similar batches adjacent → high future cosine)
+   - **fb_low_exposure**: Greedy farthest-neighbor (similar batches far apart → low future cosine)
+   - **fb_random{0,1,2}**: Random permutations (baseline distribution)
+4. Run each ordering through the standard matched_ordering pipeline
+
+**Key Property**: Within each batch, the Gram matrix K@K^T is **identical** across all orderings. Only the temporal arrangement of batches changes. Relation distribution per batch is also identical (same batch membership → same relations).
+
+**Scripts**:
+- Generate: `uv run python src/datasets/generate_orderings.py --seed SEED --fixed_batch`
+- Run: `bash scripts/run_fixed_batch_ordering.sh SEED [ALG] [PHASE]`
+- SkyPilot: `bash sky/sky_launch.sh fixed_batch_ordering SEED`
+
+**Paths**:
+- Orderings: `$RESULT_ROOT/matched_ordering/orderings/fb_{high_exposure,low_exposure,random*}_seed{SEED}.json`
+- Batch assignment: `$RESULT_ROOT/matched_ordering/diagnostics/fixed_batch_assignment_seed{SEED}.json`
+- Diagnostics: `$RESULT_ROOT/matched_ordering/diagnostics/fixed_batch_report_seed{SEED}.json`
+- Results: `$RESULT_ROOT/matched_ordering/AlphaEdit/fb_{ordering}/seed{SEED}/`
+- Checkpoints: `$CHECKPOINT_ROOT/matched_ordering/AlphaEdit/fb_{ordering}/seed{SEED}/batch_{N}/`
+
+---
+
+## Direct Logit-Damage Intervention (Experiment: Causal Interference Test)
+
+**Scientific Question**: Does a future batch with high key-cosine to focal edits cause more immediate target-logit damage than a low-cosine batch, controlling for all other factors?
+
+**Motivation**: The reviewer asks for a direct causal intervention: "For a fixed successfully installed edit, randomize semantically matched high- versus low-cosine future edits and measure the immediate change in its target logit. Relate observed damage to k_i^T ΔW_t."
+
+**Design** (A/B intervention, paired):
+1. Use fixed-batch assignment → install first N batches (default 10 = 1K edits)
+2. Save model state + cache_c (checkpoint)
+3. Rank remaining 40 batches by mean max-cosine to focal-edit keys
+4. For each of N trial pairs (default 10):
+   a. Apply HIGH-cosine batch → measure target logprobs + ||ΔW @ k_i|| per focal edit → restore
+   b. Apply LOW-cosine batch → measure target logprobs + ||ΔW @ k_i|| per focal edit → restore
+5. Paired comparison: for each focal edit, compare logit change under HIGH vs LOW treatment
+
+**Key Controls**:
+- Same model state at each treatment application (restored from checkpoint)
+- Same focal edits evaluated
+- Batch membership is from the fixed-batch assignment (random composition)
+- Treatment difference is ONLY which 100-record batch is applied next
+
+**Metrics**: Per focal edit × per trial:
+- `delta_logprob_high`: log P(target_new) after HIGH batch − baseline
+- `delta_logprob_low`: log P(target_new) after LOW batch − baseline
+- `damage_high`: Σ_layers ||ΔW_layer @ k_i|| after HIGH batch
+- `damage_low`: Σ_layers ||ΔW_layer @ k_i|| after LOW batch
+- `paired_diff`: HIGH − LOW (negative means HIGH causes more damage)
+
+**Scripts**:
+- Run: `bash scripts/run_logit_damage_experiment.sh SEED`
+- Direct: `uv run python src/runners/logit_damage_runner.py --seed 42 --n_trials 10`
+- SkyPilot: `bash sky/sky_launch.sh logit_damage SEED`
+
+**Paths**:
+- Config: `$RESULT_ROOT/logit_damage/seed{SEED}/trial_config.json`
+- Results: `$RESULT_ROOT/logit_damage/seed{SEED}/intervention_results.json`
+- Checkpoints: `$CHECKPOINT_ROOT/logit_damage/seed{SEED}/batch_{N}/`
 
 ---
 

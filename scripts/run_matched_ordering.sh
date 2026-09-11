@@ -18,7 +18,7 @@ set -euo pipefail
 #
 # Environment variables:
 #   CUDA_DEVICE      - GPU device index (default: 0)
-#   TARGET_EDITS     - Stream length (default: 5000)
+#   TARGET_EDITS     - Stream length (default: 10000)
 #   SAVE_INTERVAL    - Checkpoint save interval (default: 10)
 #   FAST_CHECKPOINT  - "true" for fast mode (default: true)
 #   EVAL_CHECKPOINTS - Space-separated batch indices to eval (default: auto-detect all)
@@ -26,22 +26,29 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Preserve caller-set MODEL_NAME and HPARAMS_FNAME before .env sourcing
+_PRESET_MODEL="${MODEL_NAME:-}"
+_PRESET_HPARAMS="${HPARAMS_FNAME:-}"
+
 # Load environment config
 if [[ -f "$PROJECT_DIR/.env" ]]; then
     set -a; source "$PROJECT_DIR/.env"; set +a
 fi
 
+# Restore caller-set values (prevent .env from overriding GPT-J/Qwen model names)
+if [[ -n "$_PRESET_MODEL" ]]; then MODEL_NAME="$_PRESET_MODEL"; fi
+if [[ -n "$_PRESET_HPARAMS" ]]; then HPARAMS_FNAME="$_PRESET_HPARAMS"; fi
 MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 SEED="${1:-42}"
 ALG="${2:-${ALG_NAME:-MEMIT-Seq-lp1.0-ld0.0-cache0}}"
 ORDERING="${3:-${ORDERING:-clustered}}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
-DATASET_SIZE_LIMIT="${TARGET_EDITS:-5000}"
+DATASET_SIZE_LIMIT="${TARGET_EDITS:-10000}"
 SAVE_INTERVAL="${SAVE_INTERVAL:-10}"
 
-# Resolve stream path: use RESULT_ROOT or project results dir
+# Resolve stream path: use STREAM_DIR_OVERRIDE, RESULT_ROOT, or project results dir
 RESULT_ROOT="${RESULT_ROOT:-$PROJECT_DIR/results}"
-STREAM_DIR="$RESULT_ROOT/matched_ordering/orderings"
+STREAM_DIR="${STREAM_DIR_OVERRIDE:-$RESULT_ROOT/matched_ordering/orderings}"
 STREAM_FILE="${ORDERING}_seed${SEED}.json"
 
 if [[ -f "$STREAM_DIR/$STREAM_FILE" ]]; then
@@ -56,7 +63,18 @@ fi
 
 # Resolve checkpoint and results dirs from CHECKPOINT_ROOT / RESULT_ROOT
 CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-${HOME}/.cache/alphaedit_checkpoints}"
-CKPT_DIR="$CHECKPOINT_ROOT/matched_ordering/${ALG}/${ORDERING}/seed${SEED}"
+if [[ -n "${CKPT_DIR_OVERRIDE:-}" ]]; then
+    CKPT_DIR="$CKPT_DIR_OVERRIDE/${ALG}/${ORDERING}/seed${SEED}"
+    echo "  Using override checkpoint path: $CKPT_DIR"
+else
+    CKPT_DIR="$CHECKPOINT_ROOT/matched_ordering/${ALG}/${ORDERING}/seed${SEED}"
+    # Also check model-tagged path (memit_sequential_runner adds model tag for non-default models)
+    _CKPT_DIR_TAGGED="$CHECKPOINT_ROOT/matched_ordering/meta-llama-3-8b-instruct/${ALG}/${ORDERING}/seed${SEED}"
+    if [[ -d "$_CKPT_DIR_TAGGED" ]] && [[ ! -d "$CKPT_DIR/batch_9" ]]; then
+        echo "  Using model-tagged checkpoint path: $_CKPT_DIR_TAGGED"
+        CKPT_DIR="$_CKPT_DIR_TAGGED"
+    fi
+fi
 mkdir -p "$CKPT_DIR"
 
 RESULTS_DIR="$RESULT_ROOT/matched_ordering/${ALG}/${ORDERING}/seed${SEED}"
@@ -79,6 +97,14 @@ NUM_EDITS=100
 TOTAL_BATCHES=$((DATASET_SIZE_LIMIT / NUM_EDITS))
 FINAL_BATCH_IDX=$((TOTAL_BATCHES - 1))
 
+# FORCE_EDIT=true bypasses checkpoint auto-detect (prevents cross-model contamination
+# when e.g. GPT-J runs find Llama checkpoints at an untagged path)
+if [[ "${FORCE_EDIT:-false}" == "true" ]]; then
+    echo "  FORCE_EDIT=true — bypassing checkpoint auto-detect, running full editing pipeline"
+    all_checkpoints_present=false
+    AVAILABLE_BATCHES=()
+else
+
 # Check if all checkpoints exist — if so, run eval instead of editing
 all_checkpoints_present=true
 AVAILABLE_BATCHES=()
@@ -94,30 +120,44 @@ if [[ "$all_checkpoints_present" == "true" ]] && [[ ${#AVAILABLE_BATCHES[@]} -gt
     echo "  All ${#AVAILABLE_BATCHES[@]} checkpoints found — running post-hoc evaluation"
     echo "  Checkpoints: ${AVAILABLE_BATCHES[*]}"
 
-    # Use explicit list or default to all available
-    EVAL_BATCHES="${EVAL_CHECKPOINTS:-${AVAILABLE_BATCHES[*]}}"
+    if [[ "$ALG" == "AlphaEdit" ]]; then
+        # Use eval_matched_ordering.py with mega-batch eval (10-30x faster).
+        LAST_BATCH="${AVAILABLE_BATCHES[-1]}"
+        echo "  Using eval_matched_ordering.py mega-batch eval (final checkpoint: batch_$LAST_BATCH)"
 
-    # Use the STREAM file as dataset — it contains the actual edited records in order.
-    # Using raw multi_counterfact.json would evaluate the wrong facts since the stream
-    # selects and reorders records from across the full 20K+ MCF dataset.
-    uv run python scripts/eval_matched_ordering.py \
-        --seed "$SEED" \
-        --alg_name "$ALG" \
-        --ordering "$ORDERING" \
-        --model_name "$MODEL_NAME" \
-        --checkpoint_dir "$CKPT_DIR" \
-        --checkpoints $EVAL_BATCHES \
-        --num_edits "$NUM_EDITS" \
-        --dataset_path "$STREAM_PATH"
+        uv run python scripts/eval_matched_ordering.py \
+            --seed "$SEED" \
+            --alg_name AlphaEdit \
+            --ordering "$ORDERING" \
+            --model_name "$MODEL_NAME" \
+            --checkpoint_dir "$CKPT_DIR" \
+            --checkpoints "$LAST_BATCH" \
+            --num_edits "$NUM_EDITS" \
+            --dataset_path "$STREAM_PATH"
+    else
+        # MEMIT-Seq: use eval_matched_ordering.py (per-record eval)
+        EVAL_BATCHES="${EVAL_CHECKPOINTS:-${AVAILABLE_BATCHES[*]}}"
+        uv run python scripts/eval_matched_ordering.py \
+            --seed "$SEED" \
+            --alg_name "$ALG" \
+            --ordering "$ORDERING" \
+            --model_name "$MODEL_NAME" \
+            --checkpoint_dir "$CKPT_DIR" \
+            --checkpoints $EVAL_BATCHES \
+            --num_edits "$NUM_EDITS" \
+            --dataset_path "$STREAM_PATH"
+    fi
 
     echo ""
     echo "=== Matched Ordering eval complete ==="
     echo "  Algorithm: $ALG"
     echo "  Ordering:  $ORDERING"
-    echo "  Results:   $PROJECT_DIR/results/matched_ordering/$ALG/$ORDERING/seed$SEED/"
+    echo "  Results:   $RESULTS_DIR"
     echo "  Finished:  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     exit 0
 fi
+
+fi  # end FORCE_EDIT else block
 
 # --- Normal edit mode (checkpoints incomplete or missing) ---
 
@@ -148,7 +188,7 @@ if [[ "$ALG" == MEMIT-Seq-* ]]; then
         --seed "$SEED" \
         --cuda_device "$CUDA_DEVICE" \
         --model_name "$MODEL_NAME" \
-        --hparams_fname Llama3-8B.json \
+        --hparams_fname "${HPARAMS_FNAME:-Llama3-8B.json}" \
         --ds_name mcf \
         --dataset_size_limit "$DATASET_SIZE_LIMIT" \
         --num_edits "$NUM_EDITS" \
@@ -161,7 +201,8 @@ if [[ "$ALG" == MEMIT-Seq-* ]]; then
         --save_interval "$SAVE_INTERVAL" \
         --ordering "$ORDERING" \
         --dataset_override "$STREAM_PATH" \
-        $FAST_FLAG
+        $FAST_FLAG \
+        ${CONTINUE_FROM_RUN:+--continue_from_run "$CONTINUE_FROM_RUN"}
 
 elif [[ "$ALG" == "AlphaEdit" ]]; then
     # AlphaEdit via alphaedit_stream_runner (checkpointed stream editing with mechanism measurement)
@@ -177,6 +218,7 @@ elif [[ "$ALG" == "AlphaEdit" ]]; then
         --seed "$SEED" \
         --cuda_device "$CUDA_DEVICE" \
         --model_name "$MODEL_NAME" \
+        --hparams_fname "${HPARAMS_FNAME:-Llama3-8B.json}" \
         --stream_length "$DATASET_SIZE_LIMIT" \
         --num_edits "$NUM_EDITS" \
         --save_interval "$SAVE_INTERVAL" \
@@ -195,7 +237,7 @@ fi
 # memit_sequential_runner now writes directly to matched_ordering/ structure;
 # just sync to S3 results dir if available.
 _LOCAL_RESULTS="$PROJECT_DIR/results/matched_ordering/${ORDERING}/seed${SEED}/${DATASET_SIZE_LIMIT}edits"
-if [[ -d "/s3-data/continual-learning/alphaedit" ]] && [[ -d "$_LOCAL_RESULTS" ]]; then
+if [[ -n "${RESULT_ROOT:-}" ]] && [[ "$RESULT_ROOT" != "$PROJECT_DIR/results" ]] && [[ -d "$_LOCAL_RESULTS" ]]; then
     mkdir -p "$RESULTS_DIR"
     cp -r "$_LOCAL_RESULTS"/* "$RESULTS_DIR/" 2>/dev/null || true
 fi

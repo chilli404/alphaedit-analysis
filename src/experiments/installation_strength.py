@@ -107,11 +107,7 @@ def eval_at_1k_checkpoint(seed: int, ckpt_base: Path, output_dir: Path, model_na
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
-    from model_download import download_model, _artifactory_reachable
-
-    if _artifactory_reachable():
-        model_name = download_model(model_name)
+    model_name = os.environ.get("MODEL_PATH", model_name)
 
     print("=" * 70)
     print("INSTALLATION STRENGTH: Evaluate at 1K checkpoint")

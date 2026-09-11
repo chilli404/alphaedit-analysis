@@ -18,9 +18,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src" / "util"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src" / "polykernel"))
 
 # Mock GPU-only imports
-mock_model_download = types.ModuleType("model_download")
-mock_model_download.resolve_model_path = lambda x: x
-sys.modules["model_download"] = mock_model_download
+mock_model_resolve = types.ModuleType("model_resolve")
+mock_model_resolve.resolve_model_path = lambda x: x
+sys.modules["model_resolve"] = mock_model_resolve
 
 mock_setup_hparams = types.ModuleType("setup_hparams")
 mock_setup_hparams.link_hparams = lambda: None

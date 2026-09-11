@@ -1,17 +1,33 @@
 #!/usr/bin/env python3
 """
-Post-hoc evaluation of matched ordering checkpoints.
+Post-hoc evaluation of matched ordering checkpoints (v2 - dual metric).
 
 Loads model weights from each saved checkpoint and evaluates ALL edited facts
 from the stream file (not just the last batch). Works with any algorithm
 (AlphaEdit, MEMIT-Seq, etc.) that saves checkpoints during matched ordering runs.
 
-Produces the decisive comparison table:
+Computes BOTH metric types for each prompt:
+  - Probability-preference (primary): pairwise NLL comparison matching published papers.
+    Efficacy/Paraphrase: P(target_new) > P(target_true), i.e. NLL(true) > NLL(new).
+    Neighborhood: P(target_true) > P(target_new), i.e. NLL(true) < NLL(new).
+  - Argmax (secondary): is the correct target the argmax prediction at every position?
+    Stricter metric; typically 10-40% lower than probability-preference on neighborhood.
 
-    Method    Checkpoint    All facts    First 1K    Latest 1K    Locality
+Output format (v2):
+  {
+    "5000_edits": {
+      "all_facts": {
+        "efficacy": 0.95,           // prob-pref (primary)
+        "paraphrase": 0.91,
+        "neighborhood": 0.64,
+        "efficacy_argmax": 0.93,    // argmax (secondary)
+        "paraphrase_argmax": 0.65,
+        "neighborhood_argmax": 0.13
+      }, ...
+    }
+  }
 
-Checkpoints are at batches 9, 19, 29, 39, 49 (= 1K, 2K, 3K, 4K, 5K edits).
-We evaluate at 2K (batch 19), 3K (batch 29), and 5K (batch 49).
+Results saved as full_eval_seed{N}_v2.json (does not overwrite v1 results).
 
 Usage:
     python scripts/eval_matched_ordering.py --seed 42 --alg_name AlphaEdit --ordering key_clustered
@@ -43,21 +59,17 @@ def resolve_checkpoint_dir(seed: int, lambda_prev: float, lambda_delta: float) -
 
 def load_model_from_checkpoint(model_name: str, ckpt_path: Path):
     """Load base model and apply checkpoint weights."""
-    from huggingface_hub import snapshot_download
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src" / "util"))
+    from model_resolve import resolve_model_path
 
     token = os.environ.get("HF_TOKEN")
-    print(f"  Ensuring model is downloaded: {model_name}")
-    snapshot_download(
-        repo_id=model_name,
-        token=token,
-        endpoint=os.environ.get("HF_ENDPOINT"),
-    )
-
-    print(f"  Loading base model: {model_name} (float16)")
+    model_path = resolve_model_path(model_name)
+    print(f"  Loading base model: {model_path} (float16)")
     model = AutoModelForCausalLM.from_pretrained(
-        model_name, torch_dtype=torch.float16, token=token,
+        model_path, torch_dtype=torch.float16, token=token,
     ).cuda()
-    tok = AutoTokenizer.from_pretrained(model_name, token=token)
+    tok = AutoTokenizer.from_pretrained(model_path, token=token)
     tok.pad_token = tok.eos_token
     tok.padding_side = "left"
 
@@ -176,18 +188,29 @@ def evaluate_record(model, tok, record: Dict) -> Dict:
     )
 
     cutoffs = [0] + np.cumsum(list(map(len, prob_prompts))).tolist()
+    ret_probs = [probs[cutoffs[i - 1]: cutoffs[i]] for i in range(1, len(cutoffs))]
     ret_corrects = [
         targets_correct[cutoffs[i - 1]: cutoffs[i]] for i in range(1, len(cutoffs))
     ]
 
+    # Probability-preference metrics (official AlphaEdit metric)
+    # Lower NLL = higher probability.
+    # Efficacy/Paraphrase: target_new should be more probable -> NLL(true) > NLL(new)
+    # Neighborhood: target_true should be more probable -> NLL(true) < NLL(new)
+    rewrite_pp = [p["target_true"] > p["target_new"] for p in ret_probs[0]]
+    para_pp = [p["target_true"] > p["target_new"] for p in ret_probs[1]]
+    neigh_pp = [p["target_true"] < p["target_new"] for p in ret_probs[2]]
+
     return {
         "case_id": record["case_id"],
-        "rewrite_correct": ret_corrects[0],  # list of bool
-        "paraphrase_correct": ret_corrects[1],  # list of bool
-        "neighborhood_correct": ret_corrects[2],  # list of bool
-        "efficacy": float(np.mean(ret_corrects[0])),
-        "paraphrase": float(np.mean(ret_corrects[1])),
-        "neighborhood": float(np.mean(ret_corrects[2])),
+        # Probability-preference (primary - matches published papers)
+        "efficacy": float(np.mean(rewrite_pp)),
+        "paraphrase": float(np.mean(para_pp)),
+        "neighborhood": float(np.mean(neigh_pp)),
+        # Argmax (secondary - stricter metric)
+        "efficacy_argmax": float(np.mean(ret_corrects[0])),
+        "paraphrase_argmax": float(np.mean(ret_corrects[1])),
+        "neighborhood_argmax": float(np.mean(ret_corrects[2])),
     }
 
 
@@ -226,22 +249,36 @@ def evaluate_record_fast(model, tok, record: Dict) -> Dict:
     new_scores = last_logits[:, new_tok_id].cpu().numpy()
     true_scores = last_logits[:, true_tok_id].cpu().numpy()
 
-    # Determine correctness
-    corrects = []
+    # Probability-preference: which target has higher logit (first-token)?
+    pp_correct = []
     for i, wc in enumerate(which_correct):
         if wc == 0:  # target_new should win
-            corrects.append(bool(new_scores[i] > true_scores[i]))
+            pp_correct.append(bool(new_scores[i] > true_scores[i]))
         else:  # target_true should win
-            corrects.append(bool(true_scores[i] > new_scores[i]))
+            pp_correct.append(bool(true_scores[i] > new_scores[i]))
+
+    # Argmax: is the correct target the argmax prediction (first-token)?
+    argmax_ids = last_logits.argmax(dim=-1).cpu().numpy()
+    am_correct = []
+    for i, wc in enumerate(which_correct):
+        if wc == 0:
+            am_correct.append(bool(argmax_ids[i] == new_tok_id))
+        else:
+            am_correct.append(bool(argmax_ids[i] == true_tok_id))
 
     n_rw = len(rewrite_prompts)
     n_para = len(paraphrase_prompts)
 
     return {
         "case_id": record["case_id"],
-        "efficacy": float(np.mean(corrects[:n_rw])),
-        "paraphrase": float(np.mean(corrects[n_rw:n_rw + n_para])),
-        "neighborhood": float(np.mean(corrects[n_rw + n_para:])),
+        # Probability-preference (primary)
+        "efficacy": float(np.mean(pp_correct[:n_rw])),
+        "paraphrase": float(np.mean(pp_correct[n_rw:n_rw + n_para])),
+        "neighborhood": float(np.mean(pp_correct[n_rw + n_para:])),
+        # Argmax (secondary)
+        "efficacy_argmax": float(np.mean(am_correct[:n_rw])),
+        "paraphrase_argmax": float(np.mean(am_correct[n_rw:n_rw + n_para])),
+        "neighborhood_argmax": float(np.mean(am_correct[n_rw + n_para:])),
     }
 
 
@@ -307,16 +344,27 @@ def evaluate_records_batched(model, tok, records: List[Dict], batch_size: int = 
             new_scores = record_logits[:, meta["new_tok_id"]]
             true_scores = record_logits[:, meta["true_tok_id"]]
 
+            # Probability-preference: which target has higher logit (first-token)?
             # Rewrite + paraphrase: target_new should beat target_true
-            rw_para_correct = (new_scores[:n_rw + n_para] > true_scores[:n_rw + n_para]).cpu().numpy()
+            rw_para_pp = (new_scores[:n_rw + n_para] > true_scores[:n_rw + n_para]).cpu().numpy()
             # Neighborhood: target_true should beat target_new
-            neigh_correct = (true_scores[n_rw + n_para:] > new_scores[n_rw + n_para:]).cpu().numpy()
+            neigh_pp = (true_scores[n_rw + n_para:] > new_scores[n_rw + n_para:]).cpu().numpy()
+
+            # Argmax: is the correct target the top-1 prediction (first-token)?
+            argmax_ids = record_logits.argmax(dim=-1)
+            rw_para_am = (argmax_ids[:n_rw + n_para] == meta["new_tok_id"]).cpu().numpy()
+            neigh_am = (argmax_ids[n_rw + n_para:] == meta["true_tok_id"]).cpu().numpy()
 
             all_results.append({
                 "case_id": meta["case_id"],
-                "efficacy": float(np.mean(rw_para_correct[:n_rw])),
-                "paraphrase": float(np.mean(rw_para_correct[n_rw:])),
-                "neighborhood": float(np.mean(neigh_correct)),
+                # Probability-preference (primary)
+                "efficacy": float(np.mean(rw_para_pp[:n_rw])),
+                "paraphrase": float(np.mean(rw_para_pp[n_rw:])),
+                "neighborhood": float(np.mean(neigh_pp)),
+                # Argmax (secondary)
+                "efficacy_argmax": float(np.mean(rw_para_am[:n_rw])),
+                "paraphrase_argmax": float(np.mean(rw_para_am[n_rw:])),
+                "neighborhood_argmax": float(np.mean(neigh_am)),
             })
 
         # Free GPU memory between mega-batches
@@ -325,12 +373,14 @@ def evaluate_records_batched(model, tok, records: List[Dict], batch_size: int = 
 
         if (batch_start + batch_size) % 500 < batch_size:
             done = min(batch_start + batch_size, len(records))
-            eff_so_far = np.mean([r["efficacy"] for r in all_results])
-            neigh_so_far = np.mean([r["neighborhood"] for r in all_results])
+            pp_eff = np.mean([r["efficacy"] for r in all_results])
+            pp_neigh = np.mean([r["neighborhood"] for r in all_results])
+            am_eff = np.mean([r["efficacy_argmax"] for r in all_results])
+            am_neigh = np.mean([r["neighborhood_argmax"] for r in all_results])
             print(
                 f"    [{done}/{len(records)}] "
-                f"efficacy={eff_so_far:.4f}, "
-                f"neighborhood={neigh_so_far:.4f}"
+                f"PP: eff={pp_eff:.4f} neigh={pp_neigh:.4f}  "
+                f"AM: eff={am_eff:.4f} neigh={am_neigh:.4f}"
             )
 
     return all_results
@@ -369,9 +419,11 @@ def evaluate_checkpoint(
 
     # Evaluate all records
     if fast:
-        # Mega-batched: ~32 records per forward pass (96GB VRAM)
-        print("  Using mega-batch evaluation (batch_size=32)")
-        results = evaluate_records_batched(model, tok, records, batch_size=32)
+        eval_batch_size = int(os.environ.get("EVAL_BATCH_SIZE", "32"))
+        if "gpt-j" in model_name.lower() or "gptj" in model_name.lower():
+            eval_batch_size = min(eval_batch_size, 8)
+        print(f"  Using mega-batch evaluation (batch_size={eval_batch_size})")
+        results = evaluate_records_batched(model, tok, records, batch_size=eval_batch_size)
     else:
         tok.padding_side = "right"  # Full protocol requires right-padding
         results = []
@@ -379,18 +431,26 @@ def evaluate_checkpoint(
             result = evaluate_record(model, tok, record)
             results.append(result)
             if (i + 1) % 500 == 0:
-                eff_so_far = np.mean([r["efficacy"] for r in results])
-                neigh_so_far = np.mean([r["neighborhood"] for r in results])
+                pp_eff = np.mean([r["efficacy"] for r in results])
+                pp_neigh = np.mean([r["neighborhood"] for r in results])
+                am_eff = np.mean([r["efficacy_argmax"] for r in results])
+                am_neigh = np.mean([r["neighborhood_argmax"] for r in results])
                 print(
                     f"    [{i+1}/{len(records)}] "
-                    f"efficacy={eff_so_far:.4f}, "
-                    f"neighborhood={neigh_so_far:.4f}"
+                    f"PP: eff={pp_eff:.4f} neigh={pp_neigh:.4f}  "
+                    f"AM: eff={am_eff:.4f} neigh={am_neigh:.4f}"
                 )
 
-    # Compute aggregate metrics
-    all_eff = [r["efficacy"] for r in results]
-    all_para = [r["paraphrase"] for r in results]
-    all_neigh = [r["neighborhood"] for r in results]
+    # Helper to aggregate a slice of results into dual-metric summary
+    def _slice_metrics(results_slice):
+        return {
+            "efficacy": round(float(np.mean([r["efficacy"] for r in results_slice])), 4),
+            "paraphrase": round(float(np.mean([r["paraphrase"] for r in results_slice])), 4),
+            "neighborhood": round(float(np.mean([r["neighborhood"] for r in results_slice])), 4),
+            "efficacy_argmax": round(float(np.mean([r["efficacy_argmax"] for r in results_slice])), 4),
+            "paraphrase_argmax": round(float(np.mean([r["paraphrase_argmax"] for r in results_slice])), 4),
+            "neighborhood_argmax": round(float(np.mean([r["neighborhood_argmax"] for r in results_slice])), 4),
+        }
 
     # Cohort breakdown (100 edits per cohort)
     n_cohorts = total_edits // num_edits_per_batch
@@ -400,13 +460,10 @@ def evaluate_checkpoint(
         end = min((c + 1) * num_edits_per_batch, len(results))
         cohort_results = results[start:end]
         if cohort_results:
-            cohort_metrics[c] = {
-                "edits_range": f"{start}-{end}",
-                "efficacy": float(np.mean([r["efficacy"] for r in cohort_results])),
-                "paraphrase": float(np.mean([r["paraphrase"] for r in cohort_results])),
-                "neighborhood": float(np.mean([r["neighborhood"] for r in cohort_results])),
-                "n_facts": len(cohort_results),
-            }
+            cm = _slice_metrics(cohort_results)
+            cm["edits_range"] = f"{start}-{end}"
+            cm["n_facts"] = len(cohort_results)
+            cohort_metrics[c] = cm
 
     # Named cohort slices
     first_1k = results[:1000] if len(results) >= 1000 else results
@@ -416,58 +473,41 @@ def evaluate_checkpoint(
     # Middle cohort: edits 1000-2000 (if available)
     middle = results[1000:2000] if len(results) >= 2000 else results[len(results)//3: 2*len(results)//3]
 
-    # Retention AUC (area under cohort efficacy curve)
-    cohort_effs = [cohort_metrics[c]["efficacy"] for c in sorted(cohort_metrics.keys())]
-    retention_auc = float(np.trapezoid(cohort_effs) / max(len(cohort_effs) - 1, 1))
+    # Retention AUC (area under cohort efficacy curve) for both metric types
+    cohort_effs_pp = [cohort_metrics[c]["efficacy"] for c in sorted(cohort_metrics.keys())]
+    cohort_effs_am = [cohort_metrics[c]["efficacy_argmax"] for c in sorted(cohort_metrics.keys())]
+    retention_auc = float(np.trapezoid(cohort_effs_pp) / max(len(cohort_effs_pp) - 1, 1))
+    retention_auc_am = float(np.trapezoid(cohort_effs_am) / max(len(cohort_effs_am) - 1, 1))
 
     summary = {
         "checkpoint": ckpt_path.name,
         "total_edits": total_edits,
         "n_evaluated": len(results),
-        "all_facts": {
-            "efficacy": round(float(np.mean(all_eff)), 4),
-            "paraphrase": round(float(np.mean(all_para)), 4),
-            "neighborhood": round(float(np.mean(all_neigh)), 4),
-        },
-        "first_1k": {
-            "efficacy": round(float(np.mean([r["efficacy"] for r in first_1k])), 4),
-            "paraphrase": round(float(np.mean([r["paraphrase"] for r in first_1k])), 4),
-            "neighborhood": round(float(np.mean([r["neighborhood"] for r in first_1k])), 4),
-        },
-        "middle_cohort": {
-            "efficacy": round(float(np.mean([r["efficacy"] for r in middle])), 4),
-            "paraphrase": round(float(np.mean([r["paraphrase"] for r in middle])), 4),
-            "neighborhood": round(float(np.mean([r["neighborhood"] for r in middle])), 4),
-        },
-        "latest_1k": {
-            "efficacy": round(float(np.mean([r["efficacy"] for r in latest_1k])), 4),
-            "paraphrase": round(float(np.mean([r["paraphrase"] for r in latest_1k])), 4),
-            "neighborhood": round(float(np.mean([r["neighborhood"] for r in latest_1k])), 4),
-        },
-        "latest_100": {
-            "efficacy": round(float(np.mean([r["efficacy"] for r in latest_100])), 4),
-            "paraphrase": round(float(np.mean([r["paraphrase"] for r in latest_100])), 4),
-            "neighborhood": round(float(np.mean([r["neighborhood"] for r in latest_100])), 4),
-        },
+        "all_facts": _slice_metrics(results),
+        "first_1k": _slice_metrics(first_1k),
+        "middle_cohort": _slice_metrics(middle),
+        "latest_1k": _slice_metrics(latest_1k),
+        "latest_100": _slice_metrics(latest_100),
         "retention_auc": round(retention_auc, 4),
+        "retention_auc_argmax": round(retention_auc_am, 4),
         "cohort_metrics": cohort_metrics,
     }
 
     # Print summary
+    af = summary["all_facts"]
     print(f"\n  Results at {total_edits} edits:")
-    print(f"    All facts:   eff={summary['all_facts']['efficacy']:.4f}  "
-          f"para={summary['all_facts']['paraphrase']:.4f}  "
-          f"neigh={summary['all_facts']['neighborhood']:.4f}")
-    print(f"    First 1K:    eff={summary['first_1k']['efficacy']:.4f}  "
-          f"para={summary['first_1k']['paraphrase']:.4f}  "
-          f"neigh={summary['first_1k']['neighborhood']:.4f}")
-    print(f"    Latest 1K:   eff={summary['latest_1k']['efficacy']:.4f}  "
-          f"para={summary['latest_1k']['paraphrase']:.4f}  "
-          f"neigh={summary['latest_1k']['neighborhood']:.4f}")
-    print(f"    Latest 100:  eff={summary['latest_100']['efficacy']:.4f}  "
-          f"para={summary['latest_100']['paraphrase']:.4f}  "
-          f"neigh={summary['latest_100']['neighborhood']:.4f}")
-    print(f"    Retention AUC: {summary['retention_auc']:.4f}")
+    print(f"    Prob-Pref:  eff={af['efficacy']:.4f}  "
+          f"para={af['paraphrase']:.4f}  "
+          f"neigh={af['neighborhood']:.4f}")
+    print(f"    Argmax:     eff={af['efficacy_argmax']:.4f}  "
+          f"para={af['paraphrase_argmax']:.4f}  "
+          f"neigh={af['neighborhood_argmax']:.4f}")
+    print(f"    First 1K:   pp_eff={summary['first_1k']['efficacy']:.4f}  "
+          f"am_eff={summary['first_1k']['efficacy_argmax']:.4f}")
+    print(f"    Latest 1K:  pp_eff={summary['latest_1k']['efficacy']:.4f}  "
+          f"am_eff={summary['latest_1k']['efficacy_argmax']:.4f}")
+    print(f"    Retention AUC: pp={summary['retention_auc']:.4f}  "
+          f"am={summary['retention_auc_argmax']:.4f}")
 
     return summary, (model, tok)
 
@@ -509,7 +549,7 @@ def main():
     if args.fast:
         args.full = False
 
-    from model_download import resolve_model_path
+    from model_resolve import resolve_model_path
     model_name = resolve_model_path(args.model_name)
 
     # Find checkpoint directory
@@ -519,25 +559,37 @@ def main():
         ckpt_dir = resolve_checkpoint_dir(args.seed, args.lambda_prev, args.lambda_delta)
     print(f"Checkpoint dir: {ckpt_dir}")
 
-    # Verify checkpoints exist
-    for batch_idx in args.checkpoints:
+    # Verify checkpoints exist (supports batch_N and edits_NNNNNN formats)
+    def resolve_ckpt_path(ckpt_dir: Path, batch_idx: int, num_edits: int) -> Path:
         batch_path = ckpt_dir / f"batch_{batch_idx}"
-        if not batch_path.exists():
-            print(f"ERROR: Checkpoint batch_{batch_idx} not found at {batch_path}")
+        if batch_path.exists():
+            return batch_path
+        edits_path = ckpt_dir / f"edits_{(batch_idx + 1) * num_edits:06d}"
+        if edits_path.exists():
+            return edits_path
+        return batch_path  # will fail at load time with clear error
+
+    for batch_idx in args.checkpoints:
+        ckpt_path = resolve_ckpt_path(ckpt_dir, batch_idx, args.num_edits)
+        if not ckpt_path.exists():
+            print(f"ERROR: Checkpoint not found for batch {batch_idx}")
+            print(f"  Tried: {ckpt_dir / f'batch_{batch_idx}'}")
+            print(f"  Tried: {ckpt_dir / f'edits_{(batch_idx + 1) * args.num_edits:06d}'}")
             available = sorted([d.name for d in ckpt_dir.iterdir() if d.is_dir()])
             print(f"  Available: {available}")
             sys.exit(1)
-    print(f"  Checkpoints verified: {['batch_' + str(b) for b in args.checkpoints]}")
+    print(f"  Checkpoints verified: {[str(resolve_ckpt_path(ckpt_dir, b, args.num_edits).name) for b in args.checkpoints]}")
 
     # Load dataset
     if args.dataset_path:
         ds_path = Path(args.dataset_path)
     else:
         # Auto-detect: check vendor data dir, then S3 mount
+        data_root = Path(os.environ.get("DATA_ROOT", "data/dsets"))
         candidates = [
             PROJECT_ROOT / "vendor" / "AlphaEdit" / "data" / "multi_counterfact.json",
-            Path("/s3-data/continual-learning/alphaedit/dsets/multi_counterfact.json"),
-            Path.home() / "Projects" / "alphaedit-analysis" / "vendor" / "AlphaEdit" / "data" / "multi_counterfact.json",
+            data_root / "multi_counterfact.json",
+            PROJECT_ROOT / "data" / "dsets" / "multi_counterfact.json",
         ]
         ds_path = None
         for c in candidates:
@@ -561,7 +613,7 @@ def main():
     for batch_idx in args.checkpoints:
         total_edits = (batch_idx + 1) * args.num_edits
         records_to_eval = all_records[:total_edits]
-        ckpt_path = ckpt_dir / f"batch_{batch_idx}"
+        ckpt_path = resolve_ckpt_path(ckpt_dir, batch_idx, args.num_edits)
 
         summary, model_cache = evaluate_checkpoint(
             model_name=model_name,
@@ -611,29 +663,34 @@ def main():
     else:
         out_dir = result_root / "matched_ordering" / variant_name / f"seed{args.seed}"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"full_eval_seed{args.seed}.json"
+    out_path = out_dir / f"full_eval_seed{args.seed}_v2.json"
     with open(str(out_path), "w") as f:
         json.dump(all_summaries, f, indent=2)
     print(f"\nResults saved: {out_path}")
 
     # Final comparison table
-    print(f"\n{'='*80}")
-    print("MEMIT+SeqReg Full Evaluation Summary")
-    print(f"{'='*80}")
-    print(f"{'Checkpoint':<12} {'All Eff':>8} {'All Para':>9} {'All Neigh':>10} "
-          f"{'1st1K Eff':>10} {'Lat1K Eff':>10} {'Lat100':>8} {'AUC':>6}")
-    print("-" * 80)
+    print(f"\n{'='*110}")
+    print("Dual-Metric Evaluation Summary (v2)")
+    print(f"{'='*110}")
+    print(f"{'Edits':<8} {'PP Eff':>8} {'PP Para':>8} {'PP Neigh':>9} "
+          f"{'AM Eff':>8} {'AM Para':>8} {'AM Neigh':>9} "
+          f"{'1K PP':>7} {'1K AM':>7} {'AUC PP':>7} {'AUC AM':>7}")
+    print("-" * 110)
     for key in sorted(all_summaries.keys()):
         s = all_summaries[key]
+        af = s["all_facts"]
         print(
-            f"{s['total_edits']:>5} edits  "
-            f"{s['all_facts']['efficacy']:>8.4f} "
-            f"{s['all_facts']['paraphrase']:>9.4f} "
-            f"{s['all_facts']['neighborhood']:>10.4f} "
-            f"{s['first_1k']['efficacy']:>10.4f} "
-            f"{s['latest_1k']['efficacy']:>10.4f} "
-            f"{s['latest_100']['efficacy']:>8.4f} "
-            f"{s['retention_auc']:>6.4f}"
+            f"{s['total_edits']:<8} "
+            f"{af['efficacy']:>8.4f} "
+            f"{af['paraphrase']:>8.4f} "
+            f"{af['neighborhood']:>9.4f} "
+            f"{af['efficacy_argmax']:>8.4f} "
+            f"{af['paraphrase_argmax']:>8.4f} "
+            f"{af['neighborhood_argmax']:>9.4f} "
+            f"{s['first_1k']['efficacy']:>7.4f} "
+            f"{s['first_1k']['efficacy_argmax']:>7.4f} "
+            f"{s['retention_auc']:>7.4f} "
+            f"{s['retention_auc_argmax']:>7.4f}"
         )
 
 

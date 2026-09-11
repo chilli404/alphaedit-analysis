@@ -58,8 +58,8 @@ MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 # Resolve checkpoint base
 if [[ -n "${CHECKPOINT_BASE:-}" ]]; then
     CKPT_BASE="$CHECKPOINT_BASE"
-elif [[ -d "/s3-data/continual-learning/alphaedit/checkpoints" ]]; then
-    CKPT_BASE="/s3-data/continual-learning/alphaedit/checkpoints"
+elif [[ -n "${CHECKPOINT_ROOT:-}" ]] && [[ -d "$CHECKPOINT_ROOT" ]]; then
+    CKPT_BASE="$CHECKPOINT_ROOT"
 else
     CKPT_BASE="$HOME/.cache/alphaedit_checkpoints"
 fi

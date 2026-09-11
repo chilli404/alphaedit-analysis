@@ -56,7 +56,7 @@ from pathlib import Path
 _SRC_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_SRC_DIR / "util"))
 
-from model_download import resolve_model_path
+from model_resolve import resolve_model_path
 from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file, patch_glue_eval_file
 from eval_config import hash_eval_config
@@ -171,6 +171,7 @@ def build_sequential_script(
     eval_results_dir: str = "",
     variant_name: str = "",
     mom2_override: float | None = None,
+    continue_from_run: str | None = None,
 ) -> str:
     """
     Build inline Python script for MEMIT+SeqReg.
@@ -189,6 +190,8 @@ def build_sequential_script(
     ]
     if conserve_memory:
         argv_parts.append("--conserve_memory")
+    if continue_from_run:
+        argv_parts.append(f"--continue_from_run={continue_from_run}")
 
     argv_str = repr(argv_parts)
     cache_max_repr = repr(cache_max)
@@ -224,6 +227,12 @@ def build_sequential_script(
         }
 
         adj_k = torch.linalg.solve(_lhs, layer_ks)
+        # Free LHS intermediates to prevent OOM on 46GB GPUs (L40S)
+        try:
+            del _lhs, _lhs_base, _kpkp_mat
+        except NameError:
+            pass
+        torch.cuda.empty_cache()
         # === END augmented solve ==='''
 
     # Injection code for memit_main.py: before deltas storage
@@ -316,7 +325,7 @@ def build_sequential_script(
 
     # Mega-batch eval injection (outside f-string to avoid Python 3.10 nested-quote issues)
     mega_batch_eval_injection = '''    # === MEGA-BATCH EVAL: batched multi-token scoring (injected by memit_sequential_runner) ===
-    def _mega_batch_eval(model, tok, records, case_result_template, num_edits, case_ids, exec_time, batch_size=8):
+    def _mega_batch_eval(model, tok, records, case_result_template, num_edits, case_ids, exec_time, batch_size=4):
         # Evaluate records with batched forward passes using full multi-token scoring.
         # Produces IDENTICAL results to per-record compute_rewrite_quality_counterfact
         # (same log-prob scoring, same argmax correctness) but batches the expensive
@@ -792,14 +801,27 @@ _fp_code = '''    # === FINGERPRINT: compute dataset fingerprint (injected) ===
 '''
 _eval_source = _eval_source.replace(_loop_anchor, _fp_code + _loop_anchor, 1)
 
-# Inject dataset override (for coupling streams, etc.)
+# Inject dataset override (for ordering streams — reorders or replaces dataset)
 _ds_override_path = {repr(dataset_override) if dataset_override else 'None'}
 if _ds_override_path:
-    _ds_override_code = '''    # === DATASET OVERRIDE: replace ds.data with external file (injected) ===
+    _ds_override_code = '''    # === DATASET OVERRIDE: reorder or replace dataset with external file (injected) ===
     import json as _dsov_json
     with open("{dataset_override}", "r") as _dsov_f:
-        ds.data = _dsov_json.load(_dsov_f)
-    print(f"  [OVERRIDE] Loaded {{len(ds)}} records from {dataset_override}")
+        _dsov_stream = _dsov_json.load(_dsov_f)
+    # Determine storage attribute: MCF uses ds.data, ZsRE uses ds._data
+    _dsov_attr = "_data" if hasattr(ds, "_data") else "data"
+    _dsov_existing = getattr(ds, _dsov_attr)
+    # Build index of existing records by case_id (for reordering with full fields)
+    _dsov_id_map = {{r.get("case_id", i): r for i, r in enumerate(_dsov_existing)}}
+    _dsov_stream_ids = [r["case_id"] for r in _dsov_stream]
+    # If stream case_ids match existing records, REORDER (preserves neighborhood_prompts etc)
+    _dsov_matched = [_dsov_id_map[cid] for cid in _dsov_stream_ids if cid in _dsov_id_map]
+    if len(_dsov_matched) >= len(_dsov_stream_ids) * 0.95:
+        setattr(ds, _dsov_attr, _dsov_matched)
+        print(f"  [OVERRIDE] Reordered {{len(_dsov_matched)}} records from {dataset_override}")
+    else:
+        setattr(ds, _dsov_attr, _dsov_stream)
+        print(f"  [OVERRIDE] Replaced with {{len(_dsov_stream)}} records from {dataset_override}")
     # === END dataset override ===
 '''
     _eval_source = _eval_source.replace(_loop_anchor, _ds_override_code + _loop_anchor, 1)
@@ -845,12 +867,8 @@ assert _eval_start_anchor in _eval_source, (
     "Upstream code has changed from pinned commit b84624f."
 )
 _checkpoint_eval_skip = '''    # torch.save(hs, "post_edit_hs_memit.pt")
-    # === MEMIT+SeqReg: skip evaluation if last batch is not a checkpoint boundary (injected) ===
+    # Always run final mega-batch eval (checkpoint-only mode skips INTERMEDIATE evals, not the final one)
     _do_final_eval = True
-    if _ckpt_eval_at_checkpoints_only and not _ckpt_should_save(cnt - 1):
-        _do_final_eval = False
-        print(f"  [CHECKPOINT] Skipping final evaluation (batch {{cnt-1}} not at checkpoint boundary)")
-    # === END checkpoint eval skip ===
     start = time()'''
 _eval_source = _eval_source.replace(_eval_start_anchor, _checkpoint_eval_skip, 1)
 
@@ -1030,6 +1048,7 @@ def run(args: argparse.Namespace) -> None:
         eval_results_dir=str(results_dir),
         variant_name=variant_name,
         mom2_override=mom2_override,
+        continue_from_run=getattr(args, 'continue_from_run', None),
     )
 
     # Environment
@@ -1038,6 +1057,7 @@ def run(args: argparse.Namespace) -> None:
     env["CUDA_VISIBLE_DEVICES"] = args.cuda_device
     env["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
     env["TOKENIZERS_PARALLELISM"] = "false"
+    env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
     print(f"\n{'=' * 70}")
     print("MEMIT+SeqReg Runner")
@@ -1173,6 +1193,8 @@ def main():
     # Matched ordering
     parser.add_argument("--ordering", type=str, default=None,
                         help="Ordering type (e.g. key_clustered, key_dispersed) — routes checkpoints to matched_ordering/")
+    parser.add_argument("--continue_from_run", type=str, default=None,
+                        help="Reuse existing run directory (e.g. run_000) to resume eval")
 
     args = parser.parse_args()
     run(args)

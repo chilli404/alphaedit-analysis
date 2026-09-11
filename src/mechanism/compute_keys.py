@@ -43,29 +43,62 @@ from torch import nn
 
 PROJECT = Path(__file__).resolve().parent.parent.parent
 VENDOR = PROJECT / "vendor" / "AlphaEdit"
-RESULTS = PROJECT / "results"
+RESULTS = Path(os.environ.get("RESULT_ROOT", PROJECT / "results"))
 FC_DIR = RESULTS / "failure_curve_checkpointed"
 
-# Add src/util to path for resolve_model_path
-sys.path.insert(0, str(PROJECT / "src" / "util"))
-
-# AlphaEdit uses layers [4, 5, 6, 7, 8] for Llama-3-8B
-# We use the middle layer (6) by default as representative
-DEFAULT_LAYER = 6
-EDIT_LAYERS = [4, 5, 6, 7, 8]
-
-# Module template for Llama-3
-MODULE_TEMPLATE = "model.layers.{}.mlp.down_proj"
 
 # Model — same default as all experiment scripts
 MODEL_NAME = os.environ.get("MODEL_NAME", "meta-llama/Meta-Llama-3-8B-Instruct")
+
+# Per-architecture config: (edit_layers, default_layer, module_path_fn)
+ARCH_CONFIG = {
+    "llama": {
+        "edit_layers": [4, 5, 6, 7, 8],
+        "default_layer": 6,
+    },
+    "gptj": {
+        "edit_layers": [3, 4, 5, 6, 7, 8],
+        "default_layer": 6,
+    },
+    "qwen": {
+        "edit_layers": [4, 5, 6, 7, 8],
+        "default_layer": 6,
+    },
+}
+
+
+def detect_architecture(model_name: str) -> str:
+    """Detect model architecture from name."""
+    name_lower = model_name.lower()
+    if "gpt-j" in name_lower or "gptj" in name_lower:
+        return "gptj"
+    if "qwen" in name_lower:
+        return "qwen"
+    return "llama"
+
+
+def get_edit_layers(model_name: str) -> list:
+    """Get edit layers for a model."""
+    arch = detect_architecture(model_name)
+    return ARCH_CONFIG[arch]["edit_layers"]
+
+
+def get_default_layer(model_name: str) -> int:
+    """Get default layer for a model."""
+    arch = detect_architecture(model_name)
+    return ARCH_CONFIG[arch]["default_layer"]
+
+
+# Legacy constants for backward compat
+DEFAULT_LAYER = get_default_layer(MODEL_NAME)
+EDIT_LAYERS = get_edit_layers(MODEL_NAME)
 
 
 # ─── Key Extraction ──────────────────────────────────────────────────────────
 
 
 class KeyExtractor:
-    """Extract key vectors (input to down_proj) at subject's last token."""
+    """Extract key vectors (input to MLP output projection) at subject's last token."""
 
     def __init__(self, model, tokenizer, layer: int):
         self.model = model
@@ -78,7 +111,14 @@ class KeyExtractor:
         module.register_forward_hook(self._hook)
 
     def _get_module(self, layer: int) -> nn.Module:
-        """Navigate to model.layers.{layer}.mlp.down_proj."""
+        """Navigate to the MLP output projection for the given layer.
+
+        Llama-3: model.model.layers.{L}.mlp.down_proj
+        GPT-J:   model.transformer.h.{L}.mlp.fc_out
+        Qwen:    model.model.layers.{L}.mlp.down_proj
+        """
+        if hasattr(self.model, "transformer") and hasattr(self.model.transformer, "h"):
+            return self.model.transformer.h[layer].mlp.fc_out
         return self.model.model.layers[layer].mlp.down_proj
 
     def _hook(self, module, input, output):
@@ -139,19 +179,60 @@ class KeyExtractor:
 # ─── Dataset Loading ─────────────────────────────────────────────────────────
 
 
-def load_edit_ordering(seed: int) -> Optional[List[int]]:
-    """Load the exact case_id ordering for a trajectory."""
+def load_edit_ordering(seed: int, min_cases: int = 10000) -> Optional[List[int]]:
+    """Load the case_id ordering for a trajectory.
+
+    Prefers orderings with at least min_cases. Falls back to full MCF dataset
+    (all 20K+ cases) for key extraction where we want maximum coverage.
+    """
     for edits in [10000, 9000, 7000, 5000, 3000, 2000]:
         path = FC_DIR / f"seed{seed}" / f"{edits}edits" / "AlphaEdit" / "run_000" / "edit_ordering.json"
         if path.exists():
             with open(path) as f:
-                return json.load(f)["case_ids_ordered"]
+                data = json.load(f)
+            ordering = data["case_ids_ordered"]
+            if len(ordering) >= min_cases:
+                print(f"  Ordering from {path}: {len(ordering)} case IDs")
+                return ordering
+            else:
+                print(f"  Found {path} but only {len(ordering)} cases (need {min_cases})")
+
+    # Use all MCF case IDs — for key extraction we want full coverage
+    print(f"  Using full MCF dataset as ordering (all cases)")
+    metadata = load_case_metadata(seed)
+    if metadata:
+        ordering = list(metadata.keys())
+        print(f"  Full MCF: {len(ordering)} case IDs")
+        return ordering
     return None
 
 
 def load_case_metadata(seed: int) -> dict:
-    """Load prompt/subject for each case_id from per-case result files or MCF dataset."""
+    """Load prompt/subject for each case_id from MCF dataset (fast) or per-case files (slow)."""
     metadata = {}
+
+    # Prefer MCF dataset (single file read — fast on S3 FUSE)
+    for mcf_path in [
+        VENDOR / "data" / "multi_counterfact.json",
+        PROJECT / "data" / "dsets" / "multi_counterfact.json",
+    ]:
+        if mcf_path.exists():
+            print(f"  Loading metadata from {mcf_path}...")
+            with open(mcf_path) as f:
+                mcf_data = json.load(f)
+            for record in mcf_data:
+                cid = record["case_id"]
+                rw = record.get("requested_rewrite", {})
+                metadata[cid] = {
+                    "prompt": rw.get("prompt", ""),
+                    "subject": rw.get("subject", ""),
+                    "relation_id": rw.get("relation_id", ""),
+                }
+            print(f"  Loaded {len(metadata)} cases from MCF dataset")
+            return metadata
+
+    # Fallback: per-case result files (slow on S3 FUSE — thousands of small reads)
+    print("  MCF dataset not found, falling back to per-case files (slow)...")
     for edits_dir in sorted(FC_DIR.glob(f"seed{seed}/*edits")):
         run_dir = edits_dir / "AlphaEdit" / "run_000"
         if not run_dir.exists():
@@ -167,25 +248,7 @@ def load_case_metadata(seed: int) -> dict:
                     "subject": rewrite.get("subject", ""),
                     "relation_id": rewrite.get("relation_id", ""),
                 }
-    # Fallback: load from multi_counterfact.json if per-case files unavailable
-    if not metadata:
-        for mcf_path in [
-            PROJECT / "data" / "dsets" / "multi_counterfact.json",
-            VENDOR / "data" / "multi_counterfact.json",
-        ]:
-            if mcf_path.exists():
-                with open(mcf_path) as f:
-                    mcf_data = json.load(f)
-                for record in mcf_data:
-                    cid = record["case_id"]
-                    rw = record.get("requested_rewrite", {})
-                    metadata[cid] = {
-                        "prompt": rw.get("prompt", ""),
-                        "subject": rw.get("subject", ""),
-                        "relation_id": rw.get("relation_id", ""),
-                    }
-                print(f"  Loaded metadata from {mcf_path} ({len(metadata)} cases)")
-                break
+    print(f"  Loaded {len(metadata)} cases from per-case files")
     return metadata
 
 
@@ -263,17 +326,26 @@ def compute_keys_for_seed(
         print("  ERROR: No keys extracted")
         return
 
-    # Save
+    # Save — write to /tmp first then copy (S3 FUSE can't handle compressed writes)
+    import tempfile
+
     seed_dir = output_dir / f"seed{seed}"
     seed_dir.mkdir(parents=True, exist_ok=True)
     out_path = seed_dir / f"keys_seed{seed}.npz"
 
+    with tempfile.NamedTemporaryFile(suffix=".npz", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+
     np.savez_compressed(
-        out_path,
+        tmp_path,
         case_ids=np.array(case_ids, dtype=np.int32),
         keys=np.stack(keys, axis=0),
         layer=np.array(layer),
     )
+    with open(tmp_path, "rb") as src, open(out_path, "wb") as dst:
+        dst.write(src.read())
+    tmp_path.unlink()
+    print(f"  Saved: {out_path} ({out_path.stat().st_size / 1024 / 1024:.1f} MB)")
 
     # Also save metadata JSON
     meta_path = seed_dir / f"keys_seed{seed}_meta.json"
@@ -311,23 +383,18 @@ def main():
                         help="Device (cuda or cpu)")
     args = parser.parse_args()
 
-    # Resolve model path (handles Artifactory auth on corporate infra)
-    from model_download import resolve_model_path
-    model_id = resolve_model_path(args.model)
-
-    # Download model via Artifactory endpoint if on corporate infra
-    from huggingface_hub import snapshot_download
+    model_id = os.environ.get("MODEL_PATH", args.model)
     token = os.environ.get("HF_TOKEN")
-    endpoint = os.environ.get("HF_ENDPOINT")
-    print(f"Ensuring model is downloaded: {model_id}")
-    snapshot_download(
-        repo_id=model_id,
-        token=token,
-        endpoint=endpoint,
-    )
+    arch = detect_architecture(model_id)
+    edit_layers = ARCH_CONFIG[arch]["edit_layers"]
+
+    if not os.path.isdir(model_id):
+        print(f"Model will be downloaded by transformers: {model_id}")
+    else:
+        print(f"Model already local: {model_id}")
 
     print(f"Loading model: {model_id}")
-    print(f"Layer: {args.layer} (AlphaEdit edit layers: {EDIT_LAYERS})")
+    print(f"Architecture: {arch}, Layer: {args.layer} (edit layers: {edit_layers})")
 
     from transformers import AutoModelForCausalLM, AutoTokenizer
 

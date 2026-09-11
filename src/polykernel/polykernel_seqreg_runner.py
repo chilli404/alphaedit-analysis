@@ -57,7 +57,7 @@ from pathlib import Path
 _SRC_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_SRC_DIR / "util"))
 
-from model_download import resolve_model_path
+from model_resolve import resolve_model_path
 from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file
 from eval_config import hash_eval_config
@@ -90,8 +90,9 @@ def resolve_checkpoint_dir(
     ordering: str | None = None,
     kernel_prev: bool = True,
     revive: bool = False,
-    revive_tau: float = 0.2,
+    revive_tau: float = 0.1,
     model_name: str | None = None,
+    base_alg: str = "MEMIT",
 ) -> Path:
     """Resolve checkpoint directory for Polykernel+SeqReg.
 
@@ -109,7 +110,8 @@ def resolve_checkpoint_dir(
         kernel_tag += "-hybrid"
     if revive:
         kernel_tag += f"-REVIVE-tau{revive_tau}"
-    variant_name = f"MEMIT-Seq-{kernel_tag}-lp{lambda_prev}-ld{lambda_delta}-cache{cache_max_str}"
+    _base_prefix = "MEMIT-Seq" if base_alg == "MEMIT" else base_alg
+    variant_name = f"{_base_prefix}-{kernel_tag}-lp{lambda_prev}-ld{lambda_delta}-cache{cache_max_str}"
 
     # Model tag for cross-model isolation
     _default = "meta-llama/Meta-Llama-3-8B-Instruct"
@@ -187,7 +189,7 @@ def build_polykernel_seqreg_script(
     variant_name: str = "",
     kernel_prev: bool = True,
     revive: bool = False,
-    revive_tau: float = 0.2,
+    revive_tau: float = 0.1,
     revive_svd_device: str = "cpu",
     revive_svd_dtype: str = "float32",
     revive_cache_dir: str = "",
@@ -285,19 +287,24 @@ def build_polykernel_seqreg_script(
         del _G_k, _G_lin_k, _KKT_kernel
 
         adj_k = torch.linalg.solve(_lhs, layer_ks)
+        # Free large intermediates to prevent OOM on 46GB GPUs (L40S)
+        _lhs = _lhs_base = _K_prev = _s_k = None
+        torch.cuda.empty_cache()
         # === END kernel-augmented solve ==='''
 
     # Injection code for memit_main.py: before deltas storage (log + cache)
     log_and_cache_code = r'''            # === MEMIT+SeqReg+Kernel: log + store keys (injected) ===
-            # Log update norm and ||DW K_prev|| BEFORE appending current keys
             _upd_norm = torch.linalg.norm(upd_matrix).item()
             _dw_kprev_norm = 0.0
             _cache_batches = len(_memit_prev_cache.get(layer, []))
             _cache_keys = sum(k.shape[1] for k in _memit_prev_cache.get(layer, []))
-            if _K_prev is not None:
-                _dw_kprev_norm = torch.linalg.norm(upd_matrix.double() @ _K_prev).item()
+            # Recompute dw_kprev_norm from cache (K_prev freed in solve for memory)
+            if _memit_lambda_prev > 0 and layer in _memit_prev_cache and len(_memit_prev_cache[layer]) > 0:
+                _kp_for_log = torch.cat(_memit_prev_cache[layer], dim=1).to(upd_matrix.device).double()
+                _dw_kprev_norm = torch.linalg.norm(upd_matrix.double() @ _kp_for_log).item()
+                del _kp_for_log
+                torch.cuda.empty_cache()
 
-            # Build log entry with LHS term norms + kernel metrics
             _log_entry = {
                 "batch": _memit_batch_idx[0], "layer": int(layer),
                 "upd_norm": _upd_norm, "dw_kprev_norm": _dw_kprev_norm,
@@ -307,7 +314,7 @@ def build_polykernel_seqreg_script(
                 _log_entry.update(_memit_lhs_norms)
             _memit_log.append(_log_entry)
 
-            # Now append current keys to cache
+            # Append current keys to cache
             if _memit_lambda_prev > 0 or _memit_cache_strategy == "all":
                 if layer not in _memit_prev_cache:
                     _memit_prev_cache[layer] = []
@@ -315,19 +322,21 @@ def build_polykernel_seqreg_script(
                 if _memit_cache_max is not None and len(_memit_prev_cache[layer]) > _memit_cache_max:
                     if _memit_cache_strategy == "recent":
                         _memit_prev_cache[layer] = _memit_prev_cache[layer][-_memit_cache_max:]
-            del _K_prev
             # === END log + store keys ==='''
 
     # Injection into evaluate.py: increment batch counter after each edit
     batch_increment_hook = r'''        # === MEMIT+SeqReg+Kernel: increment batch (injected) ===
         if '_memit_batch_idx' in globals():
             _memit_batch_idx[0] += 1
+            _cur_edits = _memit_batch_idx[0] * num_edits
+            if _memit_batch_idx[0] % 10 == 0:
+                print(f"=================================================================={_cur_edits}_edit==================================================================", flush=True)
         # === END batch increment ===
 '''
 
     # Mega-batch eval injection (same as memit_sequential_runner)
     mega_batch_eval_injection = '''    # === MEGA-BATCH EVAL: batched multi-token scoring (injected by polykernel_seqreg_runner) ===
-    def _mega_batch_eval(model, tok, records, case_result_template, num_edits, case_ids, exec_time, batch_size=8):
+    def _mega_batch_eval(model, tok, records, case_result_template, num_edits, case_ids, exec_time, batch_size=4):
         # Evaluate records with batched forward passes using full multi-token scoring.
         import torch as _mbe_torch
         import numpy as _mbe_np
@@ -553,79 +562,107 @@ _revive_svd_dtype = "{revive_svd_dtype}"
 _revive_cache_dir = "{revive_cache_dir}"
 _revive_log_interval = {revive_log_interval}
 _revive_mode = "{revive_mode}"
-_revive_svd_cache = {{}}  # {{weight_name: (U, S, Vh)}} — populated before first edit
-_revive_original_weights = {{}}  # {{weight_name: Tensor}} — pretrained weights before any edits
+_revive_svd_cache = {{}}  # UNUSED — kept for backward compat; SVD now computed dynamically
+_revive_original_weights = {{}}  # UNUSED — kept for backward compat
 
 def _revive_init(model, hparams):
-    \"\"\"Capture original weights and precompute SVDs for all edited layers.\"\"\"
+    \"\"\"Initialize REVIVE config. SVD is computed dynamically from CURRENT weights each batch.
+
+    Matches reference REVIVE (baselines/REVIVEEDIT/code.py):
+      - SVD of CURRENT weight (not pretrained) with full_matrices=True
+      - Recomputed every batch so the spectral basis tracks accumulated edits
+    \"\"\"
     if not _revive_enabled:
         return
+    _n_layers = len(hparams.layers)
+    _sample_name = hparams.rewrite_module_tmp.format(hparams.layers[0]) + ".weight"
+    _sample_param = dict(model.named_parameters()).get(_sample_name)
+    _shape_str = str(tuple(_sample_param.shape)) if _sample_param is not None else "?"
+    print(f"  [REVIVE] Initialized: {{_n_layers}} layers, tau={{_revive_tau}}, "
+          f"svd_device={{_revive_svd_device}}, svd_dtype={{_revive_svd_dtype}}, "
+          f"full_matrices=True, weight_shape={{_shape_str}}")
+    print(f"  [REVIVE] Dynamic SVD: recomputed from CURRENT weights each batch (not cached)")
+
+def _revive_apply(upd_matrix, weight_name, layer, current_weight):
+    \"\"\"Apply REVIVE filter to a proposed update. Returns filtered update.
+
+    Matches reference REVIVE (baselines/REVIVEEDIT/code.py):
+      1. Compute full SVD of CURRENT weight (not pretrained): full_matrices=True
+      2. split_rank = first index where cumsum(s)/sum(s) > tau
+      3. Zero top-k rows AND top-k columns of u.T @ deltaW @ v
+      4. Reconstruct: u @ projected_coff @ v.T
+
+    Args:
+        upd_matrix: Proposed weight update [m, n].
+        weight_name: Parameter name for logging.
+        layer: Layer index for logging.
+        current_weight: The CURRENT model weight (post all prior edits, pre this update).
+    \"\"\"
     import time as _rv_time
     _rv_t0 = _rv_time.perf_counter()
-    _dtype_map = {{"float32": torch.float32, "float64": torch.float64, "float16": torch.float16}}
+
+    _dtype_map = {{"float32": torch.float32, "float64": torch.float64}}
     _svd_dtype = _dtype_map.get(_revive_svd_dtype, torch.float32)
 
-    _all_params_rv = dict(model.named_parameters())
-    for layer_idx in hparams.layers:
-        param_name = hparams.rewrite_module_tmp.format(layer_idx) + ".weight"
-        param = _all_params_rv.get(param_name)
-        if param is None:
-            continue
-        # Clone original pretrained weight (before any edits)
-        _revive_original_weights[param_name] = param.data.detach().clone().cpu()
-        # Compute compact SVD
-        w = param.data.to(dtype=_svd_dtype, device=_revive_svd_device)
-        U, S, Vh = torch.linalg.svd(w, full_matrices=False)
-        _revive_svd_cache[param_name] = (U, S, Vh)
-        print(f"  [REVIVE] SVD computed for {{param_name}}: "
-              f"shape={{tuple(param.shape)}}, rank={{S.numel()}}, "
-              f"dtype={{_svd_dtype}}")
-    _rv_elapsed = _rv_time.perf_counter() - _rv_t0
-    print(f"  [REVIVE] Initialization complete: {{len(_revive_svd_cache)}} layers, "
-          f"{{_rv_elapsed:.1f}}s")
+    # 1. Compute full SVD of CURRENT weight (reference: project(CurrentW, deltaW, thresh))
+    w_for_svd = current_weight.detach().to(dtype=_svd_dtype, device=_revive_svd_device)
+    U, S, Vh = torch.linalg.svd(w_for_svd, full_matrices=True)
+    # Reference convention: v = vh.T, so v.T = Vh
+    del w_for_svd
 
-def _revive_apply(upd_matrix, weight_name, layer):
-    \"\"\"Apply REVIVE filter to a proposed update. Returns filtered update.\"\"\"
-    if weight_name not in _revive_svd_cache:
-        return upd_matrix  # Not an edited layer — pass through
+    _rv_svd_time = _rv_time.perf_counter() - _rv_t0
 
-    U, S, Vh = _revive_svd_cache[weight_name]
-    # Move SVD factors to update device
+    # 2. Compute split_rank: smallest k where cumulative energy >= tau (Eq. 5).
+    #    Released code uses > and argmax, giving k-1. We use searchsorted for >= with +1.
+    cumfrac = S.cumsum(dim=0) / S.sum()
+    split_rank = int(torch.searchsorted(cumfrac, torch.tensor(_revive_tau, device=cumfrac.device), right=False).item()) + 1
+    split_rank = min(split_rank, S.numel())
+
+    # Move SVD factors to update device for projection
     _dev = upd_matrix.device
     _dt = upd_matrix.dtype
-    U_d = U.to(device=_dev, dtype=torch.float64)
-    S_d = S.to(device=_dev, dtype=torch.float64)
-    Vh_d = Vh.to(device=_dev, dtype=torch.float64)
-    upd_f64 = upd_matrix.double()
+    U_d = U.to(device=_dev, dtype=torch.float32)
+    S_d = S.to(device=_dev, dtype=torch.float32)
+    Vh_d = Vh.to(device=_dev, dtype=torch.float32)
+    del U, S, Vh  # Free CPU copies
 
-    # Compute protected rank
-    total = S_d.sum()
-    cumulative = S_d.cumsum(dim=0)
-    mask = cumulative >= _revive_tau * total
-    if mask.any():
-        k = int(mask.nonzero(as_tuple=False)[0].item()) + 1
+    upd_f = upd_matrix.float()
+
+    # 3 & 4. Project: zero top-k rows/cols, reconstruct
+    #    Reference: projected_coff = u.T @ deltaW @ v;  projected_coff[:k,:]=0; [:,:k]=0
+    #              Safe_Update = u @ projected_coff @ v.T
+    #    Equivalent memory-efficient form (only multiply tail portions):
+    #              U_tail @ (U_tail.T @ delta @ Vh_tail.T) @ Vh_tail
+    if split_rank > 0:
+        U_tail = U_d[:, split_rank:]     # [m, m-k]
+        Vh_tail = Vh_d[split_rank:, :]   # [n-k, n]  (note: n-k can be >> m-k for full SVD)
+        left_proj = U_tail.T @ upd_f     # [m-k, n]
+        A_tail = left_proj @ Vh_tail.T   # [m-k, n-k]
+        upd_safe = (U_tail @ A_tail @ Vh_tail).to(_dt)
+        del U_tail, Vh_tail, left_proj, A_tail
     else:
-        k = max(1, S_d.numel() - 1)
-    k = max(1, min(k, S_d.numel() - 1))
+        # split_rank == 0: no filtering (tau too small or first SV already exceeds threshold)
+        upd_safe = upd_matrix
 
-    # Apply filter: retain tail-tail components
-    U_tail = U_d[:, k:]   # [m, r-k]
-    Vh_tail = Vh_d[k:, :] # [r-k, n]
-    left_proj = U_tail.T @ upd_f64  # [r-k, n]
-    A_tail = left_proj @ Vh_tail.T  # [r-k, r-k]
-    upd_safe = (U_tail @ A_tail @ Vh_tail).to(_dt)
+    del U_d, Vh_d
+
+    _rv_total_time = _rv_time.perf_counter() - _rv_t0
 
     # Log metrics
     batch_idx = _memit_batch_idx[0]
+    m, n = upd_matrix.shape
+    r = S_d.numel()
+
     if batch_idx % _revive_log_interval == 0:
         eps = 1e-12
+        total_energy = S_d.sum().item()
         raw_fro = torch.linalg.norm(upd_matrix, ord='fro').item()
         safe_fro = torch.linalg.norm(upd_safe, ord='fro').item()
         removed_fro = torch.linalg.norm(upd_matrix - upd_safe, ord='fro').item()
         removed_frac = removed_fro / (raw_fro + eps)
         inner = (upd_matrix.float() * upd_safe.float()).sum().item()
         cos_sim = inner / (raw_fro * safe_fro + eps)
-        protected_energy = S_d[:k].sum().item() / (total.item() + eps)
+        protected_energy = S_d[:split_rank].sum().item() / (total_energy + eps) if split_rank > 0 else 0.0
 
         _memit_log.append({{
             "phase": "revive",
@@ -633,15 +670,19 @@ def _revive_apply(upd_matrix, weight_name, layer):
             "layer": int(layer),
             "param_name": weight_name,
             "tau": _revive_tau,
-            "k": k,
-            "r": int(S_d.numel()),
-            "k_fraction": round(k / S_d.numel(), 4),
+            "split_rank": split_rank,
+            "r": int(r),
+            "n": int(n),
+            "full_svd": True,
+            "split_rank_fraction": round(split_rank / r, 4) if r > 0 else 0.0,
             "protected_energy_fraction": round(protected_energy, 4),
             "raw_norm_fro": round(raw_fro, 6),
             "safe_norm_fro": round(safe_fro, 6),
             "removed_norm_fro": round(removed_fro, 6),
             "removed_fraction": round(removed_frac, 6),
             "raw_safe_cosine": round(cos_sim, 6),
+            "svd_time_s": round(_rv_svd_time, 3),
+            "total_time_s": round(_rv_total_time, 3),
         }})
 
     # Validate output
@@ -649,8 +690,17 @@ def _revive_apply(upd_matrix, weight_name, layer):
         f"REVIVE shape mismatch: {{upd_safe.shape}} vs {{upd_matrix.shape}}"
     )
     if not torch.isfinite(upd_safe).all():
-        print(f"  [REVIVE] WARNING: non-finite output for {{weight_name}} batch {{batch_idx}}")
+        print(f"  [REVIVE] WARNING: non-finite output for {{weight_name}} batch {{batch_idx}}, "
+              f"falling back to unfiltered update")
         return upd_matrix  # Fallback to unfiltered
+
+    if batch_idx % _revive_log_interval == 0:
+        sigma1_share = (S_d[0] / S_d.sum()).item() if S_d.numel() > 0 else 0
+        upd_ratio = (upd_safe.norm() / upd_f.norm()).item() if upd_f.norm() > 0 else 1.0
+        print(f"  [REVIVE] layer={{layer}} split_rank={{split_rank}}/{{r}} sigma1={{sigma1_share:.3f}} "
+              f"removed={{removed_frac:.1%}} upd_ratio={{upd_ratio:.4f}} svd={{_rv_svd_time:.1f}}s")
+
+    del S_d
 
     return upd_safe
 
@@ -660,6 +710,7 @@ _ckpt_dir = "{checkpoint_dir}"
 _ckpt_start_batch = {start_from_batch}
 _ckpt_num_edits = {num_edits}
 _ckpt_eval_at_checkpoints_only = {eval_at_checkpoints_only}
+_ckpt_base_alg = "{alg_name}"
 
 def _ckpt_save(cnt, model, hparams):
     \"\"\"Save model weights, prev_cache, batch_idx, and log at checkpoint boundary.\"\"\"
@@ -667,6 +718,13 @@ def _ckpt_save(cnt, model, hparams):
     from datetime import datetime, timezone
 
     batch_dir = Path(_ckpt_dir) / f"batch_{{cnt}}"
+    # Guard: verify checkpoint path matches base algorithm (catches stale code)
+    _expected = "MEMIT-Seq" if _ckpt_base_alg == "MEMIT" else _ckpt_base_alg
+    if _expected not in _ckpt_dir:
+        raise RuntimeError(
+            f"CHECKPOINT PATH MISMATCH: base_alg={{_ckpt_base_alg}} expects "
+            f"'{{_expected}}' in path, got: {{_ckpt_dir}}"
+        )
     batch_dir.mkdir(parents=True, exist_ok=True)
 
     # Save edited layer weights (use rewrite_module_tmp for architecture portability)
@@ -799,13 +857,13 @@ if _revive_enabled:
         "WEIGHT_UPDATE_ANCHOR not found in memit_main.py. "
         "Upstream code has changed from pinned commit b84624f."
     )
-    _revive_injection = '''        # === REVIVE: filter update through pretrained spectral subspace ===
+    _revive_injection = '''        # === REVIVE: filter update through current-weight spectral subspace ===
         if _revive_enabled:
             assert upd_matrix.shape == weights[weight_name].shape, (
                 f"REVIVE orientation check failed: upd_matrix {{upd_matrix.shape}} "
                 f"!= weight {{weights[weight_name].shape}}"
             )
-            upd_matrix = _revive_apply(upd_matrix, weight_name, layer)
+            upd_matrix = _revive_apply(upd_matrix, weight_name, layer, weights[weight_name])
         # === END REVIVE ===
 '''
     _memit_source = _memit_source.replace(_weight_update_anchor, _revive_injection + _weight_update_anchor, 1)
@@ -814,7 +872,7 @@ if _revive_enabled:
 assert "MEMIT+SeqReg+Kernel: kernel-augmented solve" in _memit_source, "Solve injection failed"
 assert "MEMIT+SeqReg+Kernel: log + store keys" in _memit_source, "Log/cache injection failed"
 if _revive_enabled:
-    assert "REVIVE: filter update through pretrained spectral subspace" in _memit_source, "REVIVE injection failed"
+    assert "REVIVE: filter update through current-weight spectral subspace" in _memit_source, "REVIVE injection failed"
 
 # 5. Compile and exec patched memit
 _memit_ns = {{
@@ -969,6 +1027,41 @@ _skip_injection = '''        # === CHECKPOINT: skip already-processed batches (i
 '''
 _eval_source = _eval_source.replace(_pre_anchor, _skip_injection + _pre_anchor, 1)
 
+# Inject REVIVE post-edit filter at evaluate.py level (for AlphaEdit/NSE/EvoEdit)
+# MEMIT already has REVIVE inside memit_main.py; this handles non-MEMIT algorithms.
+if _revive_enabled and {repr(alg_name)} != "MEMIT":
+    _revive_pre_capture = '''        # === REVIVE (eval-level): capture pre-edit weights for filtering ===
+        _revive_pre_weights = {{}}
+        if '_revive_apply' in globals() and _revive_enabled:
+            import torch as _rtorch
+            from util import nethook as _rnethook
+            for _rl in hparams.layers:
+                _rw_name = f"{{hparams.rewrite_module_tmp.format(_rl)}}.weight"
+                _revive_pre_weights[_rw_name] = _rnethook.get_parameter(model, _rw_name).detach().clone()
+        # === END REVIVE pre-capture ===
+'''
+    _eval_source = _eval_source.replace(_pre_anchor, _revive_pre_capture + _pre_anchor, 1)
+
+    _revive_post_filter = '''        # === REVIVE (eval-level): filter weight deltas post-edit ===
+        if '_revive_apply' in globals() and _revive_enabled and _revive_pre_weights:
+            import torch as _rtorch
+            from util import nethook as _rnethook
+            with _rtorch.no_grad():
+                for _rl_idx, _rl in enumerate(hparams.layers):
+                    _rw_name = f"{{hparams.rewrite_module_tmp.format(_rl)}}.weight"
+                    _rw_current = _rnethook.get_parameter(model, _rw_name)
+                    _rw_pre = _revive_pre_weights[_rw_name].to(_rw_current.device)
+                    _rw_delta = (_rw_current - _rw_pre).float()
+                    if _rw_delta.abs().max() > 1e-10:
+                        _rw_filtered = _revive_apply(_rw_delta, _rw_name, _rl, _rw_current)
+                        _rw_current.copy_(_rw_pre + _rw_filtered.to(_rw_current.dtype))
+                    del _rw_pre, _rw_delta
+            _revive_pre_weights.clear()
+        # === END REVIVE post-filter ===
+'''
+else:
+    _revive_post_filter = ''
+
 # Inject batch increment + checkpoint save AFTER POST_EDIT_ANCHOR (exec_time line)
 _post_anchor = {repr(POST_EDIT_ANCHOR)}
 assert _post_anchor in _eval_source, "POST_EDIT_ANCHOR not found in evaluate.py."
@@ -978,7 +1071,7 @@ _ckpt_save_hook = '''        # === CHECKPOINT: save at interval boundaries (inje
             _ckpt_save(cnt, model, hparams)
         # === END checkpoint save ===
 '''
-_eval_source = _eval_source.replace(_post_anchor, _post_anchor + "\\n" + _batch_hook + _ckpt_save_hook, 1)
+_eval_source = _eval_source.replace(_post_anchor, _post_anchor + "\\n" + _revive_post_filter + _batch_hook + _ckpt_save_hook, 1)
 
 # Inject CHECKPOINT-ONLY EVAL guard
 _eval_start_anchor = '    # torch.save(hs, "post_edit_hs_memit.pt")\\n    start = time()'
@@ -987,12 +1080,8 @@ assert _eval_start_anchor in _eval_source, (
     "Upstream code has changed from pinned commit b84624f."
 )
 _checkpoint_eval_skip = '''    # torch.save(hs, "post_edit_hs_memit.pt")
-    # === MEMIT+SeqReg+Kernel: skip evaluation if not at checkpoint boundary (injected) ===
+    # Always run final mega-batch eval (checkpoint-only mode skips INTERMEDIATE evals, not the final one)
     _do_final_eval = True
-    if _ckpt_eval_at_checkpoints_only and not _ckpt_should_save(cnt - 1):
-        _do_final_eval = False
-        print(f"  [CHECKPOINT] Skipping final evaluation (batch {{cnt-1}} not at checkpoint boundary)")
-    # === END checkpoint eval skip ===
     start = time()'''
 _eval_source = _eval_source.replace(_eval_start_anchor, _checkpoint_eval_skip, 1)
 
@@ -1109,7 +1198,8 @@ def run(args: argparse.Namespace) -> None:
         kernel_tag += "-hybrid"
     if args.revive:
         kernel_tag += f"-REVIVE-tau{args.revive_tau}"
-    variant_name = f"MEMIT-Seq-{kernel_tag}-lp{args.lambda_prev}-ld{args.lambda_delta}-cache{cache_max_str}"
+    _base_prefix = "MEMIT-Seq" if args.base_alg == "MEMIT" else args.base_alg
+    variant_name = f"{_base_prefix}-{kernel_tag}-lp{args.lambda_prev}-ld{args.lambda_delta}-cache{cache_max_str}"
 
     # Output directory — use failure_curve_checkpointed so method_comparison.py discovers it
     # Non-default models get a model-tagged experiment name for isolation
@@ -1140,6 +1230,13 @@ def run(args: argparse.Namespace) -> None:
 
     # Variant-specific output directory (log + metadata go here alongside run_000/)
     variant_dir = results_dir / variant_name
+    # Validate results path contains the correct base algorithm prefix
+    if _expected_prefix not in variant_name:
+        raise RuntimeError(
+            f"Results variant mismatch: --base_alg={args.base_alg} expects "
+            f"'{_expected_prefix}' in variant name, but got: {variant_name}\n"
+            f"This likely means the code is stale. Commit and redeploy."
+        )
     variant_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -1152,7 +1249,16 @@ def run(args: argparse.Namespace) -> None:
         ordering=ordering, kernel_prev=args.kernel_prev,
         revive=args.revive, revive_tau=args.revive_tau,
         model_name=args.model_name,
+        base_alg=args.base_alg,
     )
+    # Validate checkpoint path contains the correct base algorithm prefix
+    _expected_prefix = "MEMIT-Seq" if args.base_alg == "MEMIT" else args.base_alg
+    if _expected_prefix not in str(ckpt_dir):
+        raise RuntimeError(
+            f"Checkpoint path mismatch: --base_alg={args.base_alg} expects "
+            f"'{_expected_prefix}' in checkpoint path, but got: {ckpt_dir}\n"
+            f"This likely means the code is stale. Commit and redeploy."
+        )
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     total_batches = args.dataset_size_limit // args.num_edits
@@ -1182,7 +1288,7 @@ def run(args: argparse.Namespace) -> None:
     script = build_polykernel_seqreg_script(
         seed=args.seed,
         cuda_device=args.cuda_device,
-        alg_name="MEMIT",
+        alg_name=args.base_alg,
         model_name=model_name,
         hparams_fname=args.hparams_fname,
         ds_name=args.ds_name,
@@ -1223,6 +1329,7 @@ def run(args: argparse.Namespace) -> None:
     env["CUDA_VISIBLE_DEVICES"] = args.cuda_device
     env["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
     env["TOKENIZERS_PARALLELISM"] = "false"
+    env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
     print(f"\n{'=' * 70}")
     print("Polykernel+SeqReg Runner")
@@ -1331,6 +1438,10 @@ def main():
     parser.add_argument("--downstream_eval_steps", type=int, default=10)
     parser.add_argument("--conserve_memory", action="store_true", default=True)
 
+    # Base algorithm
+    parser.add_argument("--base_alg", default="MEMIT", choices=["MEMIT", "AlphaEdit", "NSE", "MEMIT_rect"],
+                        help="Base editing algorithm (default: MEMIT)")
+
     # SeqReg parameters
     parser.add_argument("--lambda_prev", type=float, default=1.0,
                         help="Previous-key protection strength (default: 1.0)")
@@ -1357,10 +1468,11 @@ def main():
     parser.add_argument("--revive", action="store_true",
                         help="Enable REVIVE: filter updates to remove components in the dominant "
                              "spectral subspace of pretrained weights.")
-    parser.add_argument("--revive_tau", type=float, default=0.2,
-                        help="REVIVE energy threshold (default: 0.2). Protected rank k is the "
-                             "smallest k where cumsum(S)[:k]/sum(S) >= tau. Paper uses model-specific "
-                             "values; sweep {0.05, 0.10, 0.20, 0.30, 0.40} to calibrate.")
+    parser.add_argument("--revive_tau", type=float, default=0.1,
+                        help="REVIVE energy threshold (default: 0.1, matches reference). "
+                             "split_rank is the first index where cumsum(S)/sum(S) > tau. "
+                             "Higher tau = more aggressive filtering. "
+                             "Sweep {0.05, 0.10, 0.20, 0.30, 0.40} to calibrate.")
     parser.add_argument("--revive_svd_device", default="cpu",
                         help="Device for SVD computation and storage (default: cpu)")
     parser.add_argument("--revive_svd_dtype", default="float32",

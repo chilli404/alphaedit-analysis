@@ -139,11 +139,12 @@ def load_wikitext_samples(n_samples: int = WIKITEXT_N_SAMPLES) -> list[str]:
     import json as _json
 
     # Search for the pre-downloaded wikitext JSON
+    _data_root = Path(os.environ.get("DATA_ROOT", "data/dsets"))
     _search_paths = [
         Path("data/wikitext_103_test.json"),                          # vendor/AlphaEdit/ cwd (linked)
         Path(__file__).resolve().parent.parent.parent / "vendor" / "AlphaEdit" / "data" / "wikitext_103_test.json",
         Path(__file__).resolve().parent.parent.parent / "data" / "dsets" / "wikitext_103_test.json",
-        Path("/s3-data/continual-learning/alphaedit/dsets/wikitext_103_test.json"),
+        _data_root / "wikitext_103_test.json",
     ]
 
     wikitext_path = None
@@ -206,11 +207,12 @@ def compute_mmlu_accuracy(
     total_questions = 0
 
     # Load from pre-downloaded JSON (linked via scripts/link_dsets.sh)
+    _data_root = Path(os.environ.get("DATA_ROOT", "data/dsets"))
     _search_paths = [
         Path("data/mmlu_subset.json"),
         Path(__file__).resolve().parent.parent.parent / "vendor" / "AlphaEdit" / "data" / "mmlu_subset.json",
         Path(__file__).resolve().parent.parent.parent / "data" / "dsets" / "mmlu_subset.json",
-        Path("/s3-data/continual-learning/alphaedit/dsets/mmlu_subset.json"),
+        _data_root / "mmlu_subset.json",
     ]
 
     mmlu_path = None
@@ -389,7 +391,7 @@ def main():
     args = parser.parse_args()
 
     from transformers import AutoModelForCausalLM, AutoTokenizer
-    from model_download import resolve_model_path
+    from model_resolve import resolve_model_path
 
     model_path = resolve_model_path(args.model_name)
     print(f"Loading model: {model_path}")

@@ -43,12 +43,105 @@ from analysis.style import PROJECT, PAPER_OUTPUT
 RESULTS = PROJECT / "results"
 FC_DIR = RESULTS / "failure_curve_checkpointed"
 
-# Trajectories with full coverage at 3K–10K
-TRAJECTORIES = [42, 2024]
+# Trajectories with full coverage (137 has 5K–10K only, missing 3K)
+TRAJECTORIES = [42, 2024, 137]
 # Checkpoints for the panel (must have per-case data for both seeds)
 CHECKPOINTS = [3000, 5000, 7000, 10000]
 ALG = "AlphaEdit"
 BATCH_SIZE = 100
+
+
+# ─── Mechanism Data (condition number, optional) ─────────────────────────────
+
+MECHANISM_DIR = RESULTS / "mechanism_analysis"
+
+
+def load_mechanism_log(seed: int, layer: int = 6) -> Dict[int, float]:
+    """Load per-batch cache condition number from mechanism analysis logs.
+
+    Returns dict: batch_index → log(cache_condition) for the specified layer.
+    Only available for seeds with mechanism analysis runs (42, 2024).
+    """
+    mech_dir = MECHANISM_DIR / f"seed{seed}" / ALG
+    if not mech_dir.exists():
+        return {}
+
+    jsonl_files = list(mech_dir.glob("mechanism_seed*.jsonl"))
+    if not jsonl_files:
+        return {}
+
+    batch_condition = {}
+    with open(jsonl_files[0]) as f:
+        for line in f:
+            record = json.loads(line)
+            if record.get("layer_idx") == layer:
+                batch_idx = record["batch_idx"]
+                cond = record.get("cache", {}).get("cache_condition")
+                if cond is not None and cond > 0:
+                    batch_condition[batch_idx] = np.log(cond)
+
+    return batch_condition
+
+
+def get_condition_at_batch(batch: int, condition_log: Dict[int, float]) -> Optional[float]:
+    """Look up condition number for a batch, using nearest logged value."""
+    if not condition_log:
+        return None
+    logged_batches = sorted(condition_log.keys())
+    # Use the nearest logged batch at or after this batch
+    for lb in logged_batches:
+        if lb >= batch:
+            return condition_log[lb]
+    # Past all logged batches — use the last one
+    return condition_log[logged_batches[-1]]
+
+
+# ─── Fine-Grained Interference (Tier 3: direct damage ||ΔW @ k||) ────────────
+
+INTERFERENCE_DIR = RESULTS / "interference"
+
+
+def load_fine_grained_interference(
+    seed: int, ordering: str = "key_clustered",
+) -> Dict[int, Dict[str, float]]:
+    """Load per-key accumulated interference from update_interference_runner.
+
+    Returns dict: case_id → {
+        'U_path': accumulated path interference,
+        'I_fro_path': Frobenius-normalized path interference,
+        'installation_batch': batch index where key was installed,
+    }
+    """
+    fg_path = INTERFERENCE_DIR / ALG / ordering / f"seed{seed}" / "fine_grained.json"
+    if not fg_path.exists():
+        return {}
+
+    with open(fg_path) as f:
+        data = json.load(f)
+
+    result = {}
+    all_5k = data.get("all_5K", {})
+    case_ids = all_5k.get("case_ids", [])
+    u_path = all_5k.get("U_path", [])
+    i_fro = all_5k.get("I_fro_path", [])
+    inst_batch = all_5k.get("installation_batch", [])
+
+    for i, cid in enumerate(case_ids):
+        result[int(cid)] = {
+            "U_path": u_path[i] if i < len(u_path) else 0.0,
+            "I_fro_path": i_fro[i] if i < len(i_fro) else 0.0,
+            "installation_batch": inst_batch[i] if i < len(inst_batch) else -1,
+        }
+
+    # Also extract per-batch delta norms
+    batch_delta = {}
+    for br in data.get("batch_results", []):
+        batch_delta[br["batch_idx"]] = br.get("delta_fro", 0.0)
+    for cid_data in result.values():
+        ib = cid_data["installation_batch"]
+        cid_data["update_norm_at_install"] = batch_delta.get(ib, 0.0)
+
+    return result
 
 
 # ─── Key Similarity (Tier 2, optional) ───────────────────────────────────────
@@ -80,14 +173,17 @@ def compute_key_similarity_predictors(
     max_pos: int,
     ordering: List[int],
     key_vectors: Dict[int, np.ndarray],
+    fixed_horizon: int = 1000,
 ) -> dict:
     """Compute geometric overlap predictors for one edit using actual key vectors.
 
-    Returns:
-      - max_cosine_subsequent: max cos(k_i, k_j) for j in (pos, max_pos)
+    Returns (all time-censored to [insertion_pos+1, max_pos)):
+      - max_cosine_subsequent: max cos(k_i, k_j) for ALL j in window (raw, opportunity-confounded)
+      - max_cosine_fixed_H: max cos within fixed horizon H (opportunity-equalized)
+      - mean_top5_similarity: mean of top-5 cosine similarities (robust to outliers)
+      - exceedance_03: P(cos > 0.3) = count / n_remaining (count-normalized)
       - cumulative_interference: sum of max(0, cos(k_i, k_j))^2
-      - mean_top5_similarity: mean of top-5 cosine similarities
-      - n_above_threshold: count of subsequent keys with cos > 0.7
+      - n_subsequent: number of subsequent edits in window (for diagnostics)
     """
     k_i = key_vectors.get(case_id)
     if k_i is None:
@@ -109,17 +205,105 @@ def compute_key_similarity_predictors(
         return {}
 
     cosines_arr = np.array(cosines)
+    n_subsequent = len(cosines_arr)
     top5 = np.sort(cosines_arr)[-5:]
 
-    return {
+    # Fixed-horizon maximum: only first H subsequent edits (equalizes opportunity)
+    cosines_fixed = cosines_arr[:fixed_horizon]
+
+    result = {
         "max_cosine_subsequent": float(np.max(cosines_arr)),
-        # cumulative_interference := Σ max(0, cos(k_i, k_j))² for all j in (pos_i, checkpoint).
-        # Squaring upweights high-similarity neighbors; clipping at 0 ignores anti-correlated keys.
-        "cumulative_interference": float(np.sum(np.maximum(cosines_arr, 0) ** 2)),
+        "max_cosine_fixed_H": float(np.max(cosines_fixed)) if len(cosines_fixed) > 0 else float("nan"),
         "mean_top5_similarity": float(np.mean(top5)),
+        "exceedance_03": float(np.sum(cosines_arr > 0.3)) / n_subsequent,
+        "cumulative_interference": float(np.sum(np.maximum(cosines_arr, 0) ** 2)),
         "n_above_threshold_07": int(np.sum(cosines_arr > 0.7)),
         "n_above_threshold_05": int(np.sum(cosines_arr > 0.5)),
+        "n_subsequent": n_subsequent,
     }
+
+    # Only include fixed-horizon if the edit actually has >= H subsequent edits
+    if n_subsequent < fixed_horizon:
+        result["max_cosine_fixed_H_valid"] = False
+    else:
+        result["max_cosine_fixed_H_valid"] = True
+
+    return result
+
+
+def batch_key_similarity(
+    ordering: List[int],
+    key_vectors: Dict[int, np.ndarray],
+    checkpoints: List[int],
+    fixed_horizon: int = 1000,
+) -> Dict[Tuple[int, int], dict]:
+    """Vectorized batch computation of key similarity predictors for all edits × checkpoints.
+
+    Pre-normalizes all keys into a matrix and uses matrix multiply for cosines.
+    Returns dict: (case_id, checkpoint) → predictor dict.
+    """
+    n_total = len(ordering)
+    dim = next(iter(key_vectors.values())).shape[0]
+
+    # Build normalized key matrix aligned to ordering positions
+    keys_matrix = np.zeros((n_total, dim), dtype=np.float32)
+    has_key = np.zeros(n_total, dtype=bool)
+    for pos, cid in enumerate(ordering):
+        k = key_vectors.get(cid)
+        if k is not None:
+            norm = np.linalg.norm(k)
+            if norm > 1e-10:
+                keys_matrix[pos] = k / norm
+                has_key[pos] = True
+
+    results = {}
+
+    for checkpoint in checkpoints:
+        max_pos = min(checkpoint, n_total)
+        if max_pos < 2:
+            continue
+
+        # Cosine matrix via matmul (zeros in non-key rows are harmless — filtered by has_key)
+        with np.errstate(invalid="ignore", over="ignore", divide="ignore"):
+            cos_matrix = keys_matrix[:max_pos] @ keys_matrix[:max_pos].T
+
+        for pos in range(max_pos):
+            if not has_key[pos]:
+                continue
+            cid = ordering[pos]
+
+            # Subsequent positions with valid keys: (pos+1, max_pos)
+            subsequent_mask = has_key[pos + 1:max_pos]
+            if not subsequent_mask.any():
+                continue
+
+            cosines_all = cos_matrix[pos, pos + 1:max_pos]
+            cosines_valid = cosines_all[subsequent_mask]
+            n_subsequent = len(cosines_valid)
+
+            if n_subsequent == 0:
+                continue
+
+            top5 = np.sort(cosines_valid)[-5:]
+
+            # Fixed horizon: first H subsequent positions that have keys
+            positions_with_keys = np.where(subsequent_mask)[0]
+            fixed_idx = positions_with_keys[:fixed_horizon]
+            cosines_fixed = cosines_all[fixed_idx] if len(fixed_idx) > 0 else cosines_valid[:0]
+
+            results[(cid, checkpoint)] = {
+                "max_cosine_subsequent": float(np.max(cosines_valid)),
+                "max_cosine_fixed_H": float(np.max(cosines_fixed)) if len(cosines_fixed) > 0 else float("nan"),
+                "mean_top5_similarity": float(np.mean(top5)),
+                "exceedance_03": float(np.sum(cosines_valid > 0.3)) / n_subsequent,
+                "cumulative_interference": float(np.sum(np.maximum(cosines_valid, 0) ** 2)),
+                "n_above_threshold_07": int(np.sum(cosines_valid > 0.7)),
+                "n_above_threshold_05": int(np.sum(cosines_valid > 0.5)),
+                "n_subsequent": n_subsequent,
+                "max_cosine_fixed_H_valid": len(positions_with_keys) >= fixed_horizon,
+            }
+
+    return results
 
 
 # ─── Panel Construction ──────────────────────────────────────────────────────
@@ -144,7 +328,12 @@ def load_edit_ordering(seed: int) -> Optional[List[int]]:
 def load_per_case_outcomes(seed: int, edits: int) -> Dict[int, dict]:
     """Load per-case evaluation results at a checkpoint.
 
-    Returns dict: case_id → {efficacy, paraphrase, neighborhood, subject, relation_id, target_margin}
+    Returns dict: case_id → {efficacy, efficacy_argmax, efficacy_prob,
+                              subject, relation_id, target_margin}
+
+    Efficacy uses probability-preference metric (official AlphaEdit metric):
+    success = target_new is more probable than target_true (i.e., NLL lower).
+    Falls back to argmax if _probs data is unavailable.
     """
     run_dir = FC_DIR / f"seed{seed}" / f"{edits}edits" / ALG / "run_000"
     if not run_dir.exists():
@@ -159,13 +348,24 @@ def load_per_case_outcomes(seed: int, edits: int) -> Dict[int, dict]:
         post = data.get("post", {})
         rewrite = data.get("requested_rewrite", {})
 
-        # Binary efficacy
+        # Argmax efficacy (secondary diagnostic)
         correct = post.get("rewrite_prompts_correct", [])
-        efficacy = sum(correct) / len(correct) if correct else None
+        efficacy_argmax = sum(correct) / len(correct) if correct else None
+
+        # Probability-preference efficacy (primary, official metric)
+        probs = post.get("rewrite_prompts_probs", [])
+        efficacy_prob = None
+        if probs and isinstance(probs[0], dict):
+            # success = target_new more probable (lower NLL)
+            efficacy_prob = float(np.mean([
+                x["target_true"] > x["target_new"] for x in probs
+            ]))
+
+        # Primary efficacy: prefer prob-pref, fall back to argmax
+        efficacy = efficacy_prob if efficacy_prob is not None else efficacy_argmax
 
         # Target margin (log-prob difference: target_true - target_new)
         # Lower margin → harder edit, higher → easier
-        probs = post.get("rewrite_prompts_probs", [])
         if probs and isinstance(probs[0], dict):
             margin = probs[0].get("target_true", 0) - probs[0].get("target_new", 0)
         else:
@@ -173,6 +373,8 @@ def load_per_case_outcomes(seed: int, edits: int) -> Dict[int, dict]:
 
         results[case_id] = {
             "efficacy": efficacy,
+            "efficacy_argmax": efficacy_argmax,
+            "efficacy_prob": efficacy_prob,
             "subject": rewrite.get("subject", ""),
             "relation_id": rewrite.get("relation_id", ""),
             "target_margin": margin,
@@ -197,6 +399,16 @@ def build_panel(seed: int, keys_dir: Optional[Path] = None) -> List[dict]:
 
     # Load key vectors if available (Tier 2)
     key_vectors = load_key_vectors(keys_dir, seed)
+
+    # Load fine-grained interference if available (Tier 3: direct damage)
+    fg_clustered = load_fine_grained_interference(seed, "key_clustered")
+    fg_dispersed = load_fine_grained_interference(seed, "key_dispersed")
+    fg_data = {**fg_clustered, **fg_dispersed}  # merge; later seed loads overwrite
+    if fg_data:
+        print(f"    Fine-grained interference: {len(fg_data)} keys loaded")
+
+    # Load mechanism data (condition number, optional)
+    condition_log = load_mechanism_log(seed)
 
     # Build position lookup and metadata from the earliest available checkpoint
     # that contains all facts we need
@@ -234,6 +446,11 @@ def build_panel(seed: int, keys_dir: Optional[Path] = None) -> List[dict]:
             subject_positions[subj].append(pos)
         if rel:
             relation_positions[rel].append(pos)
+
+    # Batch-compute key similarity if keys available (vectorized, fast)
+    key_sim_cache = {}
+    if key_vectors is not None:
+        key_sim_cache = batch_key_similarity(ordering, key_vectors, CHECKPOINTS)
 
     # Build panel rows
     panel = []
@@ -294,6 +511,8 @@ def build_panel(seed: int, keys_dir: Optional[Path] = None) -> List[dict]:
                 "age_bin": _age_bin(age, max_pos),
                 "survived": int(eff >= 0.5),
                 "efficacy": eff,
+                "subject": metadata.get(cid, {}).get("subject", ""),
+                "relation_id": metadata.get(cid, {}).get("relation_id", ""),
                 "subject_overlap_count": subj_overlap,
                 "subject_overlap_rate": subj_rate,
                 "relation_overlap_count": rel_overlap,
@@ -304,12 +523,23 @@ def build_panel(seed: int, keys_dir: Optional[Path] = None) -> List[dict]:
                 "target_margin": data["target_margin"],
             }
 
-            # Tier 2: Key cosine similarity (if keys available)
+            # Condition number at installation batch (from mechanism logs)
+            if condition_log:
+                install_batch = pos // BATCH_SIZE
+                cond_val = get_condition_at_batch(install_batch, condition_log)
+                row["log_cache_condition"] = cond_val
+
+            # Tier 2: Key cosine similarity (from batch cache)
             if key_vectors is not None:
-                key_preds = compute_key_similarity_predictors(
-                    cid, pos, max_pos, ordering, key_vectors
-                )
+                key_preds = key_sim_cache.get((cid, checkpoint), {})
                 row.update(key_preds)
+
+            # Tier 3: Direct damage from fine-grained interference
+            fg_entry = fg_data.get(cid)
+            if fg_entry is not None:
+                row["direct_damage"] = fg_entry["U_path"]
+                row["direct_damage_fro"] = fg_entry["I_fro_path"]
+                row["update_norm_at_install"] = fg_entry["update_norm_at_install"]
 
             panel.append(row)
 
@@ -552,8 +782,85 @@ def fit_per_trajectory(panel: List[dict], seed: int) -> Optional[dict]:
                 except Exception as e:
                     results["robustness_clustered"] = {"error": str(e)}
 
+                # Trajectory-level clustered SEs (Criticism 6: shared shocks within seed)
+                try:
+                    m4_traj = smf.logit(
+                        "survived ~ C(checkpoint_f) + C(age_bin_f) + "
+                        "max_cosine_subsequent + cumulative_interference + "
+                        "relation_overlap_rate + target_margin",
+                        data=df_keys
+                    ).fit(cov_type='cluster', cov_kwds={'groups': df_keys['seed']}, disp=0)
+                    cos_beta = float(m4_traj.params.get("max_cosine_subsequent", np.nan))
+                    cos_se = float(m4_traj.bse.get("max_cosine_subsequent", np.nan))
+                    cos_pval = float(m4_traj.pvalues.get("max_cosine_subsequent", np.nan))
+                    results["robustness_trajectory_clustered"] = {
+                        "method": "Logit with trajectory-level clustered SEs (seed as cluster)",
+                        "max_cosine_coef": cos_beta,
+                        "max_cosine_se_trajectory": cos_se,
+                        "max_cosine_pval_trajectory": cos_pval,
+                        "max_cosine_OR_per_0.1": float(np.exp(cos_beta * 0.1)),
+                        "n_trajectories": int(df_keys["seed"].nunique()),
+                        "caveat": ("With only 3 trajectory clusters, clustered SEs are "
+                                   "conservative but may be unreliable. Report for "
+                                   "transparency; do not over-interpret p-values."),
+                    }
+                except Exception as e:
+                    results["robustness_trajectory_clustered"] = {"error": str(e)}
+
         except Exception as e:
             results["m4_error"] = str(e)
+
+    # M7: Competing-predictor model — tests whether cosine adds value
+    # beyond direct damage, update norm, and condition number
+    if "direct_damage" in df.columns and "max_cosine_subsequent" in df.columns:
+        try:
+            df_comp = df.dropna(subset=[
+                "max_cosine_subsequent", "direct_damage", "target_margin",
+            ])
+            if len(df_comp) > 50:
+                # M7a: alternative predictors WITHOUT cosine
+                m7a = smf.logit(
+                    "survived ~ C(checkpoint_f) + C(age_bin_f) + "
+                    "direct_damage + update_norm_at_install + target_margin",
+                    data=df_comp
+                ).fit(disp=0)
+
+                # M7b: alternative predictors WITH cosine
+                m7b = smf.logit(
+                    "survived ~ C(checkpoint_f) + C(age_bin_f) + "
+                    "direct_damage + update_norm_at_install + target_margin + "
+                    "max_cosine_subsequent + cumulative_interference",
+                    data=df_comp
+                ).fit(disp=0)
+
+                # LR test: does cosine add value beyond direct damage?
+                lr_stat = m7a.llf - m7b.llf
+                from scipy.stats import chi2
+                lr_pval = chi2.sf(-2 * lr_stat, df=2)
+
+                results["competing_predictors"] = {
+                    "n_obs": len(df_comp),
+                    "m7a_no_cosine_aic": m7a.aic,
+                    "m7b_with_cosine_aic": m7b.aic,
+                    "aic_improvement_from_cosine": m7a.aic - m7b.aic,
+                    "lr_test_stat": float(-2 * lr_stat),
+                    "lr_test_pval": float(lr_pval),
+                    "lr_test_df": 2,
+                    "direct_damage_coef": float(m7a.params.get("direct_damage", np.nan)),
+                    "direct_damage_pval": float(m7a.pvalues.get("direct_damage", np.nan)),
+                    "update_norm_coef": float(m7a.params.get("update_norm_at_install", np.nan)),
+                    "update_norm_pval": float(m7a.pvalues.get("update_norm_at_install", np.nan)),
+                    "cosine_coef_in_m7b": float(m7b.params.get("max_cosine_subsequent", np.nan)),
+                    "cosine_pval_in_m7b": float(m7b.pvalues.get("max_cosine_subsequent", np.nan)),
+                    "interpretation": (
+                        "M7a uses direct mechanistic predictors (||ΔW@k||, ||ΔW||_F) "
+                        "without key cosine. M7b adds cosine. LR test asks whether "
+                        "cosine provides additional predictive value beyond direct "
+                        "update-interaction measurement."
+                    ),
+                }
+        except Exception as e:
+            results["competing_predictors"] = {"error": str(e)}
 
     # Panel structure documentation
     results["panel_structure"] = {
@@ -581,11 +888,15 @@ def fit_per_trajectory(panel: List[dict], seed: int) -> Optional[dict]:
         "m2": "logit P(survived) ~ C(checkpoint) + C(age_bin) + subject_overlap_rate + relation_overlap_rate",
         "m3": "logit P(survived) ~ C(checkpoint) + C(age_bin) + subject_overlap_rate + relation_overlap_rate + target_margin",
         "m4": "logit P(survived) ~ C(checkpoint) + C(age_bin) + max_cosine_subsequent + cumulative_interference + relation_overlap_rate + target_margin",
+        "m7a": "logit P(survived) ~ C(checkpoint) + C(age_bin) + direct_damage + update_norm_at_install + target_margin",
+        "m7b": "logit P(survived) ~ C(checkpoint) + C(age_bin) + direct_damage + update_norm_at_install + target_margin + max_cosine_subsequent + cumulative_interference",
         "predictor_definitions": {
             "max_cosine_subsequent": "max cos(k_i, k_j) for j in (pos_i+1, checkpoint-1) — peak geometric overlap with any single subsequent edit key",
             "cumulative_interference": "Σ max(0, cos(k_i, k_j))² for j in (pos_i+1, checkpoint-1) — sum of squared positive cosine similarities, upweighting high-overlap neighbors",
             "relation_overlap_rate": "count of same-relation edits in (pos_i+1, checkpoint-1), per 1000 subsequent edits",
             "target_margin": "log P(target_true) − log P(target_new) at insertion time — intrinsic edit difficulty",
+            "direct_damage": "Σ_batches ||ΔW_batch @ k_i|| — accumulated path interference from fine-grained measurement",
+            "update_norm_at_install": "||ΔW||_F of the batch that installed this edit",
         },
     }
 
@@ -1107,6 +1418,305 @@ def leave_one_out_prediction(all_panels: List[dict]) -> dict:
     return results
 
 
+# ─── Group-Disjoint Cross-Validation ─────────────────────────────────────────
+
+
+def group_disjoint_cv(
+    panel: List[dict],
+    model_formula: str,
+    n_splits: int = 5,
+    group_col: str = "case_id",
+) -> dict:
+    """K-fold CV where no group (edit-ID or subject) appears in both train and test.
+
+    Pools all trajectories, splits by group_col, fits statsmodels logistic
+    on train folds, predicts on held-out fold, reports AUC and PR-AUC.
+    """
+    try:
+        import pandas as pd
+        import statsmodels.formula.api as smf
+        from sklearn.metrics import (
+            roc_auc_score, average_precision_score, brier_score_loss
+        )
+        from sklearn.calibration import calibration_curve
+        from sklearn.model_selection import GroupKFold
+    except ImportError:
+        return {"error": "requires pandas, statsmodels, sklearn"}
+
+    df = pd.DataFrame(panel)
+    df["checkpoint_f"] = df["checkpoint"].astype(str)
+    df["age_bin_f"] = pd.Categorical(
+        df["age_bin"], categories=["Q1_young", "Q2", "Q3", "Q4_old"]
+    )
+
+    if group_col not in df.columns or df[group_col].isna().all():
+        return {"error": f"column '{group_col}' not found or all-NA"}
+
+    groups = df[group_col].values
+    gkf = GroupKFold(n_splits=n_splits)
+
+    aucs, pr_aucs, briers, eces, fold_sizes = [], [], [], [], []
+    strata_aucs_age = defaultdict(list)
+    strata_aucs_ckpt = defaultdict(list)
+
+    for train_idx, test_idx in gkf.split(df, groups=groups):
+        train = df.iloc[train_idx].copy()
+        test = df.iloc[test_idx].copy()
+
+        if len(train) < 50 or len(test) < 50:
+            continue
+
+        try:
+            model = smf.logit(model_formula, data=train).fit(disp=0)
+            pred = model.predict(test)
+            y_true = test["survived"].values
+
+            if len(set(y_true)) < 2:
+                continue
+
+            aucs.append(float(roc_auc_score(y_true, pred)))
+            pr_aucs.append(float(average_precision_score(y_true, pred)))
+            briers.append(float(brier_score_loss(y_true, pred)))
+            fold_sizes.append(len(test))
+
+            # ECE (10 bins)
+            try:
+                prob_true, prob_pred = calibration_curve(
+                    y_true, pred, n_bins=10, strategy="uniform"
+                )
+                ece = float(np.mean(np.abs(prob_true - prob_pred)))
+                eces.append(ece)
+            except Exception:
+                pass
+
+            # Within-strata AUC (age bins)
+            for age_val in ["Q1_young", "Q2", "Q3", "Q4_old"]:
+                mask = test["age_bin"].values == age_val
+                if mask.sum() > 20 and len(set(y_true[mask])) == 2:
+                    strata_aucs_age[age_val].append(
+                        float(roc_auc_score(y_true[mask], pred.values[mask]))
+                    )
+
+            # Within-strata AUC (checkpoints)
+            for ckpt_val in test["checkpoint"].unique():
+                mask = test["checkpoint"].values == ckpt_val
+                if mask.sum() > 20 and len(set(y_true[mask])) == 2:
+                    strata_aucs_ckpt[f"ckpt_{int(ckpt_val)}"].append(
+                        float(roc_auc_score(y_true[mask], pred.values[mask]))
+                    )
+
+        except Exception:
+            continue
+
+    if not aucs:
+        return {"error": "no folds converged"}
+
+    # Aggregate strata AUCs
+    strata_auc = {}
+    for k, v in strata_aucs_age.items():
+        strata_auc[f"age_{k}"] = float(np.mean(v)) if v else None
+    for k, v in strata_aucs_ckpt.items():
+        strata_auc[k] = float(np.mean(v)) if v else None
+
+    return {
+        "group_col": group_col,
+        "n_splits": n_splits,
+        "n_converged": len(aucs),
+        "auc_mean": float(np.mean(aucs)),
+        "auc_std": float(np.std(aucs)),
+        "pr_auc_mean": float(np.mean(pr_aucs)),
+        "pr_auc_std": float(np.std(pr_aucs)),
+        "brier_mean": float(np.mean(briers)),
+        "brier_std": float(np.std(briers)),
+        "ece_mean": float(np.mean(eces)) if eces else None,
+        "ece_std": float(np.std(eces)) if eces else None,
+        "strata_auc": strata_auc,
+        "per_fold_aucs": aucs,
+        "per_fold_pr_aucs": pr_aucs,
+        "per_fold_sizes": fold_sizes,
+    }
+
+
+def run_group_disjoint_analysis(keys_dir: Optional[Path] = None):
+    """Run group-disjoint CV and compare against leave-one-trajectory-out."""
+    import pandas as pd
+
+    print("=" * 60)
+    print("GROUP-DISJOINT CROSS-VALIDATION")
+    print("=" * 60)
+
+    # Build pooled panel
+    all_panels = []
+    for seed in TRAJECTORIES:
+        panel = build_panel(seed, keys_dir)
+        print(f"  seed {seed}: {len(panel)} rows")
+        all_panels.extend(panel)
+
+    if not all_panels:
+        print("  ERROR: No panel data.")
+        return
+
+    n_unique_edits = len(set(r["case_id"] for r in all_panels))
+    n_unique_subjects = len(set(r["subject"] for r in all_panels if r.get("subject")))
+    print(f"\n  Pooled: {len(all_panels)} rows, {n_unique_edits} unique edits, "
+          f"{n_unique_subjects} unique subjects")
+
+    # Define model formulas (matching the existing M2/M4 hierarchy)
+    has_keys = any("max_cosine_subsequent" in r for r in all_panels)
+
+    formulas = {
+        "M1_baseline": "survived ~ C(checkpoint_f) + C(age_bin_f)",
+        "M2_semantic": ("survived ~ C(checkpoint_f) + C(age_bin_f) + "
+                        "subject_overlap_rate + relation_overlap_rate"),
+    }
+    if has_keys:
+        formulas["M4_full"] = (
+            "survived ~ C(checkpoint_f) + C(age_bin_f) + "
+            "max_cosine_subsequent + cumulative_interference + "
+            "relation_overlap_rate + target_margin"
+        )
+        formulas["M5_within_relation"] = (
+            "survived ~ C(checkpoint_f) + C(age_bin_f) + C(relation_id) + "
+            "max_cosine_subsequent + cumulative_interference + target_margin"
+        )
+
+    # M6: Add condition number control (addresses scheduler confound)
+    has_condition = any("log_cache_condition" in r and r.get("log_cache_condition") is not None
+                        for r in all_panels)
+    if has_condition and has_keys:
+        formulas["M6_condition_controlled"] = (
+            "survived ~ C(checkpoint_f) + C(age_bin_f) + "
+            "max_cosine_subsequent + cumulative_interference + target_margin + "
+            "log_cache_condition"
+        )
+
+    def _print_cv_result(name, result):
+        if "error" in result:
+            print(f"  {name}: {result['error']}")
+            return
+        print(f"  {name}: AUC = {result['auc_mean']:.3f} ± {result['auc_std']:.3f}, "
+              f"PR-AUC = {result['pr_auc_mean']:.3f} ± {result['pr_auc_std']:.3f}, "
+              f"Brier = {result['brier_mean']:.4f} ± {result['brier_std']:.4f}"
+              f" ({result['n_converged']}/{result['n_splits']} folds)")
+        if result.get("ece_mean") is not None:
+            print(f"         ECE = {result['ece_mean']:.4f} ± {result['ece_std']:.4f}")
+        if result.get("strata_auc"):
+            strata = result["strata_auc"]
+            age_parts = [f"{k}: {v:.3f}" for k, v in strata.items()
+                         if k.startswith("age_") and v is not None]
+            ckpt_parts = [f"{k}: {v:.3f}" for k, v in strata.items()
+                          if k.startswith("ckpt_") and v is not None]
+            if age_parts:
+                print(f"         Within-age AUC: {', '.join(age_parts)}")
+            if ckpt_parts:
+                print(f"         Within-ckpt AUC: {', '.join(ckpt_parts)}")
+
+    # Run CV for each formula × each grouping
+    print("\n  --- Edit-ID disjoint (case_id groups) ---")
+    for name, formula in formulas.items():
+        result = group_disjoint_cv(all_panels, formula, n_splits=5, group_col="case_id")
+        _print_cv_result(name, result)
+
+    print("\n  --- Subject-disjoint (subject groups) ---")
+    for name, formula in formulas.items():
+        result = group_disjoint_cv(all_panels, formula, n_splits=5, group_col="subject")
+        _print_cv_result(name, result)
+
+    # Compare with leave-one-trajectory-out
+    print("\n  --- Leave-one-trajectory-out (existing) ---")
+    loo = leave_one_out_prediction(all_panels)
+    for key, val in loo.items():
+        if isinstance(val, dict) and "full_auc" in val:
+            print(f"  {key}: AUC = {val['full_auc']:.3f}")
+
+    # Monotonicity / recovery report (for Criticism 4)
+    print("\n  --- Recovery Rate (Criticism 4) ---")
+    mono = check_monotonicity(all_panels)
+    total = mono["total_cases"]
+    recovery = mono["failure_to_success"]
+    mixed = mono["mixed"]
+    recovery_pct = (recovery + mixed) / max(total, 1) * 100
+    print(f"  Total edit trajectories: {total}")
+    print(f"  Monotonic forgetting (S→F only): {mono['success_to_failure']}")
+    print(f"  Recovery (F→S only): {recovery}")
+    print(f"  Mixed (oscillation): {mixed}")
+    print(f"  Stable success: {mono['stable_success']}")
+    print(f"  Stable failure: {mono['stable_failure']}")
+    print(f"  Non-absorbing rate: {recovery_pct:.1f}% of edits show recovery or oscillation")
+    if recovery_pct > 5:
+        print(f"  → CONCLUSION: Forgetting is NON-ABSORBING. Use 'retention model' not 'survival model'.")
+    else:
+        print(f"  → CONCLUSION: Forgetting is approximately absorbing. Survival framing is appropriate.")
+
+    # --- Within-relation fixed effects (Criticism 1) ---
+    if has_keys:
+        print("\n  --- Within-Relation Fixed Effects (Criticism 1) ---")
+        import statsmodels.formula.api as smf
+        df = pd.DataFrame(all_panels)
+        df["checkpoint_f"] = df["checkpoint"].astype(str)
+        df["age_bin_f"] = pd.Categorical(
+            df["age_bin"], categories=["Q1_young", "Q2", "Q3", "Q4_old"], ordered=True
+        )
+        m5_formula = (
+            "survived ~ C(checkpoint_f) + C(age_bin_f) + C(relation_id) + "
+            "max_cosine_subsequent + cumulative_interference + target_margin"
+        )
+        try:
+            m5_fit = smf.logit(m5_formula, data=df).fit(disp=0, maxiter=100)
+            cosine_coef = m5_fit.params.get("max_cosine_subsequent", None)
+            if cosine_coef is not None:
+                cosine_or = np.exp(cosine_coef)
+                ci = m5_fit.conf_int().loc["max_cosine_subsequent"]
+                or_lo, or_hi = np.exp(ci[0]), np.exp(ci[1])
+                pval = m5_fit.pvalues.get("max_cosine_subsequent", 1.0)
+                print(f"  M5 (relation FE) cosine OR = {cosine_or:.3f} "
+                      f"[{or_lo:.3f}, {or_hi:.3f}], p = {pval:.2e}")
+                if cosine_or < 1 and pval < 0.05:
+                    print("  → Cosine PREDICTS retention WITHIN relations (addresses Criticism 1)")
+                elif pval >= 0.05:
+                    print("  → Cosine effect NOT significant within relations")
+                else:
+                    print("  → Cosine associated with HIGHER retention within relations (unexpected)")
+        except Exception as e:
+            print(f"  M5 fit failed: {e}")
+
+    # --- Condition-Controlled Model (Criticism 2: scheduler confound) ---
+    if has_condition and has_keys:
+        print("\n  --- Condition-Controlled (Criticism 2) ---")
+        import statsmodels.formula.api as smf
+        df = pd.DataFrame(all_panels)
+        df["checkpoint_f"] = df["checkpoint"].astype(str)
+        df["age_bin_f"] = pd.Categorical(
+            df["age_bin"], categories=["Q1_young", "Q2", "Q3", "Q4_old"], ordered=True
+        )
+        df_cond = df.dropna(subset=["max_cosine_subsequent", "log_cache_condition"])
+        m6_formula = (
+            "survived ~ C(checkpoint_f) + C(age_bin_f) + "
+            "max_cosine_subsequent + cumulative_interference + target_margin + "
+            "log_cache_condition"
+        )
+        try:
+            m6_fit = smf.logit(m6_formula, data=df_cond).fit(disp=0, maxiter=100)
+            cos_coef = m6_fit.params.get("max_cosine_subsequent", None)
+            cond_coef = m6_fit.params.get("log_cache_condition", None)
+            if cos_coef is not None:
+                cos_or = np.exp(cos_coef)
+                ci = m6_fit.conf_int().loc["max_cosine_subsequent"]
+                or_lo, or_hi = np.exp(ci[0]), np.exp(ci[1])
+                pval = m6_fit.pvalues.get("max_cosine_subsequent", 1.0)
+                print(f"  M6 cosine OR (controlling for condition) = {cos_or:.3f} "
+                      f"[{or_lo:.3f}, {or_hi:.3f}], p = {pval:.2e}")
+            if cond_coef is not None:
+                cond_or = np.exp(cond_coef)
+                cond_pval = m6_fit.pvalues.get("log_cache_condition", 1.0)
+                print(f"  M6 condition OR = {cond_or:.3f}, p = {cond_pval:.2e}")
+            print(f"  N = {len(df_cond)} (seeds with mechanism data only)")
+            if cos_coef is not None and np.exp(cos_coef) < 1 and pval < 0.05:
+                print("  → Cosine SURVIVES controlling for batch conditioning")
+        except Exception as e:
+            print(f"  M6 fit failed: {e}")
+
+
 # ─── Age-Matched Comparison ──────────────────────────────────────────────────
 
 
@@ -1510,6 +2120,186 @@ def generate(output_dir: Path = PAPER_OUTPUT, keys_dir: Optional[Path] = None):
     print(f"  not population-level inference. Complements the matched-ordering experiment.")
 
 
+# ─── First-Failure Analysis ──────────────────────────────────────────────────
+
+
+def first_failure_analysis(all_panels: List[dict], has_keys: bool = False):
+    """Fit the full model under first-failure censoring and compare AUC to repeated-measures.
+
+    For each (case_id, seed), keeps only rows up to and including the first
+    checkpoint where survived=0. Right-censored edits (never fail) keep all rows.
+    """
+    import pandas as pd
+    import statsmodels.formula.api as smf
+    from sklearn.metrics import roc_auc_score, average_precision_score
+    from sklearn.model_selection import GroupKFold
+
+    df = pd.DataFrame(all_panels)
+    df["checkpoint_f"] = df["checkpoint"].astype(str)
+    df["age_bin_f"] = pd.Categorical(
+        df["age_bin"], categories=["Q1_young", "Q2", "Q3", "Q4_old"]
+    )
+
+    # First-failure censoring: for each (case_id, seed), keep rows up to first failure
+    df_sorted = df.sort_values(["seed", "case_id", "checkpoint"])
+    keep_mask = []
+    for _, group in df_sorted.groupby(["seed", "case_id"]):
+        failed = group["survived"] == 0
+        if failed.any():
+            first_fail_idx = failed.idxmax()
+            first_fail_pos = list(group.index).index(first_fail_idx)
+            mask = [True] * (first_fail_pos + 1) + [False] * (len(group) - first_fail_pos - 1)
+        else:
+            mask = [True] * len(group)
+        keep_mask.extend(mask)
+
+    df_ff = df_sorted.loc[np.array(keep_mask)].copy()
+
+    print(f"\n  First-failure panel: {len(df_ff)} rows "
+          f"(vs {len(df)} repeated-measures, {len(df_ff)/len(df)*100:.0f}% retained)")
+    print(f"  Events (survived=0): {(df_ff['survived']==0).sum()} / {len(df_ff)}")
+
+    # Define models to test
+    formulas = {
+        "M1_baseline": "survived ~ C(checkpoint_f) + C(age_bin_f)",
+    }
+    if has_keys:
+        formulas["M4_full"] = (
+            "survived ~ C(checkpoint_f) + C(age_bin_f) + "
+            "max_cosine_subsequent + cumulative_interference + target_margin"
+        )
+        formulas["M5_within_relation"] = (
+            "survived ~ C(checkpoint_f) + C(age_bin_f) + C(relation_id) + "
+            "max_cosine_subsequent + cumulative_interference + target_margin"
+        )
+
+    # Drop NaN rows for key-based models
+    if has_keys:
+        df_ff_keys = df_ff.dropna(subset=["max_cosine_subsequent"]).copy()
+    else:
+        df_ff_keys = df_ff.copy()
+
+    # 5-fold group-disjoint CV on first-failure panel
+    print("\n  --- First-failure AUC (edit-ID disjoint, 5-fold) ---")
+    for name, formula in formulas.items():
+        data = df_ff_keys if "cosine" in formula or "relation" in formula else df_ff
+        result = group_disjoint_cv(data.to_dict("records"), formula, n_splits=5, group_col="case_id")
+        if "error" in result:
+            print(f"  {name}: {result['error']}")
+        else:
+            print(f"  {name}: AUC = {result['auc_mean']:.3f} ± {result['auc_std']:.3f}, "
+                  f"PR-AUC = {result['pr_auc_mean']:.3f} ± {result['pr_auc_std']:.3f} "
+                  f"({result['n_converged']}/{result['n_splits']} folds)")
+
+    # Full-sample fit to get cosine OR under first-failure
+    if has_keys and len(df_ff_keys) > 100:
+        print("\n  --- First-failure cosine OR (full sample) ---")
+        try:
+            m5_formula = (
+                "survived ~ C(checkpoint_f) + C(age_bin_f) + C(relation_id) + "
+                "max_cosine_subsequent + cumulative_interference + target_margin"
+            )
+            m5_fit = smf.logit(m5_formula, data=df_ff_keys).fit(disp=0, maxiter=100)
+            coef = m5_fit.params["max_cosine_subsequent"]
+            ci = m5_fit.conf_int().loc["max_cosine_subsequent"]
+            pval = m5_fit.pvalues["max_cosine_subsequent"]
+            print(f"  M5 cosine OR = {np.exp(coef):.3f} [{np.exp(ci[0]):.3f}, {np.exp(ci[1]):.3f}], "
+                  f"p = {pval:.2e}")
+            if np.exp(coef) < 1 and pval < 0.05:
+                print("  → Effect SURVIVES first-failure censoring")
+            else:
+                print("  → Effect attenuated under first-failure censoring")
+        except Exception as e:
+            print(f"  M5 fit failed: {e}")
+
+
+# ─── Trajectory-Level Bootstrap ──────────────────────────────────────────────
+
+
+def trajectory_bootstrap(all_panels: List[dict], n_boot: int = 1000, has_keys: bool = False):
+    """Resample trajectories (seeds) with replacement, report CI on AUC and cosine OR.
+
+    With only 3 trajectories, this gives a wide but honest CI on trajectory-level
+    variability. This is NOT a generalization estimate — it's variability reporting.
+    Uses M4 (no relation FE) for speed since 1000 logit fits are needed.
+    """
+    import pandas as pd
+    import statsmodels.formula.api as smf
+    from sklearn.metrics import roc_auc_score
+
+    df = pd.DataFrame(all_panels)
+    df["checkpoint_f"] = df["checkpoint"].astype(str)
+    df["age_bin_f"] = pd.Categorical(
+        df["age_bin"], categories=["Q1_young", "Q2", "Q3", "Q4_old"]
+    )
+
+    seeds = sorted(df["seed"].unique())
+    n_seeds = len(seeds)
+
+    # Precompute per-seed dataframes
+    seed_dfs = {s: df[df["seed"] == s].copy() for s in seeds}
+
+    if has_keys:
+        formula = (
+            "survived ~ C(checkpoint_f) + C(age_bin_f) + "
+            "max_cosine_subsequent + cumulative_interference + target_margin"
+        )
+    else:
+        formula = "survived ~ C(checkpoint_f) + C(age_bin_f) + relation_overlap_rate + target_margin"
+
+    rng = np.random.default_rng(2024)
+    boot_aucs = []
+    boot_ors = []
+
+    for i in range(n_boot):
+        # Resample trajectories with replacement
+        sampled_seeds = rng.choice(seeds, size=n_seeds, replace=True)
+        boot_df = pd.concat([seed_dfs[s] for s in sampled_seeds], ignore_index=True)
+
+        if has_keys:
+            boot_df = boot_df.dropna(subset=["max_cosine_subsequent"])
+
+        if len(boot_df) < 100:
+            continue
+
+        try:
+            model = smf.logit(formula, data=boot_df).fit(disp=0, maxiter=50)
+            pred = model.predict(boot_df)
+            y_true = boot_df["survived"].values
+
+            if len(set(y_true)) < 2:
+                continue
+
+            auc = float(roc_auc_score(y_true, pred))
+            boot_aucs.append(auc)
+
+            if has_keys and "max_cosine_subsequent" in model.params:
+                boot_ors.append(float(np.exp(model.params["max_cosine_subsequent"])))
+        except Exception:
+            continue
+
+    print(f"\n  --- Trajectory-Level Bootstrap (n={n_boot}, {n_seeds} seeds) ---")
+    print(f"  Converged: {len(boot_aucs)}/{n_boot} iterations")
+
+    if boot_aucs:
+        auc_lo = float(np.percentile(boot_aucs, 2.5))
+        auc_hi = float(np.percentile(boot_aucs, 97.5))
+        auc_med = float(np.median(boot_aucs))
+        print(f"  AUC: median = {auc_med:.3f}, 95% CI = [{auc_lo:.3f}, {auc_hi:.3f}]")
+
+    if boot_ors:
+        or_lo = float(np.percentile(boot_ors, 2.5))
+        or_hi = float(np.percentile(boot_ors, 97.5))
+        or_med = float(np.median(boot_ors))
+        print(f"  Cosine OR: median = {or_med:.3f}, 95% CI = [{or_lo:.3f}, {or_hi:.3f}]")
+        sign_consistent = sum(1 for o in boot_ors if o < 1) / len(boot_ors)
+        print(f"  Sign consistency: {sign_consistent:.1%} of bootstraps have OR < 1")
+
+    print(f"\n  NOTE: With {n_seeds} trajectories, this CI reflects trajectory-level")
+    print(f"  variability. It is wide by design — reporting this honestly addresses")
+    print(f"  the 'n=3 trajectories' limitation.")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Per-edit interference analysis: link semantic exposure to forgetting"
@@ -1517,8 +2307,35 @@ def main():
     parser.add_argument("--output-dir", type=Path, default=PAPER_OUTPUT)
     parser.add_argument("--keys-dir", type=Path, default=None,
                         help="Directory containing keys_seed{N}.npz files from compute_keys.py")
+    parser.add_argument("--group-cv", action="store_true",
+                        help="Run group-disjoint CV analysis (edit-ID and subject-disjoint)")
+    parser.add_argument("--first-failure", action="store_true",
+                        help="Run first-failure censored analysis and trajectory bootstrap")
     args = parser.parse_args()
-    generate(args.output_dir, keys_dir=args.keys_dir)
+
+    if args.group_cv:
+        run_group_disjoint_analysis(keys_dir=args.keys_dir)
+    elif args.first_failure:
+        # Build panel with keys
+        all_panels = []
+        for seed in TRAJECTORIES:
+            panel = build_panel(seed, keys_dir=args.keys_dir)
+            all_panels.extend(panel)
+            print(f"  seed {seed}: {len(panel)} rows")
+        has_keys = any("max_cosine_subsequent" in r for r in all_panels)
+        print(f"\n  Total: {len(all_panels)} rows, keys={'yes' if has_keys else 'no'}")
+
+        print("\n" + "=" * 60)
+        print("FIRST-FAILURE ANALYSIS")
+        print("=" * 60)
+        first_failure_analysis(all_panels, has_keys=has_keys)
+
+        print("\n" + "=" * 60)
+        print("TRAJECTORY-LEVEL BOOTSTRAP")
+        print("=" * 60)
+        trajectory_bootstrap(all_panels, n_boot=1000, has_keys=has_keys)
+    else:
+        generate(args.output_dir, keys_dir=args.keys_dir)
 
 
 if __name__ == "__main__":

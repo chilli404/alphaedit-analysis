@@ -109,8 +109,10 @@ def build_interference_script(
             cnt += 1
             continue
         if cnt > _ir_end_batch:
-            print(f"  [IR] Reached end batch {{_ir_end_batch}}, stopping")
-            break
+            print(f"  [IR] Reached end batch {{_ir_end_batch}}, saving results before eval...")
+            _ir_save_results()
+            print(f"  [IR] Results saved. Skipping vendor eval loop.")
+            import sys as _sys_ir; _sys_ir.exit(0)
         # Capture W_before for layer 6
         _ir_capture_w_before(model)
         # === END pre-batch ===
@@ -167,19 +169,73 @@ _ir_ordering_case_ids = [r["case_id"] for r in _ir_ordering_records]
 # Map case_id -> key index
 _ir_cid_to_kidx = {{int(cid): i for i, cid in enumerate(_ir_case_ids)}}
 
+_ir_n_keys = len(_ir_case_ids)
+
 # Map key_index -> installation batch
-_ir_installation_batch = np.full(5000, -1, dtype=np.int32)
+_ir_installation_batch = np.full(_ir_n_keys, -1, dtype=np.int32)
 for pos, cid in enumerate(_ir_ordering_case_ids):
     kidx = _ir_cid_to_kidx.get(cid, -1)
     if kidx >= 0:
         _ir_installation_batch[kidx] = pos // _ir_num_edits
 
 # Accumulators
-_ir_path_sum = np.zeros(5000, dtype=np.float64)  # Accumulated path interference
-_ir_path_fro = np.zeros(5000, dtype=np.float64)  # Frobenius-normalized
+_ir_path_sum = np.zeros(_ir_n_keys, dtype=np.float64)
+_ir_path_fro = np.zeros(_ir_n_keys, dtype=np.float64)
 _ir_cum_delta = torch.zeros(4096, 14336, dtype=torch.float32)  # Cumulative delta
 _ir_W_before = None  # Captured before each batch
 _ir_batch_results = []  # Per-batch records
+
+def _ir_save_results():
+    print(f"\\n=== Saving interference results ({{len(_ir_batch_results)}} batches) ===")
+    first_1k_kidx = []
+    for pos in range(min(1000, len(_ir_ordering_case_ids))):
+        cid = _ir_ordering_case_ids[pos]
+        kidx = _ir_cid_to_kidx.get(cid, -1)
+        if kidx >= 0:
+            first_1k_kidx.append(kidx)
+    first_1k_kidx = np.array(first_1k_kidx)
+    K_first1K = _ir_keys[first_1k_kidx]
+    net_effects = _ir_cum_delta @ K_first1K.T
+    U_net_first1K = torch.linalg.norm(net_effects, dim=0).numpy()
+    _w1k_path = _ir_checkpoint_dir / "batch_9" / "model_weights.pt"
+    if _w1k_path.exists():
+        _w1k_w = torch.load(str(_w1k_path), map_location="cpu")
+        W_1K = _w1k_w[_ir_weight_key].float()
+        baseline_norms = torch.linalg.norm(W_1K @ K_first1K.T, dim=0).numpy()
+        d_rel_first1K = U_net_first1K / (baseline_norms + 1e-10)
+        del W_1K, _w1k_w
+    else:
+        baseline_norms = np.ones(len(first_1k_kidx))
+        d_rel_first1K = U_net_first1K
+    results = {{
+        "metadata": {{
+            "ordering": _ir_ordering_name, "seed": seed,
+            "start_batch": _ir_start_batch, "end_batch": _ir_end_batch,
+            "n_batches_recorded": len(_ir_batch_results),
+            "layer": _ir_layer, "weight_key": _ir_weight_key,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }},
+        "batch_results": _ir_batch_results,
+        "first_1K": {{
+            "case_ids": [int(_ir_ordering_case_ids[i]) for i in range(min(1000, len(_ir_ordering_case_ids)))],
+            "key_indices": first_1k_kidx.tolist(),
+            "U_path": _ir_path_sum[first_1k_kidx].tolist(),
+            "U_net": U_net_first1K.tolist(),
+            "d_rel": d_rel_first1K.tolist(),
+            "I_fro_path": _ir_path_fro[first_1k_kidx].tolist(),
+            "baseline_output_norm": baseline_norms.tolist(),
+        }},
+        "all_5K": {{
+            "case_ids": [int(cid) for cid in _ir_ordering_case_ids],
+            "U_path": _ir_path_sum.tolist(),
+            "I_fro_path": _ir_path_fro.tolist(),
+            "installation_batch": _ir_installation_batch.tolist(),
+        }},
+    }}
+    _ir_output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(str(_ir_output_path), "w") as f:
+        json.dump(results, f, indent=2)
+    print(f"  Output saved: {{_ir_output_path}}")
 
 def _ir_should_skip(cnt):
     return cnt < _ir_start_batch
@@ -366,6 +422,7 @@ exec(compile(eval_source, "experiments/evaluate.py", "exec"), {{
     "_ir_end_batch": _ir_end_batch,
     "_ir_save_interval": _ir_save_interval,
     "_ir_num_edits": _ir_num_edits,
+    "_ir_save_results": _ir_save_results,
 }})
 
 # ─── 6. Final computation + save ────────────────────────────────────
@@ -385,8 +442,8 @@ K_first1K = _ir_keys[first_1k_kidx]  # [~1000, 14336]
 net_effects = _ir_cum_delta @ K_first1K.T  # [4096, ~1000]
 U_net_first1K = torch.linalg.norm(net_effects, dim=0).numpy()
 
-# Baseline: need W_{1K} for relative displacement
-# W_{1K} was the starting point (loaded from batch_9 checkpoint)
+# Baseline: need W_1K for relative displacement
+# W_1K was the starting point (loaded from batch_9 checkpoint)
 # Reconstruct from checkpoint
 _w1k_path = _ir_checkpoint_dir / "batch_9" / "model_weights.pt"
 if _w1k_path.exists():
@@ -481,7 +538,7 @@ def main():
     parser.add_argument("--output_dir", type=str, default=None)
     args = parser.parse_args()
 
-    from model_download import resolve_model_path
+    from model_resolve import resolve_model_path
     from setup_hparams import link_hparams
     from source_patches import patch_evaluate_file, patch_glue_eval_file
 

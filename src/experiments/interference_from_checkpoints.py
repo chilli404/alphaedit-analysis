@@ -538,10 +538,6 @@ def run_percase_eval(
     Evaluate per-case efficacy at the 5K checkpoint for retained/forgotten classification.
     GPU REQUIRED.
     """
-    # Import model_download first — patches filelock to prevent hangs
-    sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
-    from model_download import download_model, _artifactory_reachable
-
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -549,8 +545,7 @@ def run_percase_eval(
     print("PER-CASE BEHAVIORAL EVALUATION (GPU)")
     print("=" * 70)
 
-    if _artifactory_reachable():
-        model_name = download_model(model_name)
+    model_name = os.environ.get("MODEL_PATH", model_name)
     print(f"  Model: {model_name}")
 
     conditions = [

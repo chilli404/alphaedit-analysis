@@ -1,23 +1,30 @@
 """
 REVIVE spectral subspace filter for knowledge editing updates.
 
-Given a pretrained weight W0 with compact SVD: W0 = U @ diag(S) @ Vh,
+Given a weight W with full SVD: W = U @ diag(S) @ Vh (full_matrices=True),
 REVIVE removes components of a proposed update delta_W that align with the
-dominant spectral directions of W0.
+dominant spectral directions of W.
 
-The protected rank k is the smallest integer satisfying:
-    cumsum(S)[k-1] / sum(S) >= tau
+The split rank k is the first index where cumsum(S)/sum(S) > tau (strict >).
+This matches the reference implementation (baselines/REVIVEEDIT/code.py).
 
-The filtered update retains only components in tail singular directions:
-    delta_w_safe = U_tail @ (U_tail.T @ delta_w_raw @ V_tail) @ V_tail.T
+The filtered update zeroes the top-k rows AND top-k columns of the spectral
+coefficient matrix u.T @ delta @ v, then reconstructs:
+    Safe_Update = u @ projected_coff @ v.T
 
-where U_tail = U[:, k:] and V_tail = Vh[k:, :].T
+Memory-efficient equivalent (avoids materializing full [m,n] coefficient matrix):
+    delta_w_safe = U_tail @ (U_tail.T @ delta_w_raw @ Vh_tail.T) @ Vh_tail
 
-This formulation:
-- Never materializes full m×m or n×n projection matrices
-- Correctly handles rectangular matrices (m != n)
-- For compact SVD with r = min(m,n): components outside the SVD basis
-  (null space of W0.T for m < n) are implicitly removed
+where U_tail = U[:, k:] and Vh_tail = Vh[k:, :].
+
+Full SVD (full_matrices=True) is required so that V spans the entire column
+space including the right null space of W. For [m, n] with m < n, compact SVD
+gives Vh=[min(m,n), n] while full SVD gives Vh=[n, n], preserving components
+in the right null space.
+
+IMPORTANT: The SVD should be computed from the CURRENT weight (post all prior
+edits), not the pretrained weight. The spectral basis should track accumulated
+edits so that the filter adapts to the evolving weight landscape.
 
 Reference: REVIVE paper (spectral subspace protection for model editing).
 The paper defines energy using sum of singular values (not squared).
@@ -84,20 +91,19 @@ class ReviveMetrics:
 
 
 def compute_protected_rank(S: Tensor, tau: float) -> int:
-    """Find smallest k where cumsum(S)[:k] / sum(S) >= tau.
+    """Compute split_rank: smallest k where cumulative singular value energy >= tau.
+
+    The reference REVIVE code had an off-by-one bug: argmax returns a 0-indexed
+    position, but [:0] is an empty slice, making the filter a no-op. Fixed here
+    by adding +1 so that [:split_rank] actually protects the top-k directions.
 
     Args:
         S: Singular values in descending order, shape [r].
-        tau: Energy threshold in (0, 1).
+        tau: Energy threshold in (0, 1). Higher = more aggressive filtering.
 
     Returns:
-        k: Protected rank (1 <= k < r).
-
-    Raises:
-        ValueError: If tau is not in (0, 1) or S is empty/invalid.
+        split_rank: Number of protected singular directions (1 <= split_rank <= r).
     """
-    if tau <= 0.0 or tau >= 1.0:
-        raise ValueError(f"tau must be in (0, 1), got {tau}")
     if S.numel() == 0:
         raise ValueError("S must not be empty")
     if not torch.all(S >= 0):
@@ -105,20 +111,11 @@ def compute_protected_rank(S: Tensor, tau: float) -> int:
 
     total = S.sum()
     if total <= 0:
-        raise ValueError("Sum of singular values must be positive")
+        return 0
 
-    cumulative = S.cumsum(dim=0)
-    # Find first index where cumulative / total >= tau
-    mask = cumulative >= tau * total
-    if not mask.any():
-        # tau is so high that even all singular values don't reach it
-        # Return r-1 (protect all but last)
-        return max(1, S.numel() - 1)
-
-    k = int(mask.nonzero(as_tuple=False)[0].item()) + 1  # 1-indexed count
-    # Clamp: k must be at least 1 and less than r
-    k = max(1, min(k, S.numel() - 1))
-    return k
+    cumfrac = S.cumsum(dim=0) / total
+    split_rank = int(torch.searchsorted(cumfrac, torch.tensor(tau, device=cumfrac.device), right=False).item()) + 1
+    return min(split_rank, S.numel())
 
 
 def revive_filter(
@@ -137,14 +134,17 @@ def revive_filter(
     """Apply REVIVE spectral subspace filter to a proposed weight update.
 
     Removes components of delta_w_raw that align with the top-k singular
-    directions of the original weight matrix.
+    directions of the current weight matrix.
+
+    Expects full SVD factors (full_matrices=True):
+        U: [m, m], S: [min(m,n)], Vh: [n, n]
 
     Args:
         delta_w_raw: Proposed update, shape [m, n]. NOT modified in place.
-        U: Left singular vectors of W0, shape [m, r].
-        S: Singular values of W0, shape [r], descending.
-        Vh: Right singular vectors of W0, shape [r, n].
-        tau: Energy threshold for protected rank.
+        U: Left singular vectors from full SVD of CURRENT weight, shape [m, m].
+        S: Singular values, shape [r] where r=min(m,n), descending.
+        Vh: Right singular vectors from full SVD, shape [n, n].
+        tau: Energy threshold for split_rank. Higher = more aggressive filtering.
         param_name: For logging.
         layer: For logging.
         batch: For logging.
@@ -163,41 +163,47 @@ def revive_filter(
     m, n = delta_w_raw.shape
     r = S.numel()
 
-    if U.shape != (m, r):
+    if U.shape != (m, m):
         raise ValueError(
-            f"U shape {U.shape} doesn't match expected ({m}, {r}) "
+            f"U shape {U.shape} doesn't match expected ({m}, {m}) from full SVD "
             f"for delta_w_raw shape {delta_w_raw.shape}"
         )
-    if Vh.shape != (r, n):
+    if Vh.shape != (n, n):
         raise ValueError(
-            f"Vh shape {Vh.shape} doesn't match expected ({r}, {n}) "
+            f"Vh shape {Vh.shape} doesn't match expected ({n}, {n}) from full SVD "
             f"for delta_w_raw shape {delta_w_raw.shape}"
         )
     if not torch.isfinite(delta_w_raw).all():
         raise ValueError("delta_w_raw contains non-finite values")
 
-    # --- Compute protected rank ---
+    # --- Compute split rank (reference: > threshold, not >=) ---
     k = compute_protected_rank(S, tau)
 
-    # --- Apply filter: retain only tail components ---
-    # U_tail: [m, r-k], V_tail: [n, r-k]
-    U_tail = U[:, k:]  # [m, r-k]
-    Vh_tail = Vh[k:, :]  # [r-k, n]
+    if k == 0:
+        # No filtering: tau too small or first SV already exceeds threshold
+        delta_w_safe = delta_w_raw
+    else:
+        # --- Apply filter: retain only tail components ---
+        # For full SVD: U=[m,m], Vh=[n,n]
+        # U_tail: [m, m-k], Vh_tail: [n-k, n]
+        U_tail = U[:, k:]    # [m, m-k]
+        Vh_tail = Vh[k:, :]  # [n-k, n]
 
-    # Memory-efficient: compute A_tail = U_tail.T @ delta_w_raw @ V_tail.T
-    # where V_tail = Vh_tail.T, so delta_w_raw @ V_tail = delta_w_raw @ Vh_tail.T
-    # A_tail shape: [r-k, r-k]
-    # Then reconstruct: delta_w_safe = U_tail @ A_tail @ Vh_tail
+        # Memory-efficient equivalent of:
+        #   projected_coff = u.T @ delta @ v  (where v = Vh.T)
+        #   projected_coff[:k, :] = 0; projected_coff[:, :k] = 0
+        #   Safe_Update = u @ projected_coff @ v.T  (= u @ projected_coff @ Vh)
+        #
+        # Only the tail-tail block survives, so:
+        #   A_tail = U_tail.T @ delta @ Vh_tail.T
+        #   delta_w_safe = U_tail @ A_tail @ Vh_tail
 
-    # Step 1: project delta onto tail left subspace: [r-k, n]
-    left_proj = U_tail.T @ delta_w_raw  # [r-k, n]
-    # Step 2: project onto tail right subspace: [r-k, r-k]
-    A_tail = left_proj @ Vh_tail.T  # [r-k, r-k]
-    # Step 3: reconstruct in original space
-    delta_w_safe = U_tail @ A_tail @ Vh_tail  # [m, n]
+        left_proj = U_tail.T @ delta_w_raw  # [m-k, n]
+        A_tail = left_proj @ Vh_tail.T       # [m-k, n-k]
+        delta_w_safe = U_tail @ A_tail @ Vh_tail  # [m, n]
 
-    # Cast back to original dtype if needed
-    delta_w_safe = delta_w_safe.to(delta_w_raw.dtype)
+        # Cast back to original dtype if needed
+        delta_w_safe = delta_w_safe.to(delta_w_raw.dtype)
 
     t1 = time.perf_counter()
 

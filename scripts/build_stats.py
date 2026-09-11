@@ -567,10 +567,10 @@ def main():
         manifest.get("layers", {}).get(ln, {}).get("source") == "local-computation"
         for ln in layer_names
     ):
-        s3_dest = f"/s3-data/continual-learning/alphaedit/stats/{spec.stats_dir_name}"
-        print(f"\n  To cache on S3 for future cluster runs:")
-        print(f"    cp -r {stats_dir} {s3_dest}/")
-        print(f"  Then link_stats.sh will find them automatically on SkyPilot clusters.")
+        stats_root = os.environ.get("STATS_ROOT", "data/stats")
+        print(f"\n  To cache for future cluster runs:")
+        print(f"    cp -r {stats_dir} $STATS_ROOT/{spec.stats_dir_name}/")
+        print(f"  (STATS_ROOT defaults to: {stats_root})")
 
     print("\n=== Done ===")
 

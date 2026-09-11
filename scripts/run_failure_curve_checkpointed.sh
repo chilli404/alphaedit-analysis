@@ -47,7 +47,7 @@ HPARAMS_FNAME="${_CALLER_HPARAMS:-${HPARAMS_FNAME:-Llama3-8B.json}}"
 
 SEED="${1:-42}"
 ALG="${2:-${ALG_NAME:-both}}"
-TARGET_EDITS="${3:-${TARGET_EDITS:-5000}}"
+TARGET_EDITS="${3:-${TARGET_EDITS:-10000}}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
 SAVE_INTERVAL="${SAVE_INTERVAL:-10}"
 NUM_EDITS=100  # Edits per batch (matches all other experiments)

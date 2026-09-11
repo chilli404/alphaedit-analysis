@@ -1,8 +1,11 @@
 """
 Persistent SVD cache for REVIVE.
 
-Computes and caches compact SVD factors for pretrained weight matrices.
+Computes and caches full SVD factors (full_matrices=True) for weight matrices.
 Cache is keyed by model identifier + parameter name + weight fingerprint.
+
+NOTE: The polykernel_seqreg_runner computes SVD dynamically from CURRENT weights
+each batch (not from this cache). This cache is used by standalone REVIVE tools.
 
 Layout:
     {cache_dir}/{model_slug}/{param_slug}/svd.pt
@@ -12,12 +15,12 @@ Each cache file contains:
     - shape: tuple
     - model_id: str
     - fingerprint: str (SHA256 of first 1024 elements)
-    - U: Tensor [m, r]
-    - S: Tensor [r]
-    - Vh: Tensor [r, n]
+    - U: Tensor [m, m]  (full left singular vectors)
+    - S: Tensor [r]     (r = min(m, n) singular values)
+    - Vh: Tensor [n, n] (full right singular vectors)
     - dtype: str
     - timestamp: str (ISO 8601)
-    - version: int
+    - version: int (v2: full SVD; v1 used compact SVD)
 """
 
 from __future__ import annotations
@@ -31,7 +34,7 @@ from pathlib import Path
 import torch
 from torch import Tensor
 
-CACHE_VERSION = 1
+CACHE_VERSION = 2  # Bumped: v1 used compact SVD (full_matrices=False), v2 uses full SVD
 
 
 def _weight_fingerprint(w: Tensor, n_elements: int = 1024) -> str:
@@ -93,14 +96,14 @@ class SVDCache:
         Raises:
             ValueError: If weight contains non-finite values.
         """
-        # Check memory cache first (validate shape matches)
+        # Check memory cache first (validate shape matches for full SVD)
         if param_name in self._memory_cache:
             U, S, Vh = self._memory_cache[param_name]
             m, n = weight.shape
             r = min(m, n)
-            if U.shape == (m, r) and Vh.shape == (r, n):
+            if U.shape == (m, m) and S.shape == (r,) and Vh.shape == (n, n):
                 return U, S, Vh, True
-            # Shape mismatch: evict stale entry
+            # Shape mismatch: evict stale entry (may be from old compact SVD cache)
             del self._memory_cache[param_name]
 
         if not torch.isfinite(weight).all():
@@ -128,9 +131,15 @@ class SVDCache:
         return U, S, Vh, False
 
     def _compute_svd(self, weight: Tensor) -> tuple[Tensor, Tensor, Tensor]:
-        """Compute compact SVD of weight matrix."""
+        """Compute full SVD of weight matrix (full_matrices=True).
+
+        Matches reference REVIVE (baselines/REVIVEEDIT/code.py) which uses
+        full_matrices=True so that V spans the entire column space (including
+        the right null space of W). For [m, n] with m < n, this gives
+        Vh of shape [n, n] instead of [min(m,n), n].
+        """
         w = weight.to(dtype=self.svd_dtype, device=self.svd_device)
-        U, S, Vh = torch.linalg.svd(w, full_matrices=False)
+        U, S, Vh = torch.linalg.svd(w, full_matrices=True)
         # Keep on SVD device (typically CPU to save GPU memory)
         return U, S, Vh
 
@@ -191,10 +200,10 @@ class SVDCache:
         S = data["S"]
         Vh = data["Vh"]
 
-        # Validate tensor shapes
+        # Validate tensor shapes (full SVD: U=[m,m], S=[r], Vh=[n,n])
         m, n = shape
         r = min(m, n)
-        if U.shape != (m, r) or S.shape != (r,) or Vh.shape != (r, n):
+        if U.shape != (m, m) or S.shape != (r,) or Vh.shape != (n, n):
             return None
 
         # Validate finite values

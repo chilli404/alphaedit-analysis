@@ -49,6 +49,10 @@ echo ""
 
 cd "$PROJECT_DIR"
 
+# Force EXPERIMENT_NAME to include threshold so results are isolated per threshold
+# (unconditional override — SkyPilot sets a generic EXPERIMENT_NAME that would collide)
+export EXPERIMENT_NAME="projection_sweep_gptj_t${THRESHOLD}"
+
 EVAL_FLAG=""
 if [[ "${EVAL_AT_CHECKPOINTS_ONLY:-true}" == "true" ]]; then
     EVAL_FLAG="--eval_at_checkpoints_only"

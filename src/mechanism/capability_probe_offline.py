@@ -50,7 +50,7 @@ from capability_probe import (
     WIKITEXT_N_SAMPLES,
     WIKITEXT_MAX_LENGTH,
 )
-from model_download import resolve_model_path
+from model_resolve import resolve_model_path
 from paths import get_project_root, get_result_root, get_checkpoint_root
 
 

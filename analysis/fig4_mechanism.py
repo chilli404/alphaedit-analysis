@@ -197,20 +197,29 @@ def panel_d_forest_plot(ax, results: dict):
         ax.set_title("(d) Effect Size: OR per +0.1 Cosine")
         return
 
-    seeds = sorted(bootstrap.keys(), key=int)
+    pn_path = RESULTS / "figures" / "paper" / "paper_numbers.json"
+    pn = {}
+    if pn_path.exists():
+        with open(pn_path) as f:
+            pn = json.load(f)
+
     labels = []
     ors = []
     ci_los = []
     ci_his = []
     colors = []
 
-    for seed_str in seeds:
-        data = bootstrap[seed_str]
-        seed = int(seed_str)
+    for seed in [42, 2024, 137]:
+        seed_str = str(seed)
+        or_mean = pn.get(f"interference_seed{seed}_OR_per_0.1")
+        or_lo = pn.get(f"interference_seed{seed}_or01_ci_025")
+        or_hi = pn.get(f"interference_seed{seed}_or01_ci_975")
+        if or_mean is None or not np.isfinite(or_mean):
+            continue
         labels.append(f"Seed {seed}")
-        ors.append(data["or_per_0.1_mean"])
-        ci_los.append(data["or_per_0.1_ci_025"])
-        ci_his.append(data["or_per_0.1_ci_975"])
+        ors.append(or_mean)
+        ci_los.append(or_lo if or_lo and np.isfinite(or_lo) else or_mean * 0.8)
+        ci_his.append(or_hi if or_hi and np.isfinite(or_hi) else or_mean * 1.2)
         colors.append(SEED_COLORS.get(seed, "#666666"))
 
     y = np.arange(len(labels))

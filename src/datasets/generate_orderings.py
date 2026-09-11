@@ -26,6 +26,7 @@ Usage:
 
 import argparse
 import json
+import os
 import random
 import sys
 from collections import Counter, defaultdict
@@ -230,6 +231,159 @@ def create_key_dispersed_ordering(records: list, assignments: np.ndarray, rng: r
     return ordered
 
 
+# ─── Fixed-Batch Orderings ───────────────────────────────────────────────
+#
+# Hold batch MEMBERSHIP constant while permuting the temporal SEQUENCE of
+# batches. This isolates cross-batch future-key exposure from within-batch
+# Gram matrix effects — the reviewer's primary methodological concern.
+
+
+def assign_fixed_batches(
+    records: list, batch_size: int, rng: random.Random
+) -> list[list]:
+    """Assign records to fixed batches via seeded random shuffle.
+
+    Returns list of batches, each a list of records. Membership is
+    deterministic given the seed — all downstream orderings share
+    these exact batches.
+    """
+    shuffled = list(records)
+    rng.shuffle(shuffled)
+    return [
+        shuffled[i : i + batch_size]
+        for i in range(0, len(shuffled), batch_size)
+    ]
+
+
+def batches_from_ordering(
+    ordering: list, batch_size: int
+) -> list[list]:
+    """Extract batch decomposition from an existing flat ordering.
+
+    Takes the first len(ordering) records and splits into chunks of
+    batch_size. Use this to get batches with meaningful centroid
+    diversity (e.g., from key_clustered where each batch contains
+    geometrically similar keys by construction).
+    """
+    return [
+        ordering[i : i + batch_size]
+        for i in range(0, len(ordering), batch_size)
+    ]
+
+
+def compute_batch_centroids(
+    batches: list[list], keys: np.ndarray, case_id_to_idx: dict
+) -> np.ndarray:
+    """L2-normalized mean key vector per batch."""
+    norms = np.linalg.norm(keys, axis=1, keepdims=True)
+    normed = keys / np.maximum(norms, 1e-8)
+
+    centroids = []
+    for batch in batches:
+        indices = [case_id_to_idx[r["case_id"]] for r in batch]
+        c = normed[indices].mean(axis=0)
+        cn = np.linalg.norm(c)
+        centroids.append(c / cn if cn > 1e-8 else c)
+    return np.array(centroids)
+
+
+def order_batches_high_exposure(
+    batches: list[list], centroids: np.ndarray, rng: random.Random
+) -> list:
+    """Greedy nearest-neighbor: similar batches adjacent → high future exposure."""
+    n = len(batches)
+    sim = centroids @ centroids.T
+    start = rng.randint(0, n - 1)
+    order = [start]
+    remaining = set(range(n)) - {start}
+    while remaining:
+        cur = order[-1]
+        nxt = max(remaining, key=lambda j: sim[cur, j])
+        order.append(nxt)
+        remaining.remove(nxt)
+    return [r for idx in order for r in batches[idx]]
+
+
+def order_batches_low_exposure(
+    batches: list[list], centroids: np.ndarray, rng: random.Random
+) -> list:
+    """Greedy farthest-neighbor: similar batches far apart → low future exposure."""
+    n = len(batches)
+    sim = centroids @ centroids.T
+    start = rng.randint(0, n - 1)
+    order = [start]
+    remaining = set(range(n)) - {start}
+    while remaining:
+        cur = order[-1]
+        nxt = min(remaining, key=lambda j: sim[cur, j])
+        order.append(nxt)
+        remaining.remove(nxt)
+    return [r for idx in order for r in batches[idx]]
+
+
+def order_batches_random(
+    batches: list[list], n_perms: int, rng: random.Random
+) -> list[list]:
+    """Multiple random batch-sequence permutations for variability estimation."""
+    orderings = []
+    for _ in range(n_perms):
+        perm = list(range(len(batches)))
+        sub_rng = random.Random(rng.randint(0, 2**32 - 1))
+        sub_rng.shuffle(perm)
+        orderings.append([r for idx in perm for r in batches[idx]])
+    return orderings
+
+
+def validate_fixed_batch_orderings(
+    batches: list[list],
+    orderings: dict[str, list],
+    keys: np.ndarray,
+    case_id_to_idx: dict,
+    batch_size: int,
+) -> dict:
+    """Verify batch membership is identical; measure future-exposure contrast."""
+    canonical = [frozenset(r["case_id"] for r in b) for b in batches]
+    norms = np.linalg.norm(keys, axis=1, keepdims=True)
+    normed = keys / np.maximum(norms, 1e-8)
+
+    report = {"batch_membership_preserved": True, "orderings": {}}
+
+    for name, ordering in orderings.items():
+        chunks = [
+            ordering[i : i + batch_size]
+            for i in range(0, len(ordering), batch_size)
+        ]
+        chunk_sets = [frozenset(r["case_id"] for r in c) for c in chunks]
+        if set(chunk_sets) != set(canonical):
+            report["batch_membership_preserved"] = False
+            print(f"  WARNING: {name} batch membership mismatch!")
+
+        within_cos = []
+        future_exp = []
+        for b in range(len(chunks)):
+            idx_b = [case_id_to_idx[r["case_id"]] for r in chunks[b]]
+            bk = normed[idx_b]
+            cos_mat = bk @ bk.T
+            n = len(idx_b)
+            mask = np.triu(np.ones((n, n), dtype=bool), k=1)
+            within_cos.append(float(cos_mat[mask].mean()))
+
+            fut_idx = []
+            for fb in range(b + 1, min(b + 11, len(chunks))):
+                fut_idx.extend(case_id_to_idx[r["case_id"]] for r in chunks[fb])
+            if fut_idx:
+                cross = bk @ normed[fut_idx].T
+                future_exp.append(float(cross.max(axis=1).mean()))
+
+        report["orderings"][name] = {
+            "mean_within_batch_cosine": float(np.mean(within_cos)),
+            "mean_future_exposure": float(np.mean(future_exp)) if future_exp else 0.0,
+            "n_records": len(ordering),
+        }
+
+    return report
+
+
 # ─── Validation ───────────────────────────────────────────────────────────────
 
 
@@ -358,17 +512,25 @@ def main():
                         help="Directory containing multi_counterfact.json")
     parser.add_argument("--output_dir", type=str, default="results/matched_ordering",
                         help="Base output directory")
+    parser.add_argument("--fixed_batch", action="store_true",
+                        help="Generate fixed-batch orderings (constant batch membership, "
+                             "permuted batch sequence)")
+    parser.add_argument("--base_ordering", type=str, default="key_clustered",
+                        help="Existing ordering to derive batch membership from "
+                             "(default: key_clustered — gives diverse centroids)")
+    parser.add_argument("--n_random_perms", type=int, default=3,
+                        help="Number of random batch permutations (fixed_batch mode)")
     args = parser.parse_args()
 
     # Resolve paths
     if args.data_dir:
         data_dir = Path(args.data_dir)
     else:
+        data_root = Path(os.environ.get("DATA_ROOT", "data/dsets"))
         candidates = [
             PROJECT_ROOT / "data" / "dsets",
             PROJECT_ROOT / "vendor" / "AlphaEdit" / "data",
-            Path("/s3-data/continual-learning/alphaedit/dsets"),
-            Path.home() / "Projects" / "alphaedit-analysis" / "vendor" / "AlphaEdit" / "data",
+            data_root,
         ]
         data_dir = None
         for c in candidates:
@@ -454,7 +616,133 @@ def main():
 
     key_indices = [key_idx_by_id[cid] for cid in record_case_ids]
     keys = all_keys[key_indices]
+    case_id_to_idx = {records[i]["case_id"]: i for i in range(len(records))}
     print(f"  Selected keys: {keys.shape}")
+
+    # ── Fixed-batch mode ─────────────────────────────────────────────────
+    if args.fixed_batch:
+        print(f"\n  === FIXED-BATCH MODE ===")
+        print(f"  Batch membership is constant; only temporal sequence varies.")
+
+        base_path = ord_dir / f"{args.base_ordering}_seed{args.seed}.json"
+        if base_path.exists():
+            print(f"  Using records + batches from: {args.base_ordering}")
+            with open(base_path) as f:
+                base_ordering = json.load(f)
+            batches = batches_from_ordering(base_ordering, args.batch_size)
+
+            # Use the base ordering's records (not the freshly selected pool)
+            records = base_ordering
+            record_case_ids = [r["case_id"] for r in records]
+            key_indices = [key_idx_by_id[cid] for cid in record_case_ids
+                           if cid in key_idx_by_id]
+            keys = all_keys[key_indices]
+            case_id_to_idx = {
+                records[i]["case_id"]: i for i in range(len(records))
+                if records[i]["case_id"] in key_idx_by_id
+            }
+            print(f"  {len(records)} records, {len(batches)} batches of {args.batch_size}")
+        else:
+            print(f"  Base ordering '{args.base_ordering}' not found at {base_path}")
+            print(f"  Falling back to random batch assignment")
+            rng_fb = random.Random(args.seed + 5000)
+            batches = assign_fixed_batches(records, args.batch_size, rng_fb)
+            print(f"  {len(batches)} fixed batches of {args.batch_size}")
+
+        centroids = compute_batch_centroids(batches, keys, case_id_to_idx)
+        print(f"  Computed batch centroids: {centroids.shape}")
+
+        # Batch similarity matrix stats
+        sim = centroids @ centroids.T
+        np.fill_diagonal(sim, 0)
+        print(f"  Inter-batch cosine: mean={sim[sim != 0].mean():.4f}, "
+              f"max={sim.max():.4f}, min={sim.min():.4f}")
+
+        rng_hi = random.Random(args.seed + 6000)
+        rng_lo = random.Random(args.seed + 7000)
+        rng_rand = random.Random(args.seed + 8000)
+
+        high_exp = order_batches_high_exposure(batches, centroids, rng_hi)
+        low_exp = order_batches_low_exposure(batches, centroids, rng_lo)
+        rand_perms = order_batches_random(batches, args.n_random_perms, rng_rand)
+        print(f"  Generated: high_exposure, low_exposure, {args.n_random_perms} random")
+
+        all_orderings = {
+            "fb_high_exposure": high_exp,
+            "fb_low_exposure": low_exp,
+        }
+        for i, rp in enumerate(rand_perms):
+            all_orderings[f"fb_random{i}"] = rp
+
+        # Validate
+        print(f"\n  Validating fixed-batch orderings...")
+        fb_report = validate_fixed_batch_orderings(
+            batches, all_orderings, keys, case_id_to_idx, args.batch_size,
+        )
+
+        if fb_report["batch_membership_preserved"]:
+            print(f"    Batch membership: PRESERVED across all orderings")
+        else:
+            print(f"    ERROR: Batch membership NOT preserved!")
+            sys.exit(1)
+
+        # Check within-batch cosine is identical
+        wb_values = [
+            v["mean_within_batch_cosine"]
+            for v in fb_report["orderings"].values()
+        ]
+        assert max(wb_values) - min(wb_values) < 1e-10, \
+            "Within-batch cosine differs across orderings!"
+        print(f"    Within-batch cosine: {wb_values[0]:.6f} (identical across orderings)")
+
+        for name, metrics in fb_report["orderings"].items():
+            print(f"    {name}: future_exposure={metrics['mean_future_exposure']:.4f}")
+
+        hi_fe = fb_report["orderings"]["fb_high_exposure"]["mean_future_exposure"]
+        lo_fe = fb_report["orderings"]["fb_low_exposure"]["mean_future_exposure"]
+        print(f"    Exposure ratio (high/low): {hi_fe / max(lo_fe, 1e-10):.2f}x")
+
+        # Save orderings
+        print(f"\n  Saving fixed-batch orderings...")
+        for name, ordering in all_orderings.items():
+            path = ord_dir / f"{name}_seed{args.seed}.json"
+            with open(path, "w") as f:
+                json.dump(ordering, f)
+            print(f"    {path.name}")
+
+        # Save batch assignment (for downstream verification)
+        batch_assignment = {
+            "seed": args.seed,
+            "batch_size": args.batch_size,
+            "n_batches": len(batches),
+            "batches": [
+                [r["case_id"] for r in batch] for batch in batches
+            ],
+        }
+        ba_path = diag_dir / f"fixed_batch_assignment_seed{args.seed}.json"
+        with open(ba_path, "w") as f:
+            json.dump(batch_assignment, f, indent=2)
+        print(f"    {ba_path.name}")
+
+        # Save diagnostics
+        fb_report["seed"] = args.seed
+        fb_report["mode"] = "fixed_batch"
+        fb_report["n_random_perms"] = args.n_random_perms
+        rpt_path = diag_dir / f"fixed_batch_report_seed{args.seed}.json"
+        with open(rpt_path, "w") as f:
+            json.dump(fb_report, f, indent=2)
+        print(f"    {rpt_path.name}")
+
+        print(f"\n{'='*70}")
+        print("Fixed-batch orderings generated. Run experiments with:")
+        print(f"  bash scripts/run_matched_ordering.sh {args.seed} AlphaEdit fb_high_exposure")
+        print(f"  bash scripts/run_matched_ordering.sh {args.seed} AlphaEdit fb_low_exposure")
+        for i in range(args.n_random_perms):
+            print(f"  bash scripts/run_matched_ordering.sh {args.seed} AlphaEdit fb_random{i}")
+        print(f"{'='*70}\n")
+        return
+
+    # ── Original mode: k-means + key-geometry orderings ──────────────────
 
     print(f"\n  Running spherical k-means (k={args.n_clusters})...")
     assignments = spherical_kmeans(keys, args.n_clusters, max_iter=100, seed=args.seed)
