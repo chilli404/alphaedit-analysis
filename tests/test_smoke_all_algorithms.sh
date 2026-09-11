@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 # ============================================================================
 # GPU Smoke Test: 1 batch (100 edits) of EVERY algorithm × runner combination.
 #
@@ -51,13 +51,12 @@ run_and_check() {
     log "START: $label"
     local t0=$(date +%s)
 
-    # Run with timeout
-    local exit_code=0
-    timeout "$TIMEOUT" "$@" 2>&1 | while IFS= read -r line; do
-        # Pass through but prefix with timestamp every 30 lines
-        echo "$line"
-    done
-    exit_code=${PIPESTATUS[0]}
+    # Run with timeout, capture output to temp file to avoid SIGPIPE
+    local logfile=$(mktemp)
+    timeout "$TIMEOUT" "$@" > "$logfile" 2>&1
+    local exit_code=$?
+    tail -20 "$logfile"
+    rm -f "$logfile"
     local t1=$(date +%s)
     local elapsed=$((t1 - t0))
 
