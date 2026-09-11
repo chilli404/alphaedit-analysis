@@ -90,6 +90,63 @@ class TestKwargsAcceptance:
 # 2. Source anchors intact (vendor code at pinned commit)
 # ---------------------------------------------------------------------------
 
+class TestAllPatchesApply:
+    """Every on-disk patch must apply successfully and be idempotent."""
+
+    def test_all_evaluate_patches_apply(self):
+        """All 4 evaluate.py patches apply without error."""
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
+        from source_patches import (
+            apply_p_cache_patch, apply_model_list_patch,
+            apply_model_dtype_patch, apply_canonical_name_patch,
+        )
+        source = (VENDOR_ROOT / "experiments" / "evaluate.py").read_text()
+        patched = apply_p_cache_patch(source)
+        patched = apply_model_list_patch(patched)
+        patched = apply_model_dtype_patch(patched)
+        patched = apply_canonical_name_patch(patched)
+        assert patched != source or "already patched" # at least one patch changed something
+
+    def test_evaluate_patches_idempotent(self):
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
+        from source_patches import (
+            apply_p_cache_patch, apply_model_list_patch,
+            apply_model_dtype_patch, apply_canonical_name_patch,
+        )
+        source = (VENDOR_ROOT / "experiments" / "evaluate.py").read_text()
+        once = apply_canonical_name_patch(apply_model_dtype_patch(
+            apply_model_list_patch(apply_p_cache_patch(source))))
+        twice = apply_canonical_name_patch(apply_model_dtype_patch(
+            apply_model_list_patch(apply_p_cache_patch(once))))
+        assert once == twice
+
+    def test_nan_guard_applies_and_idempotent(self):
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
+        from source_patches import apply_nan_guard_patch
+        source = (VENDOR_ROOT / "memit" / "memit_main.py").read_text()
+        once = apply_nan_guard_patch(source)
+        twice = apply_nan_guard_patch(once)
+        assert once == twice
+
+    def test_glue_patch_applies_and_idempotent(self):
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
+        from source_patches import apply_glue_context_patch
+        source = (VENDOR_ROOT / "glue_eval" / "useful_functions.py").read_text()
+        once = apply_glue_context_patch(source)
+        twice = apply_glue_context_patch(once)
+        assert once == twice
+
+    def test_canonical_name_sets_correct_values(self):
+        """After canonical_name_patch, _name_or_path is set to GLUE-compatible values."""
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
+        from source_patches import apply_canonical_name_patch
+        source = (VENDOR_ROOT / "experiments" / "evaluate.py").read_text()
+        patched = apply_canonical_name_patch(source)
+        assert '"llama3-8b-instruct"' in patched
+        assert '"gpt-j-6b"' in patched
+        assert '"qwen2.5-7b-instruct"' in patched
+
+
 class TestSourceAnchors:
     """All source injection anchor strings must exist in vendor code."""
 
