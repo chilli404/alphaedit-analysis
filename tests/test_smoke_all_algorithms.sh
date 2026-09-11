@@ -54,9 +54,11 @@ run_and_check() {
     echo ""
     local t0=$(date +%s)
 
-    # Run with timeout — unbuffered output for live streaming via sky logs
-    PYTHONUNBUFFERED=1 timeout "$TIMEOUT" "$@" 2>&1
-    local exit_code=$?
+    # Run with timeout — filter to show only key progress lines
+    PYTHONUNBUFFERED=1 timeout "$TIMEOUT" "$@" 2>&1 | grep -E --line-buffered \
+        "LAYER|CHECKPOINT|Execution took|_edit=|error:|ERROR|Traceback|KeyError|TypeError|Saved|Loading model|Loading checkpoint|Deltas successfully|New weights|Patched|Cached context|Variant:|Started:|Checkpoint dir:|model_name|batch|Complete|REVIVE|Init norm|No existing" \
+        || true
+    local exit_code=${PIPESTATUS[0]}
     local t1=$(date +%s)
     local elapsed=$((t1 - t0))
 
@@ -200,8 +202,10 @@ run_baseline() {
     log "  Script: $script, TARGET_EDITS=$DATASET_LIMIT, NUM_EDITS=$EDITS, SEED=$SEED"
     local t0=$(date +%s)
 
-    PYTHONUNBUFFERED=1 timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash $script $SEED" 2>&1
-    local exit_code=$?
+    PYTHONUNBUFFERED=1 timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash $script $SEED" 2>&1 | grep -E --line-buffered \
+        "LAYER|CHECKPOINT|Execution took|_edit=|error:|ERROR|Traceback|KeyError|TypeError|Saved|Loading|Patched|Complete|batch|Variant:|REVIVE|Init norm|No existing|EvoEdit|NSE|RECT" \
+        || true
+    local exit_code=${PIPESTATUS[0]}
     local elapsed=$(( $(date +%s) - t0 ))
 
     if [ "$exit_code" -eq 0 ]; then
