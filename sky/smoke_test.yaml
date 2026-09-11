@@ -1,0 +1,57 @@
+resources:
+  accelerators: L40S:1
+  cpus: 4+
+  memory: 32+
+  cloud: aws
+
+workdir: .
+
+file_mounts:
+  /home/sky/.env:
+    source: .env
+    mode: COPY
+
+setup: |
+  bash scripts/remote_setup.sh
+
+run: |
+  set -euo pipefail
+  cd ~/sky_workdir
+
+  # Source env
+  set -a && source /home/sky/.env && set +a
+  export RESULT_ROOT="/s3-data/continual-learning/alphaedit/results/_smoke_test"
+  export CHECKPOINT_ROOT="/s3-data/continual-learning/alphaedit/checkpoints/_smoke_test"
+
+  # Link data
+  bash scripts/link_stats.sh
+  bash scripts/link_dsets.sh
+  bash scripts/patch_baselines.sh "$(pwd)"
+
+  # Patch vendor code
+  uv run python -c "
+  import sys; sys.path.insert(0, 'src/util')
+  from source_patches import patch_evaluate_file, patch_memit_file, patch_alphaedit_main_file, patch_layer_stats_file, patch_glue_eval_file
+  from paths import get_alphaedit_root
+  r = get_alphaedit_root()
+  patch_evaluate_file(r)
+  patch_memit_file(r)
+  patch_alphaedit_main_file(r)
+  patch_layer_stats_file(r)
+  patch_glue_eval_file(r)
+  print('All vendor patches applied.')
+  "
+
+  # Run CPU tests first (fast, catches code issues immediately)
+  echo "=== Running CPU tests ==="
+  uv run pytest tests/test_path_isolation.py tests/test_source_integrity.py \
+      tests/test_all_runners.py tests/test_shared_infrastructure.py \
+      tests/test_evaluate_harness.py -v --tb=short
+
+  # Run GPU smoke test
+  echo ""
+  echo "=== Running GPU smoke test ==="
+  bash tests/test_smoke_all_algorithms.sh --skypilot
+
+  echo ""
+  echo "=== All tests passed ==="
