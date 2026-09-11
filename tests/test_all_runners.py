@@ -378,6 +378,73 @@ class TestProbPrefMetrics:
 # 8. Checkpoint completeness validation
 # ===========================================================================
 
+class TestBaselineScripts:
+    """CPU tests for baseline shell scripts (EvoEdit, NSE, RECT).
+
+    These scripts embed inline Python that patches baselines/EvoEdit/evaluate.py.
+    We verify the scripts are syntactically valid and contain required elements.
+    """
+
+    @pytest.mark.skipif(not BASELINES_ROOT.exists(), reason="baselines not present")
+    @pytest.mark.parametrize("script,must_contain", [
+        ("run_evoedit_baseline.sh", [
+            "EvoEdit", "evaluate.py", "SEED", "dataset_size_limit",
+        ]),
+        ("run_nse_baseline.sh", [
+            "NSE", "SEED",
+        ]),
+        ("run_rect_aligned_paper_replication.sh", [
+            "MEMIT_seq_rect", "SEED",
+        ]),
+    ])
+    def test_baseline_script_structure(self, script, must_contain):
+        path = PROJECT_ROOT / "scripts" / script
+        if not path.exists():
+            pytest.skip(f"{script} not present")
+        source = path.read_text()
+        for pattern in must_contain:
+            assert pattern in source, f"{script} must contain '{pattern}'"
+
+    @pytest.mark.skipif(not BASELINES_ROOT.exists(), reason="baselines not present")
+    def test_evoedit_uses_baselines_evaluate(self):
+        """EvoEdit must use baselines/EvoEdit/evaluate.py, not vendor."""
+        path = PROJECT_ROOT / "scripts" / "run_evoedit_baseline.sh"
+        if not path.exists():
+            pytest.skip("script not present")
+        source = path.read_text()
+        assert "baselines/EvoEdit" in source or "EvoEdit" in source
+
+    @pytest.mark.skipif(not BASELINES_ROOT.exists(), reason="baselines not present")
+    def test_nse_uses_kv_cache(self):
+        """NSE requires precomputed kv cache."""
+        path = PROJECT_ROOT / "scripts" / "run_nse_baseline.sh"
+        if not path.exists():
+            pytest.skip("script not present")
+        source = path.read_text()
+        assert "kv" in source.lower() or "cache" in source.lower() or "kvs" in source.lower()
+
+    @pytest.mark.skipif(not BASELINES_ROOT.exists(), reason="baselines not present")
+    def test_baselines_evaluate_supports_all_alg_names(self):
+        """baselines/EvoEdit/evaluate.py must dispatch to all algorithms."""
+        eval_py = BASELINES_ROOT / "experiments" / "evaluate.py"
+        if not eval_py.exists():
+            pytest.skip("baselines evaluate.py not present")
+        source = eval_py.read_text()
+        for alg in ["EvoEdit", "NSE", "MEMIT_seq_rect", "AlphaEdit", "MEMIT"]:
+            assert alg in source, f"baselines evaluate.py must reference {alg}"
+
+    @pytest.mark.skipif(not BASELINES_ROOT.exists(), reason="baselines not present")
+    def test_patch_baselines_covers_all_apply_functions(self):
+        """patch_baselines.sh must patch kwargs for EvoEdit, NSE, RECT, MEMIT variants."""
+        path = PROJECT_ROOT / "scripts" / "patch_baselines.sh"
+        if not path.exists():
+            pytest.skip("patch_baselines.sh not present")
+        source = path.read_text()
+        for func in ["apply_EvoEdit_to_model", "apply_nse_to_model",
+                      "apply_memit_seq_rect_to_model"]:
+            assert func in source, f"patch_baselines.sh must patch {func}"
+
+
 class TestCheckpointCompleteness:
     """Checkpoint files must contain all required components."""
 

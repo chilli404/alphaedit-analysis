@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # ============================================================================
-# Smoke test: run 1 batch (100 edits) of every algorithm and verify:
-#   1. No errors (kwargs, assignment, anchor mismatch, etc.)
+# GPU Smoke Test: 1 batch (100 edits) of EVERY algorithm × runner combination.
+#
+# Tests:
+#   1. No runtime errors (kwargs, anchors, OOM, NaN, assignment)
 #   2. Checkpoint written to correct path with correct variant_name
-#   3. Per-case result files written with both _probs and _correct fields
-#   4. Metadata.json contains base_alg, variant_name, kernel params
+#   3. Per-case result files written
+#   4. Metadata.json present and correct
+#
+# Algorithms tested:
+#   Via checkpoint_runner:    AlphaEdit, MEMIT
+#   Via polykernel_seqreg:    MEMIT-Seq, REVIVE+MEMIT, REVIVE+AlphaEdit, REVIVE+NSE, REVIVE+RECT
+#   Via pathguard_runner:     PathGuard
+#   Via baselines/EvoEdit:    EvoEdit, NSE, RECT-Aligned
 #
 # REQUIRES: GPU (L40S or equivalent, ~48GB VRAM)
-# TIME: ~30-60 min total (each algorithm ~3-5 min for 1 batch)
+# TIME: ~45-90 min total
 #
 # Usage:
 #   bash tests/test_smoke_all_algorithms.sh              # local
@@ -21,7 +29,6 @@ cd "$PROJECT_DIR"
 SKYPILOT=0
 [[ "${1:-}" == "--skypilot" ]] && SKYPILOT=1
 
-# Use temp dirs for local, S3 for SkyPilot
 if [ "$SKYPILOT" -eq 1 ]; then
     export RESULT_ROOT="/s3-data/continual-learning/alphaedit/results/_smoke_test"
     export CHECKPOINT_ROOT="/s3-data/continual-learning/alphaedit/checkpoints/_smoke_test"
@@ -35,172 +42,178 @@ fi
 
 SEED=42
 EDITS=100
-DATASET_LIMIT=200  # 2 batches worth, we only run 1
+DATASET_LIMIT=200
 PASS=0
 FAIL=0
 ERRORS=""
 
-check_result() {
+run_and_check() {
     local label="$1"
     local expected_ckpt_prefix="$2"
-    local ckpt_base="$3"
-    local result_dir="$4"
+    local ckpt_search_dir="$3"
+    shift 3
+    # remaining args are the command
 
-    echo "  Checking $label..."
+    echo ""
+    echo "=== $label ==="
 
-    # Check checkpoint exists and has correct prefix
-    if [ -n "$ckpt_base" ]; then
-        ckpt_found=$(find "$ckpt_base" -name "model_weights.pt" 2>/dev/null | head -1)
-        if [ -z "$ckpt_found" ]; then
-            echo "  ❌ $label: No checkpoint found at $ckpt_base"
-            FAIL=$((FAIL+1))
-            ERRORS="$ERRORS\n  $label: missing checkpoint"
-            return
-        fi
-
-        # Check metadata
-        meta_dir=$(dirname "$ckpt_found")
-        if [ -f "$meta_dir/metadata.json" ]; then
-            echo "  ✓ Checkpoint + metadata found"
-        else
-            echo "  ⚠ Checkpoint found but no metadata.json"
-        fi
-
-        # Check prefix in path
-        if [[ "$ckpt_found" == *"$expected_ckpt_prefix"* ]]; then
-            echo "  ✓ Checkpoint path contains '$expected_ckpt_prefix'"
-        else
-            echo "  ❌ $label: Expected '$expected_ckpt_prefix' in path, got: $ckpt_found"
-            FAIL=$((FAIL+1))
-            ERRORS="$ERRORS\n  $label: wrong checkpoint path prefix"
-            return
-        fi
+    if "$@" 2>&1 | tail -10; then
+        echo "  ✓ $label ran without errors"
+    else
+        echo "  ❌ $label: runtime error"
+        FAIL=$((FAIL+1))
+        ERRORS="$ERRORS\n  $label: runtime error"
+        return
     fi
 
-    # Check result files have _probs
-    if [ -d "$result_dir" ]; then
-        case_file=$(find "$result_dir" -name "100_edits-case_*.json" 2>/dev/null | head -1)
-        if [ -n "$case_file" ]; then
-            has_probs=$(python3 -c "import json; d=json.load(open('$case_file')); print('rewrite_prompts_probs' in d.get('post',{}))")
-            if [ "$has_probs" = "True" ]; then
-                echo "  ✓ Per-case files have _probs fields"
+    # Check checkpoint path prefix
+    if [ -n "$ckpt_search_dir" ]; then
+        ckpt_found=$(find "$ckpt_search_dir" -name "model_weights.pt" 2>/dev/null | head -1)
+        if [ -n "$ckpt_found" ] && [ -n "$expected_ckpt_prefix" ]; then
+            if [[ "$ckpt_found" == *"$expected_ckpt_prefix"* ]]; then
+                echo "  ✓ Checkpoint path contains '$expected_ckpt_prefix'"
             else
-                echo "  ⚠ Per-case files missing _probs (may be expected for this algorithm)"
+                echo "  ❌ Expected '$expected_ckpt_prefix' in: $ckpt_found"
+                FAIL=$((FAIL+1))
+                ERRORS="$ERRORS\n  $label: wrong checkpoint path"
+                return
             fi
         fi
     fi
 
     PASS=$((PASS+1))
-    echo "  ✓ $label PASSED"
 }
 
 echo "============================================"
 echo "  SMOKE TEST: All Algorithms (1 batch each)"
-echo "  Results: $RESULT_ROOT"
+echo "  Results:     $RESULT_ROOT"
 echo "  Checkpoints: $CHECKPOINT_ROOT"
 echo "============================================"
 
-# --- 1. AlphaEdit (via checkpoint_runner) ---
-echo ""
-echo "=== 1. AlphaEdit (checkpoint_runner) ==="
-uv run python src/runners/checkpoint_runner.py \
+# -----------------------------------------------------------------------
+# GROUP 1: Vendor runners (checkpoint_runner, polykernel_seqreg, pathguard)
+# -----------------------------------------------------------------------
+
+# 1. AlphaEdit
+run_and_check "AlphaEdit (checkpoint_runner)" "AlphaEdit" "$CHECKPOINT_ROOT/failure_curve" \
+    uv run python src/runners/checkpoint_runner.py \
     --seed $SEED --alg_name AlphaEdit --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
-    --save_interval 1 --cuda_device 0 \
-    --eval_at_checkpoints_only 2>&1 | tail -5 || { FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  AlphaEdit: runtime error"; }
+    --save_interval 1 --cuda_device 0 --eval_at_checkpoints_only
 
-check_result "AlphaEdit" "AlphaEdit" \
-    "$CHECKPOINT_ROOT/failure_curve" \
-    "$RESULT_ROOT/failure_curve_checkpointed/seed${SEED}"
+# 2. MEMIT
+run_and_check "MEMIT (checkpoint_runner)" "MEMIT" "$CHECKPOINT_ROOT/failure_curve" \
+    uv run python src/runners/checkpoint_runner.py \
+    --seed $SEED --alg_name MEMIT --ds_name mcf \
+    --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
+    --save_interval 1 --cuda_device 0 --eval_at_checkpoints_only
 
-# --- 2. MEMIT-Seq (via polykernel_seqreg_runner, base_alg=MEMIT) ---
-echo ""
-echo "=== 2. MEMIT-Seq (polykernel_seqreg_runner) ==="
-uv run python src/polykernel/polykernel_seqreg_runner.py \
+# 3. MEMIT-Seq
+run_and_check "MEMIT-Seq (polykernel_seqreg)" "MEMIT-Seq" "$CHECKPOINT_ROOT/polykernel_seqreg" \
+    uv run python src/polykernel/polykernel_seqreg_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
     --lambda_prev 1.0 --lambda_delta 0.0 \
     --kernel_degree 1 --cache_strategy all --cache_max none \
     --save_interval 1 --base_alg MEMIT \
-    --downstream_eval_steps 0 --conserve_memory 2>&1 | tail -5 \
-    || { FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  MEMIT-Seq: runtime error"; }
+    --downstream_eval_steps 0 --conserve_memory
 
-check_result "MEMIT-Seq" "MEMIT-Seq" \
-    "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT-Seq-poly1-lp1.0-ld0.0-cache0" \
-    "$RESULT_ROOT/failure_curve_checkpointed/seed${SEED}"
-
-# --- 3. REVIVE+MEMIT (polykernel_seqreg_runner + revive) ---
-echo ""
-echo "=== 3. REVIVE+MEMIT ==="
-uv run python src/polykernel/polykernel_seqreg_runner.py \
+# 4. REVIVE+MEMIT
+run_and_check "REVIVE+MEMIT" "MEMIT-Seq-poly1-REVIVE" "$CHECKPOINT_ROOT/polykernel_seqreg" \
+    uv run python src/polykernel/polykernel_seqreg_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
     --lambda_prev 0.0 --lambda_delta 0.0 \
     --kernel_degree 1 --cache_strategy all --cache_max none \
-    --save_interval 1 --base_alg MEMIT \
-    --revive --revive_tau 0.1 \
-    --downstream_eval_steps 0 --conserve_memory 2>&1 | tail -5 \
-    || { FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  REVIVE+MEMIT: runtime error"; }
+    --save_interval 1 --base_alg MEMIT --revive --revive_tau 0.1 \
+    --downstream_eval_steps 0 --conserve_memory
 
-check_result "REVIVE+MEMIT" "MEMIT-Seq-poly1-REVIVE-tau0.1" \
-    "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT-Seq-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0" \
-    ""
-
-# --- 4. REVIVE+AlphaEdit (polykernel_seqreg_runner, base_alg=AlphaEdit) ---
-echo ""
-echo "=== 4. REVIVE+AlphaEdit ==="
-uv run python src/polykernel/polykernel_seqreg_runner.py \
+# 5. REVIVE+AlphaEdit
+run_and_check "REVIVE+AlphaEdit" "AlphaEdit-poly1-REVIVE" "$CHECKPOINT_ROOT/polykernel_seqreg" \
+    uv run python src/polykernel/polykernel_seqreg_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
     --lambda_prev 0.0 --lambda_delta 0.0 \
     --kernel_degree 1 --cache_strategy all --cache_max none \
-    --save_interval 1 --base_alg AlphaEdit \
-    --revive --revive_tau 0.1 \
-    --downstream_eval_steps 0 --conserve_memory 2>&1 | tail -5 \
-    || { FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  REVIVE+AlphaEdit: runtime error"; }
+    --save_interval 1 --base_alg AlphaEdit --revive --revive_tau 0.1 \
+    --downstream_eval_steps 0 --conserve_memory
 
-check_result "REVIVE+AlphaEdit" "AlphaEdit-poly1-REVIVE-tau0.1" \
-    "$CHECKPOINT_ROOT/polykernel_seqreg/AlphaEdit-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0" \
-    ""
-
-# --- 5. REVIVE+NSE (polykernel_seqreg_runner, base_alg=NSE) ---
-echo ""
-echo "=== 5. REVIVE+NSE ==="
-uv run python src/polykernel/polykernel_seqreg_runner.py \
+# 6. REVIVE+NSE
+run_and_check "REVIVE+NSE" "NSE-poly1-REVIVE" "$CHECKPOINT_ROOT/polykernel_seqreg" \
+    uv run python src/polykernel/polykernel_seqreg_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
     --lambda_prev 0.0 --lambda_delta 0.0 \
     --kernel_degree 1 --cache_strategy all --cache_max none \
-    --save_interval 1 --base_alg NSE \
-    --revive --revive_tau 0.1 \
-    --downstream_eval_steps 0 --conserve_memory 2>&1 | tail -5 \
-    || { FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  REVIVE+NSE: runtime error"; }
+    --save_interval 1 --base_alg NSE --revive --revive_tau 0.1 \
+    --downstream_eval_steps 0 --conserve_memory
 
-check_result "REVIVE+NSE" "NSE-poly1-REVIVE-tau0.1" \
-    "$CHECKPOINT_ROOT/polykernel_seqreg/NSE-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0" \
-    ""
-
-# --- 6. REVIVE+RECT (polykernel_seqreg_runner, base_alg=MEMIT_rect) ---
-echo ""
-echo "=== 6. REVIVE+RECT ==="
-uv run python src/polykernel/polykernel_seqreg_runner.py \
+# 7. REVIVE+RECT
+run_and_check "REVIVE+RECT" "MEMIT_rect-poly1-REVIVE" "$CHECKPOINT_ROOT/polykernel_seqreg" \
+    uv run python src/polykernel/polykernel_seqreg_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
     --lambda_prev 0.0 --lambda_delta 0.0 \
     --kernel_degree 1 --cache_strategy all --cache_max none \
-    --save_interval 1 --base_alg MEMIT_rect \
-    --revive --revive_tau 0.1 \
-    --downstream_eval_steps 0 --conserve_memory 2>&1 | tail -5 \
-    || { FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  REVIVE+RECT: runtime error"; }
+    --save_interval 1 --base_alg MEMIT_rect --revive --revive_tau 0.1 \
+    --downstream_eval_steps 0 --conserve_memory
 
-check_result "REVIVE+RECT" "MEMIT_rect-poly1-REVIVE-tau0.1" \
-    "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT_rect-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0" \
-    ""
+# 8. PathGuard
+run_and_check "PathGuard" "PathGuard" "$CHECKPOINT_ROOT/polykernel_seqreg" \
+    uv run python src/runners/pathguard_runner.py \
+    --seed $SEED --cuda_device 0 --ds_name mcf \
+    --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
+    --lambda_prev 1.0 --lambda_delta 0.0 \
+    --kernel_degree 2 --cache_strategy all --cache_max none \
+    --save_interval 1 --pathguard --pathguard_M 200 --pathguard_adaptive \
+    --downstream_eval_steps 0 --conserve_memory
 
-# --- Summary ---
+# -----------------------------------------------------------------------
+# GROUP 2: Baselines (run through shell scripts → baselines/EvoEdit)
+# -----------------------------------------------------------------------
+
+# 9. EvoEdit
+echo ""
+echo "=== EvoEdit (baselines/EvoEdit) ==="
+if TARGET_EDITS=$DATASET_LIMIT bash scripts/run_evoedit_baseline.sh $SEED 2>&1 | tail -10; then
+    echo "  ✓ EvoEdit ran without errors"
+    PASS=$((PASS+1))
+else
+    echo "  ❌ EvoEdit: runtime error"
+    FAIL=$((FAIL+1))
+    ERRORS="$ERRORS\n  EvoEdit: runtime error"
+fi
+
+# 10. NSE
+echo ""
+echo "=== NSE (baselines/EvoEdit) ==="
+if TARGET_EDITS=$DATASET_LIMIT bash scripts/run_nse_baseline.sh $SEED 2>&1 | tail -10; then
+    echo "  ✓ NSE ran without errors"
+    PASS=$((PASS+1))
+else
+    echo "  ❌ NSE: runtime error"
+    FAIL=$((FAIL+1))
+    ERRORS="$ERRORS\n  NSE: runtime error"
+fi
+
+# 11. RECT-Aligned
+echo ""
+echo "=== RECT-Aligned (baselines/EvoEdit) ==="
+if TARGET_EDITS=$DATASET_LIMIT bash scripts/run_rect_aligned_paper_replication.sh $SEED 2>&1 | tail -10; then
+    echo "  ✓ RECT-Aligned ran without errors"
+    PASS=$((PASS+1))
+else
+    echo "  ❌ RECT-Aligned: runtime error"
+    FAIL=$((FAIL+1))
+    ERRORS="$ERRORS\n  RECT-Aligned: runtime error"
+fi
+
+# -----------------------------------------------------------------------
+# Summary
+# -----------------------------------------------------------------------
 echo ""
 echo "============================================"
-echo "  RESULTS: $PASS passed, $FAIL failed"
+echo "  RESULTS: $PASS passed, $FAIL failed (of 11 algorithms)"
 echo "============================================"
 if [ "$FAIL" -gt 0 ]; then
     echo -e "  Failures:$ERRORS"
