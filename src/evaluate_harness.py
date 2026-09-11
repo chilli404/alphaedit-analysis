@@ -58,8 +58,34 @@ class ExperimentHooks:
     # Additional kwargs passed to apply_fn (e.g. cache_c, P for AlphaEdit).
 
 
+CANONICAL_MODEL_NAMES = {
+    "llama": "Meta-Llama-3-8B-Instruct",
+    "gpt-j": "EleutherAI_gpt-j-6B",
+    "qwen": "Qwen2.5-7B-Instruct",
+}
+
+
+def _canonical_name_or_path(model_name: str) -> str:
+    """Map any model name variant to the ONE canonical stats directory name.
+
+    The vendor code uses model.config._name_or_path.replace("/","_") to find
+    covariance stats. Without normalization, loading from different paths
+    (HuggingFace, S3, local) produces different _name_or_path values,
+    requiring 8+ copies of stats files. This normalizes to one.
+    """
+    mn = model_name.lower()
+    for key, canonical in CANONICAL_MODEL_NAMES.items():
+        if key in mn:
+            return canonical
+    return model_name.split("/")[-1]
+
+
 def load_model_and_tok(model_name: str, device: str = "cuda", dtype=None, token: str = None):
-    """Load model and tokenizer, resolving paths via model_resolve."""
+    """Load model and tokenizer, resolving paths via model_resolve.
+
+    Sets model.config._name_or_path to a canonical value so the vendor
+    stats-loading code finds covariance files under one directory.
+    """
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     sys.path.insert(0, str(Path(__file__).resolve().parent / "util"))
@@ -77,6 +103,10 @@ def load_model_and_tok(model_name: str, device: str = "cuda", dtype=None, token:
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
     tok.padding_side = "left"
+
+    # Normalize _name_or_path so vendor code finds stats under ONE directory
+    model.config._name_or_path = _canonical_name_or_path(model_name)
+
     return model, tok
 
 

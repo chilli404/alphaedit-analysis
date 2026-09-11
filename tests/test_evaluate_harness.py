@@ -122,6 +122,84 @@ class TestResultFileStructure:
         assert results_dir.exists()
 
 
+class TestCanonicalModelNames:
+    """Every model name variant must resolve to ONE canonical stats directory name.
+
+    Without this, link_stats.sh had to copy 8 variant directories (80 files).
+    With it, one canonical copy + symlinks.
+    """
+
+    LLAMA_VARIANTS = [
+        "meta-llama/Meta-Llama-3-8B-Instruct",
+        "NousResearch/Meta-Llama-3-8B-Instruct",
+        "/s3-data/continual-learning/models/Meta-Llama-3-8B",
+        "Meta-Llama-3-8B-Instruct",
+        "NousResearch_Meta-Llama-3-8B-Instruct",
+    ]
+    GPTJ_VARIANTS = [
+        "EleutherAI/gpt-j-6b",
+        "EleutherAI/gpt-j-6B",
+        "/s3-data/continual-learning/models/gpt-j-6b",
+        "gpt-j-6b",
+    ]
+    QWEN_VARIANTS = [
+        "Qwen/Qwen2.5-7B-Instruct",
+        "Qwen2.5-7B-Instruct",
+    ]
+
+    @pytest.mark.parametrize("model_name", LLAMA_VARIANTS)
+    def test_llama_variants_all_resolve_same(self, model_name):
+        from evaluate_harness import _canonical_name_or_path
+        assert _canonical_name_or_path(model_name) == "Meta-Llama-3-8B-Instruct"
+
+    @pytest.mark.parametrize("model_name", GPTJ_VARIANTS)
+    def test_gptj_variants_all_resolve_same(self, model_name):
+        from evaluate_harness import _canonical_name_or_path
+        assert _canonical_name_or_path(model_name) == "EleutherAI_gpt-j-6B"
+
+    @pytest.mark.parametrize("model_name", QWEN_VARIANTS)
+    def test_qwen_variants_all_resolve_same(self, model_name):
+        from evaluate_harness import _canonical_name_or_path
+        assert _canonical_name_or_path(model_name) == "Qwen2.5-7B-Instruct"
+
+    def test_all_models_produce_distinct_canonical_names(self):
+        from evaluate_harness import _canonical_name_or_path
+        names = {
+            _canonical_name_or_path("meta-llama/Meta-Llama-3-8B-Instruct"),
+            _canonical_name_or_path("EleutherAI/gpt-j-6b"),
+            _canonical_name_or_path("Qwen/Qwen2.5-7B-Instruct"),
+        }
+        assert len(names) == 3
+
+    def test_canonical_name_matches_stats_dir_pattern(self):
+        """The canonical name, after replace('/', '_'), must match the stats directory
+        name used by the vendor code: STATS_DIR / model_name / wikipedia_stats."""
+        from evaluate_harness import _canonical_name_or_path
+        # Vendor does: model_name = model.config._name_or_path.replace("/", "_")
+        # Stats are stored under: data/stats/{canonical}/wikipedia_stats/
+        for model, expected_dir in [
+            ("meta-llama/Meta-Llama-3-8B-Instruct", "Meta-Llama-3-8B-Instruct"),
+            ("EleutherAI/gpt-j-6b", "EleutherAI_gpt-j-6B"),
+            ("Qwen/Qwen2.5-7B-Instruct", "Qwen2.5-7B-Instruct"),
+        ]:
+            canonical = _canonical_name_or_path(model)
+            # After vendor's replace("/", "_") the canonical name IS the dir name
+            assert canonical.replace("/", "_") == expected_dir
+
+    @pytest.mark.parametrize("base_alg", ["MEMIT", "AlphaEdit", "NSE", "MEMIT_rect"])
+    @pytest.mark.parametrize("model_name", [
+        "meta-llama/Meta-Llama-3-8B-Instruct",
+        "EleutherAI/gpt-j-6b",
+        "Qwen/Qwen2.5-7B-Instruct",
+    ])
+    def test_every_alg_model_combination(self, base_alg, model_name):
+        """Every algorithm × model combination must produce a valid canonical name."""
+        from evaluate_harness import _canonical_name_or_path
+        canonical = _canonical_name_or_path(model_name)
+        assert canonical  # not empty
+        assert "/" not in canonical  # no slashes (vendor does replace("/","_"))
+
+
 class TestCheckpointIntegration:
     """Checkpoint hooks must be called at the right times."""
 
