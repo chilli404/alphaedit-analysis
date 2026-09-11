@@ -131,7 +131,7 @@ run_and_check "MEMIT-Seq" "MEMIT-Seq" "$CHECKPOINT_ROOT/polykernel_seqreg" \
     --lambda_prev 1.0 --lambda_delta 0.0 \
     --kernel_degree 1 --cache_strategy all --cache_max none \
     --save_interval 1 --base_alg MEMIT \
-    --downstream_eval_steps 0 --conserve_memory
+    --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
 run_and_check "REVIVE+MEMIT" "MEMIT-Seq-poly1-REVIVE" "$CHECKPOINT_ROOT/polykernel_seqreg" \
     uv run python src/polykernel/polykernel_seqreg_runner.py \
@@ -140,7 +140,7 @@ run_and_check "REVIVE+MEMIT" "MEMIT-Seq-poly1-REVIVE" "$CHECKPOINT_ROOT/polykern
     --lambda_prev 0.0 --lambda_delta 0.0 \
     --kernel_degree 1 --cache_strategy all --cache_max none \
     --save_interval 1 --base_alg MEMIT --revive --revive_tau 0.1 \
-    --downstream_eval_steps 0 --conserve_memory
+    --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
 run_and_check "REVIVE+AlphaEdit" "AlphaEdit-poly1-REVIVE" "$CHECKPOINT_ROOT/polykernel_seqreg" \
     uv run python src/polykernel/polykernel_seqreg_runner.py \
@@ -149,7 +149,7 @@ run_and_check "REVIVE+AlphaEdit" "AlphaEdit-poly1-REVIVE" "$CHECKPOINT_ROOT/poly
     --lambda_prev 0.0 --lambda_delta 0.0 \
     --kernel_degree 1 --cache_strategy all --cache_max none \
     --save_interval 1 --base_alg AlphaEdit --revive --revive_tau 0.1 \
-    --downstream_eval_steps 0 --conserve_memory
+    --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
 run_and_check "REVIVE+NSE" "NSE-poly1-REVIVE" "$CHECKPOINT_ROOT/polykernel_seqreg" \
     uv run python src/polykernel/polykernel_seqreg_runner.py \
@@ -158,7 +158,7 @@ run_and_check "REVIVE+NSE" "NSE-poly1-REVIVE" "$CHECKPOINT_ROOT/polykernel_seqre
     --lambda_prev 0.0 --lambda_delta 0.0 \
     --kernel_degree 1 --cache_strategy all --cache_max none \
     --save_interval 1 --base_alg NSE --revive --revive_tau 0.1 \
-    --downstream_eval_steps 0 --conserve_memory
+    --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
 run_and_check "REVIVE+RECT" "MEMIT_rect-poly1-REVIVE" "$CHECKPOINT_ROOT/polykernel_seqreg" \
     uv run python src/polykernel/polykernel_seqreg_runner.py \
@@ -167,7 +167,7 @@ run_and_check "REVIVE+RECT" "MEMIT_rect-poly1-REVIVE" "$CHECKPOINT_ROOT/polykern
     --lambda_prev 0.0 --lambda_delta 0.0 \
     --kernel_degree 1 --cache_strategy all --cache_max none \
     --save_interval 1 --base_alg MEMIT_rect --revive --revive_tau 0.1 \
-    --downstream_eval_steps 0 --conserve_memory
+    --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
 # -----------------------------------------------------------------------
 # GROUP 3: pathguard_runner
@@ -180,15 +180,18 @@ run_and_check "PathGuard" "PathGuard" "$CHECKPOINT_ROOT/polykernel_seqreg" \
     --lambda_prev 1.0 --lambda_delta 0.0 \
     --kernel_degree 2 --cache_strategy all --cache_max none \
     --save_interval 1 --pathguard --pathguard_M 200 --pathguard_adaptive \
-    --downstream_eval_steps 0 --conserve_memory
+    --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
 # -----------------------------------------------------------------------
 # GROUP 4: Baselines (EvoEdit, NSE, RECT via shell scripts)
 # -----------------------------------------------------------------------
 
+# Baselines hardcode --num_edits=100, so TARGET_EDITS=100 gives 1 batch
+BASELINE_EDITS=100
+
 log "START: EvoEdit (baselines)"
 t0=$(date +%s)
-if timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT bash scripts/run_evoedit_baseline.sh $SEED" 2>&1 | tail -15; then
+if timeout "$TIMEOUT" bash -c "TARGET_EDITS=$BASELINE_EDITS bash scripts/run_evoedit_baseline.sh $SEED" 2>&1 | tail -15; then
     elapsed=$(($(date +%s) - t0))
     log "✓ EvoEdit PASSED (${elapsed}s)"
     PASS=$((PASS+1))
@@ -206,7 +209,7 @@ fi
 
 log "START: NSE (baselines)"
 t0=$(date +%s)
-if timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT bash scripts/run_nse_baseline.sh $SEED" 2>&1 | tail -15; then
+if timeout "$TIMEOUT" bash -c "TARGET_EDITS=$BASELINE_EDITS bash scripts/run_nse_baseline.sh $SEED" 2>&1 | tail -15; then
     elapsed=$(($(date +%s) - t0))
     log "✓ NSE PASSED (${elapsed}s)"
     PASS=$((PASS+1))
@@ -224,7 +227,7 @@ fi
 
 log "START: RECT-Aligned (baselines)"
 t0=$(date +%s)
-if timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT bash scripts/run_rect_aligned_paper_replication.sh $SEED" 2>&1 | tail -15; then
+if timeout "$TIMEOUT" bash -c "TARGET_EDITS=$BASELINE_EDITS bash scripts/run_rect_aligned_paper_replication.sh $SEED" 2>&1 | tail -15; then
     elapsed=$(($(date +%s) - t0))
     log "✓ RECT-Aligned PASSED (${elapsed}s)"
     PASS=$((PASS+1))
