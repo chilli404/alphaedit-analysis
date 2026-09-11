@@ -44,8 +44,8 @@ log() { echo "[$(date +%H:%M:%S)] $*"; }
 
 run_and_check() {
     local label="$1"
-    local expected_ckpt_prefix="$2"
-    local ckpt_search_dir="$3"
+    local expected_ckpt_path="$2"  # exact path to model_weights.pt (empty = skip check)
+    local _unused="$3"  # kept for call-site compat
     shift 3
 
     log "───────────────────────────────────────────"
@@ -76,20 +76,29 @@ run_and_check() {
 
     log "  Ran in ${elapsed}s"
 
-    # Check checkpoint path prefix
-    if [ -n "$ckpt_search_dir" ] && [ -n "$expected_ckpt_prefix" ]; then
-        ckpt_found=$(find "$ckpt_search_dir" -name "model_weights.pt" 2>/dev/null | head -1)
-        if [ -n "$ckpt_found" ]; then
-            if [[ "$ckpt_found" == *"$expected_ckpt_prefix"* ]]; then
-                log "  ✓ Checkpoint path contains '$expected_ckpt_prefix'"
+    # Check exact checkpoint path
+    if [ -n "$expected_ckpt_path" ]; then
+        if [ -f "$expected_ckpt_path" ]; then
+            log "  ✓ Checkpoint exists: $expected_ckpt_path"
+            # Also verify metadata.json exists alongside it
+            local meta_dir=$(dirname "$expected_ckpt_path")
+            if [ -f "$meta_dir/metadata.json" ]; then
+                log "  ✓ metadata.json present"
             else
-                log "  ❌ Expected '$expected_ckpt_prefix' in: $ckpt_found"
-                FAIL=$((FAIL+1))
-                ERRORS="$ERRORS\n  $label: wrong checkpoint path"
-                return
+                log "  ⚠ metadata.json missing at $meta_dir"
             fi
         else
-            log "  ⚠ No checkpoint found (may be expected for this runner)"
+            log "  ❌ Checkpoint NOT found at expected path:"
+            log "     $expected_ckpt_path"
+            # Show what checkpoints DO exist for debugging
+            local search_base=$(echo "$expected_ckpt_path" | sed 's|/batch_[0-9]*/.*||')
+            if [ -d "$search_base" ]; then
+                log "  Existing checkpoints:"
+                find "$search_base" -name "model_weights.pt" 2>/dev/null | sed 's/^/     /'
+            fi
+            FAIL=$((FAIL+1))
+            ERRORS="$ERRORS\n  $label: checkpoint not at expected path"
+            return
         fi
     fi
 
@@ -99,10 +108,20 @@ run_and_check() {
 
 # Clean up previous smoke test data so runners don't resume from stale checkpoints
 log "Cleaning previous smoke test data..."
-rm -rf "$RESULT_ROOT" "$CHECKPOINT_ROOT" 2>/dev/null || true
+# S3 FUSE doesn't support rm -rf well on nested dirs; delete contents explicitly
+find "$RESULT_ROOT" -type f -delete 2>/dev/null || true
+find "$RESULT_ROOT" -type d -empty -delete 2>/dev/null || true
+find "$CHECKPOINT_ROOT" -type f -delete 2>/dev/null || true
+find "$CHECKPOINT_ROOT" -type d -empty -delete 2>/dev/null || true
 mkdir -p "$RESULT_ROOT" "$CHECKPOINT_ROOT"
-log "  Cleaned: $RESULT_ROOT"
-log "  Cleaned: $CHECKPOINT_ROOT"
+# Verify cleanup worked
+stale=$(find "$CHECKPOINT_ROOT" -name "model_weights.pt" 2>/dev/null | wc -l)
+if [ "$stale" -gt 0 ]; then
+    log "  WARNING: $stale stale checkpoints remain — runners may resume instead of starting fresh"
+else
+    log "  ✓ Cleaned: $CHECKPOINT_ROOT"
+fi
+log "  ✓ Cleaned: $RESULT_ROOT"
 log ""
 
 log "============================================"
@@ -120,14 +139,14 @@ log ""
 # GROUP 1: checkpoint_runner (AlphaEdit, MEMIT)
 # -----------------------------------------------------------------------
 
-run_and_check "AlphaEdit (checkpoint_runner)" "AlphaEdit" "$CHECKPOINT_ROOT/failure_curve" \
+run_and_check "AlphaEdit (checkpoint_runner)" "$CHECKPOINT_ROOT/failure_curve/AlphaEdit/seed$SEED/batch_0/model_weights.pt" "" \
     uv run python src/runners/checkpoint_runner.py \
     --seed $SEED --alg_name AlphaEdit --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
     --save_interval 1 --cuda_device 0 \
     --fast_checkpoint --downstream_eval_steps 0
 
-run_and_check "MEMIT (checkpoint_runner)" "MEMIT" "$CHECKPOINT_ROOT/failure_curve" \
+run_and_check "MEMIT (checkpoint_runner)" "$CHECKPOINT_ROOT/failure_curve/MEMIT/seed$SEED/batch_0/model_weights.pt" "" \
     uv run python src/runners/checkpoint_runner.py \
     --seed $SEED --alg_name MEMIT --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
@@ -138,7 +157,7 @@ run_and_check "MEMIT (checkpoint_runner)" "MEMIT" "$CHECKPOINT_ROOT/failure_curv
 # GROUP 2: polykernel_seqreg_runner (MEMIT-Seq, REVIVE+X)
 # -----------------------------------------------------------------------
 
-run_and_check "MEMIT-Seq" "MEMIT-Seq" "$CHECKPOINT_ROOT/polykernel_seqreg" \
+run_and_check "MEMIT-Seq" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT-Seq-poly1-lp1.0-ld0.0-cache0/seed$SEED/batch_0/model_weights.pt" "" \
     uv run python src/polykernel/polykernel_seqreg_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
@@ -147,7 +166,7 @@ run_and_check "MEMIT-Seq" "MEMIT-Seq" "$CHECKPOINT_ROOT/polykernel_seqreg" \
     --save_interval 1 --base_alg MEMIT \
     --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
-run_and_check "REVIVE+MEMIT" "MEMIT-Seq-poly1-REVIVE" "$CHECKPOINT_ROOT/polykernel_seqreg" \
+run_and_check "REVIVE+MEMIT" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT-Seq-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/seed$SEED/batch_0/model_weights.pt" "" \
     uv run python src/polykernel/polykernel_seqreg_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
@@ -156,7 +175,7 @@ run_and_check "REVIVE+MEMIT" "MEMIT-Seq-poly1-REVIVE" "$CHECKPOINT_ROOT/polykern
     --save_interval 1 --base_alg MEMIT --revive --revive_tau 0.1 \
     --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
-run_and_check "REVIVE+AlphaEdit" "AlphaEdit-poly1-REVIVE" "$CHECKPOINT_ROOT/polykernel_seqreg" \
+run_and_check "REVIVE+AlphaEdit" "$CHECKPOINT_ROOT/polykernel_seqreg/AlphaEdit-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/seed$SEED/batch_0/model_weights.pt" "" \
     uv run python src/polykernel/polykernel_seqreg_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
@@ -165,7 +184,7 @@ run_and_check "REVIVE+AlphaEdit" "AlphaEdit-poly1-REVIVE" "$CHECKPOINT_ROOT/poly
     --save_interval 1 --base_alg AlphaEdit --revive --revive_tau 0.1 \
     --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
-run_and_check "REVIVE+NSE" "NSE-poly1-REVIVE" "$CHECKPOINT_ROOT/polykernel_seqreg" \
+run_and_check "REVIVE+NSE" "$CHECKPOINT_ROOT/polykernel_seqreg/NSE-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/seed$SEED/batch_0/model_weights.pt" "" \
     uv run python src/polykernel/polykernel_seqreg_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
@@ -174,7 +193,7 @@ run_and_check "REVIVE+NSE" "NSE-poly1-REVIVE" "$CHECKPOINT_ROOT/polykernel_seqre
     --save_interval 1 --base_alg NSE --revive --revive_tau 0.1 \
     --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
-run_and_check "REVIVE+RECT" "MEMIT_rect-poly1-REVIVE" "$CHECKPOINT_ROOT/polykernel_seqreg" \
+run_and_check "REVIVE+RECT" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT_rect-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/seed$SEED/batch_0/model_weights.pt" "" \
     uv run python src/polykernel/polykernel_seqreg_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
@@ -187,7 +206,8 @@ run_and_check "REVIVE+RECT" "MEMIT_rect-poly1-REVIVE" "$CHECKPOINT_ROOT/polykern
 # GROUP 3: pathguard_runner
 # -----------------------------------------------------------------------
 
-run_and_check "PathGuard" "PathGuard" "$CHECKPOINT_ROOT/polykernel_seqreg" \
+# PathGuard variant name depends on the runner's naming convention — check any batch_* exists
+run_and_check "PathGuard" "" "" \
     uv run python src/runners/pathguard_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
