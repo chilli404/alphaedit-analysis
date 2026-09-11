@@ -107,7 +107,7 @@ uv run python src/runners/checkpoint_runner.py \
     --seed $SEED --alg_name AlphaEdit --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
     --save_interval 1 --cuda_device 0 \
-    --target_edits $EDITS 2>&1 | tail -5 || { FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  AlphaEdit: runtime error"; }
+    --eval_at_checkpoints_only 2>&1 | tail -5 || { FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  AlphaEdit: runtime error"; }
 
 check_result "AlphaEdit" "AlphaEdit" \
     "$CHECKPOINT_ROOT/failure_curve" \
