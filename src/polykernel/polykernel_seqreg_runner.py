@@ -190,7 +190,7 @@ def build_polykernel_seqreg_script(
     kernel_prev: bool = True,
     revive: bool = False,
     revive_tau: float = 0.1,
-    revive_svd_device: str = "cpu",
+    revive_svd_device: str = "cuda",
     revive_svd_dtype: str = "float32",
     revive_cache_dir: str = "",
     revive_log_interval: int = 1,
@@ -1231,6 +1231,7 @@ def run(args: argparse.Namespace) -> None:
     # Variant-specific output directory (log + metadata go here alongside run_000/)
     variant_dir = results_dir / variant_name
     # Validate results path contains the correct base algorithm prefix
+    _expected_prefix = "MEMIT-Seq" if args.base_alg == "MEMIT" else args.base_alg
     if _expected_prefix not in variant_name:
         raise RuntimeError(
             f"Results variant mismatch: --base_alg={args.base_alg} expects "
@@ -1473,7 +1474,7 @@ def main():
                              "split_rank is the first index where cumsum(S)/sum(S) > tau. "
                              "Higher tau = more aggressive filtering. "
                              "Sweep {0.05, 0.10, 0.20, 0.30, 0.40} to calibrate.")
-    parser.add_argument("--revive_svd_device", default="cpu",
+    parser.add_argument("--revive_svd_device", default="cuda",
                         help="Device for SVD computation and storage (default: cpu)")
     parser.add_argument("--revive_svd_dtype", default="float32",
                         choices=["float32", "float64"],

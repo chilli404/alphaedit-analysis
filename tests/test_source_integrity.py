@@ -270,6 +270,15 @@ class TestReviveImplementation:
         source = self.POLYKERNEL_RUNNER.read_text()
         assert "revive_tau: float = 0.1" in source or "revive_tau=0.1" in source
 
+    def test_revive_svd_runs_on_gpu_by_default(self):
+        """Reference REVIVE code runs SVD on GPU (wherever the weight lives).
+        Our default must match — cpu SVD is 10x slower and unnecessary."""
+        source = self.POLYKERNEL_RUNNER.read_text()
+        assert 'revive_svd_device", default="cuda"' in source or \
+               'revive_svd_device: str = "cuda"' in source, (
+            "REVIVE SVD default device must be 'cuda' to match reference implementation"
+        )
+
 
 # ---------------------------------------------------------------------------
 # 4. Evaluation metric conventions
