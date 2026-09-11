@@ -256,6 +256,55 @@ class TestMetricConventions:
 # 5. Hparams integrity for all algorithms
 # ---------------------------------------------------------------------------
 
+class TestGlueEvalCompatibility:
+    """GLUE eval context length map must include all model name variants we use."""
+
+    GLUE_MAP_FILE = VENDOR_ROOT / "glue_eval" / "useful_functions.py"
+
+    def _get_glue_map_keys(self, patched=True):
+        """Get GLUE map keys, optionally after applying runtime patches."""
+        source = self.GLUE_MAP_FILE.read_text()
+        if patched:
+            sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
+            from source_patches import apply_glue_context_patch
+            source = apply_glue_context_patch(source)
+        import re
+        match = re.search(r"MODEL_NAME_TO_MAXIMUM_CONTEXT_LENGTH_MAP\s*=\s*\{([^}]+)\}", source)
+        if not match:
+            return []
+        keys = re.findall(r'"([^"]+)":\s*\d+', match.group(1))
+        return keys
+
+    def test_glue_map_file_exists(self):
+        assert self.GLUE_MAP_FILE.exists()
+
+    def test_llama_in_glue_map(self):
+        """At least one Llama variant must be in the GLUE context length map."""
+        keys = self._get_glue_map_keys()
+        llama_keys = [k for k in keys if "llama" in k]
+        assert llama_keys, f"No Llama entry in GLUE map. Keys: {keys}"
+
+    def test_gptj_in_glue_map(self):
+        keys = self._get_glue_map_keys()
+        gptj_keys = [k for k in keys if "gpt-j" in k or "gpt_j" in k]
+        assert gptj_keys, f"No GPT-J entry in GLUE map. Keys: {keys}"
+
+    @pytest.mark.parametrize("model_name,expected_key", [
+        ("meta-llama/Meta-Llama-3-8B-Instruct", "llama"),
+        ("NousResearch/Meta-Llama-3-8B-Instruct", "llama"),
+        ("EleutherAI/gpt-j-6b", "gpt-j"),
+    ])
+    def test_model_name_resolves_to_glue_key(self, model_name, expected_key):
+        """model.config._name_or_path.lower().split('/')[-1] must match a GLUE map key."""
+        keys = self._get_glue_map_keys()
+        resolved = model_name.lower().split("/")[-1]
+        matching = [k for k in keys if k in resolved or resolved in k]
+        assert matching, (
+            f"Model '{model_name}' resolves to '{resolved}' which has no match in GLUE map. "
+            f"Available keys: {keys}"
+        )
+
+
 class TestHparamsIntegrity:
     """All algorithm hparams files must be valid JSON with required fields."""
 

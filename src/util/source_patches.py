@@ -93,7 +93,7 @@ def apply_canonical_name_patch(source: str) -> str:
 
 # --- GLUE context length map patch ---
 GLUE_MAP_ANCHOR = '"gpt2-medium": 1024'
-GLUE_MAP_EXTENDED = '"gpt2-medium": 1024, "qwen2.5-7b-instruct": 4096, "gpt-j-6b": 2048'
+GLUE_MAP_EXTENDED = '"gpt2-medium": 1024, "qwen2.5-7b-instruct": 4096, "gpt-j-6b": 2048, "meta-llama-3-8b-instruct": 4096, "nousresearch_meta-llama-3-8b-instruct": 4096'
 
 
 def apply_glue_context_patch(source: str) -> str:
