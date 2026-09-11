@@ -48,17 +48,23 @@ run_and_check() {
     local ckpt_search_dir="$3"
     shift 3
 
-    log "START: $label"
+    log "───────────────────────────────────────────"
+    log "START [$((PASS + FAIL + 1))/11]: $label"
+    log "  Config: $*" | head -c 200
+    echo ""
     local t0=$(date +%s)
 
     # Run with timeout, capture output to temp file to avoid SIGPIPE
     local logfile=$(mktemp)
     timeout "$TIMEOUT" "$@" > "$logfile" 2>&1
     local exit_code=$?
-    tail -20 "$logfile"
-    rm -f "$logfile"
     local t1=$(date +%s)
     local elapsed=$((t1 - t0))
+
+    # Show last 30 lines of output
+    log "  Output (last 30 lines):"
+    tail -30 "$logfile" | sed 's/^/    /'
+    rm -f "$logfile"
 
     if [ "$exit_code" -eq 124 ]; then
         log "❌ $label: TIMEOUT after ${TIMEOUT}s"
@@ -100,7 +106,11 @@ log "  SMOKE TEST: All Algorithms"
 log "  Results:     $RESULT_ROOT"
 log "  Checkpoints: $CHECKPOINT_ROOT"
 log "  Timeout:     ${TIMEOUT}s per algorithm"
+log "  Batch size:  $EDITS edits"
+log "  Dataset:     $DATASET_LIMIT records ($(($DATASET_LIMIT / $EDITS)) batches)"
+log "  Algorithms:  8 vendor + 3 baselines = 11 total"
 log "============================================"
+log ""
 
 # -----------------------------------------------------------------------
 # GROUP 1: checkpoint_runner (AlphaEdit, MEMIT)
@@ -186,59 +196,41 @@ run_and_check "PathGuard" "PathGuard" "$CHECKPOINT_ROOT/polykernel_seqreg" \
 # GROUP 4: Baselines (EvoEdit, NSE, RECT via shell scripts)
 # -----------------------------------------------------------------------
 
-log "START: EvoEdit (baselines)"
-t0=$(date +%s)
-if timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash scripts/run_evoedit_baseline.sh $SEED" 2>&1 | tail -15; then
-    elapsed=$(($(date +%s) - t0))
-    log "✓ EvoEdit PASSED (${elapsed}s)"
-    PASS=$((PASS+1))
-else
-    exit_code=$?
-    elapsed=$(($(date +%s) - t0))
-    if [ "$exit_code" -eq 124 ]; then
-        log "❌ EvoEdit: TIMEOUT (${TIMEOUT}s)"
-    else
-        log "❌ EvoEdit: FAILED (exit $exit_code, ${elapsed}s)"
-    fi
-    FAIL=$((FAIL+1))
-    ERRORS="$ERRORS\n  EvoEdit: exit $exit_code"
-fi
+run_baseline() {
+    local label="$1"
+    local script="$2"
+    local logfile=$(mktemp)
 
-log "START: NSE (baselines)"
-t0=$(date +%s)
-if timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash scripts/run_nse_baseline.sh $SEED" 2>&1 | tail -15; then
-    elapsed=$(($(date +%s) - t0))
-    log "✓ NSE PASSED (${elapsed}s)"
-    PASS=$((PASS+1))
-else
-    exit_code=$?
-    elapsed=$(($(date +%s) - t0))
-    if [ "$exit_code" -eq 124 ]; then
-        log "❌ NSE: TIMEOUT (${TIMEOUT}s)"
-    else
-        log "❌ NSE: FAILED (exit $exit_code, ${elapsed}s)"
-    fi
-    FAIL=$((FAIL+1))
-    ERRORS="$ERRORS\n  NSE: exit $exit_code"
-fi
+    log "───────────────────────────────────────────"
+    log "START [$((PASS + FAIL + 1))/11]: $label"
+    log "  Script: $script, TARGET_EDITS=$DATASET_LIMIT, NUM_EDITS=$EDITS, SEED=$SEED"
+    local t0=$(date +%s)
 
-log "START: RECT-Aligned (baselines)"
-t0=$(date +%s)
-if timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash scripts/run_rect_aligned_paper_replication.sh $SEED" 2>&1 | tail -15; then
-    elapsed=$(($(date +%s) - t0))
-    log "✓ RECT-Aligned PASSED (${elapsed}s)"
-    PASS=$((PASS+1))
-else
-    exit_code=$?
-    elapsed=$(($(date +%s) - t0))
-    if [ "$exit_code" -eq 124 ]; then
-        log "❌ RECT-Aligned: TIMEOUT (${TIMEOUT}s)"
+    timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash $script $SEED" > "$logfile" 2>&1
+    local exit_code=$?
+    local elapsed=$(( $(date +%s) - t0 ))
+
+    log "  Output (last 30 lines):"
+    tail -30 "$logfile" | sed 's/^/    /'
+    rm -f "$logfile"
+
+    if [ "$exit_code" -eq 0 ]; then
+        PASS=$((PASS+1))
+        log "✓ $label PASSED (${elapsed}s)"
+    elif [ "$exit_code" -eq 124 ]; then
+        FAIL=$((FAIL+1))
+        ERRORS="$ERRORS\n  $label: TIMEOUT (${TIMEOUT}s)"
+        log "❌ $label: TIMEOUT after ${TIMEOUT}s"
     else
-        log "❌ RECT-Aligned: FAILED (exit $exit_code, ${elapsed}s)"
+        FAIL=$((FAIL+1))
+        ERRORS="$ERRORS\n  $label: exit $exit_code"
+        log "❌ $label: FAILED (exit $exit_code, ${elapsed}s)"
     fi
-    FAIL=$((FAIL+1))
-    ERRORS="$ERRORS\n  RECT-Aligned: exit $exit_code"
-fi
+}
+
+run_baseline "EvoEdit (baselines)" "scripts/run_evoedit_baseline.sh"
+run_baseline "NSE (baselines)" "scripts/run_nse_baseline.sh"
+run_baseline "RECT-Aligned (baselines)" "scripts/run_rect_aligned_paper_replication.sh"
 
 # -----------------------------------------------------------------------
 # Summary
