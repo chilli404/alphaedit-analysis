@@ -56,7 +56,7 @@ run_and_check() {
 
     # Run with timeout — filter to show only key progress lines
     PYTHONUNBUFFERED=1 timeout "$TIMEOUT" "$@" 2>&1 | grep -E --line-buffered \
-        "LAYER|CHECKPOINT|Execution took|_edit=|error:|ERROR|Traceback|KeyError|TypeError|Saved|Loading model|Loading checkpoint|Deltas successfully|New weights|Patched|Cached context|Variant:|Started:|Checkpoint dir:|model_name|batch|Complete|REVIVE|Init norm|No existing" \
+        "LAYER|CHECKPOINT|Execution took|_edit=|error:|ERROR|Traceback|KeyError|TypeError|Saved|Loading|Deltas successfully|New weights|Patched|Cached context|Variant:|Started:|Checkpoint dir:|batch|Complete|REVIVE|Init norm|No existing|MEGA-BATCH|Freed|Algorithm:|Save interval:|Fast checkpoint:|Checkpoint run|Finished:|Results:|Run ID:|Segment:|Metadata written|Polykernel|SeqReg|PathGuard|resumed|checkpoint_dir" \
         || true
     local exit_code=${PIPESTATUS[0]}
     local t1=$(date +%s)
@@ -96,6 +96,14 @@ run_and_check() {
     PASS=$((PASS+1))
     log "✓ $label PASSED (${elapsed}s)"
 }
+
+# Clean up previous smoke test data so runners don't resume from stale checkpoints
+log "Cleaning previous smoke test data..."
+rm -rf "$RESULT_ROOT" "$CHECKPOINT_ROOT" 2>/dev/null || true
+mkdir -p "$RESULT_ROOT" "$CHECKPOINT_ROOT"
+log "  Cleaned: $RESULT_ROOT"
+log "  Cleaned: $CHECKPOINT_ROOT"
+log ""
 
 log "============================================"
 log "  SMOKE TEST: All Algorithms"
@@ -203,7 +211,7 @@ run_baseline() {
     local t0=$(date +%s)
 
     PYTHONUNBUFFERED=1 timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash $script $SEED" 2>&1 | grep -E --line-buffered \
-        "LAYER|CHECKPOINT|Execution took|_edit=|error:|ERROR|Traceback|KeyError|TypeError|Saved|Loading|Patched|Complete|batch|Variant:|REVIVE|Init norm|No existing|EvoEdit|NSE|RECT" \
+        "LAYER|CHECKPOINT|Execution took|_edit=|error:|ERROR|Traceback|KeyError|TypeError|Saved|Loading|Deltas successfully|New weights|Patched|Complete|batch|Variant:|REVIVE|Init norm|No existing|MEGA-BATCH|Freed|EvoEdit|NSE|RECT|Algorithm:|Finished:|Results:|Metadata" \
         || true
     local exit_code=${PIPESTATUS[0]}
     local elapsed=$(( $(date +%s) - t0 ))
