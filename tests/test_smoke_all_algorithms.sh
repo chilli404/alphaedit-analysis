@@ -54,16 +54,12 @@ run_and_check() {
     echo ""
     local t0=$(date +%s)
 
-    # Run with timeout, capture output to temp file to avoid SIGPIPE
+    # Run with timeout, tee to both stdout and logfile for live progress
     local logfile=$(mktemp)
-    timeout "$TIMEOUT" "$@" > "$logfile" 2>&1
-    local exit_code=$?
+    timeout "$TIMEOUT" "$@" 2>&1 | tee "$logfile" | sed 's/^/    /' || true
+    local exit_code=${PIPESTATUS[0]}
     local t1=$(date +%s)
     local elapsed=$((t1 - t0))
-
-    # Show last 30 lines of output
-    log "  Output (last 30 lines):"
-    tail -30 "$logfile" | sed 's/^/    /'
     rm -f "$logfile"
 
     if [ "$exit_code" -eq 124 ]; then
@@ -206,12 +202,9 @@ run_baseline() {
     log "  Script: $script, TARGET_EDITS=$DATASET_LIMIT, NUM_EDITS=$EDITS, SEED=$SEED"
     local t0=$(date +%s)
 
-    timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash $script $SEED" > "$logfile" 2>&1
-    local exit_code=$?
+    timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash $script $SEED" 2>&1 | tee "$logfile" | sed 's/^/    /' || true
+    local exit_code=${PIPESTATUS[0]}
     local elapsed=$(( $(date +%s) - t0 ))
-
-    log "  Output (last 30 lines):"
-    tail -30 "$logfile" | sed 's/^/    /'
     rm -f "$logfile"
 
     if [ "$exit_code" -eq 0 ]; then
