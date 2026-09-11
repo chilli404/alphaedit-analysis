@@ -32,8 +32,8 @@ fi
 
 SEED=42
 EDITS=100
-DATASET_LIMIT=200
-TIMEOUT=1200  # 20 minutes per algorithm
+DATASET_LIMIT=100  # exactly 1 batch — no eval, just test editing runs without errors
+TIMEOUT=600  # 10 minutes per algorithm (editing only, no eval)
 PASS=0
 FAIL=0
 SKIP=0
