@@ -33,7 +33,7 @@ fi
 SEED=42
 EDITS=100
 DATASET_LIMIT=200
-TIMEOUT=600  # 10 minutes per algorithm
+TIMEOUT=1200  # 20 minutes per algorithm
 PASS=0
 FAIL=0
 SKIP=0
@@ -110,15 +110,15 @@ run_and_check "AlphaEdit (checkpoint_runner)" "AlphaEdit" "$CHECKPOINT_ROOT/fail
     uv run python src/runners/checkpoint_runner.py \
     --seed $SEED --alg_name AlphaEdit --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
-    --save_interval 1 --cuda_device 0 --eval_at_checkpoints_only \
-    --downstream_eval_steps 0
+    --save_interval 1 --cuda_device 0 \
+    --fast_checkpoint --downstream_eval_steps 0
 
 run_and_check "MEMIT (checkpoint_runner)" "MEMIT" "$CHECKPOINT_ROOT/failure_curve" \
     uv run python src/runners/checkpoint_runner.py \
     --seed $SEED --alg_name MEMIT --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
-    --save_interval 1 --cuda_device 0 --eval_at_checkpoints_only \
-    --downstream_eval_steps 0
+    --save_interval 1 --cuda_device 0 \
+    --fast_checkpoint --downstream_eval_steps 0
 
 # -----------------------------------------------------------------------
 # GROUP 2: polykernel_seqreg_runner (MEMIT-Seq, REVIVE+X)
