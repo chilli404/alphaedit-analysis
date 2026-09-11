@@ -33,9 +33,9 @@ STATS_SUBDIRS=(
     [qwen]="qwen2.5-7b-instruct"
 )
 CANONICALS=(
-    [llama]="Meta-Llama-3-8B-Instruct"
-    [gptj]="EleutherAI_gpt-j-6B"
-    [qwen]="Qwen2.5-7B-Instruct"
+    [llama]="llama3-8b-instruct"
+    [gptj]="gpt-j-6b"
+    [qwen]="qwen2.5-7b-instruct"
 )
 
 # Detect which model family

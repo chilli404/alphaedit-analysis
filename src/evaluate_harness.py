@@ -59,25 +59,28 @@ class ExperimentHooks:
 
 
 CANONICAL_MODEL_NAMES = {
-    "llama": "Meta-Llama-3-8B-Instruct",
-    "gpt-j": "EleutherAI_gpt-j-6B",
-    "qwen": "Qwen2.5-7B-Instruct",
+    "llama": "llama3-8b-instruct",
+    "gpt-j": "gpt-j-6b",
+    "qwen": "qwen2.5-7b-instruct",
 }
 
 
 def _canonical_name_or_path(model_name: str) -> str:
-    """Map any model name variant to the ONE canonical stats directory name.
+    """Map any model name variant to ONE canonical name.
 
-    The vendor code uses model.config._name_or_path.replace("/","_") to find
-    covariance stats. Without normalization, loading from different paths
-    (HuggingFace, S3, local) produces different _name_or_path values,
-    requiring 8+ copies of stats files. This normalizes to one.
+    This name is used for:
+      1. model.config._name_or_path → vendor covariance lookup (.replace("/","_"))
+      2. GLUE context length map (.lower().split("/")[-1])
+      3. Stats directory name (link_stats.sh symlinks)
+
+    All three transforms must produce the same result. Using the stats
+    directory name directly (lowercase, no slashes) satisfies all three.
     """
     mn = model_name.lower()
     for key, canonical in CANONICAL_MODEL_NAMES.items():
         if key in mn:
             return canonical
-    return model_name.split("/")[-1]
+    return model_name.split("/")[-1].lower()
 
 
 def load_model_and_tok(model_name: str, device: str = "cuda", dtype=None, token: str = None):

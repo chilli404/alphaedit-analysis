@@ -62,6 +62,35 @@ def apply_model_list_patch(source: str) -> str:
     return source.replace(SHAPE_MODEL_LIST_ANCHOR, SHAPE_MODEL_LIST_EXTENDED, 1)
 
 
+# --- Canonical model name patch ---
+# Normalizes model.config._name_or_path after loading so that:
+#   1. Covariance lookup (.replace("/","_")) finds the right stats directory
+#   2. GLUE context map (.lower().split("/")[-1]) finds the right entry
+#   3. Stats directory name matches S3 path
+# Using the stats directory name (lowercase, no slashes) satisfies all three.
+
+CANONICAL_NAME_ANCHOR = "        tok.pad_token = tok.eos_token\n    else:"
+CANONICAL_NAME_PATCH = '''        tok.pad_token = tok.eos_token
+        # Normalize _name_or_path to canonical stats directory name
+        _mn = model.config._name_or_path.lower()
+        if "llama" in _mn:
+            model.config._name_or_path = "llama3-8b-instruct"
+        elif "gpt-j" in _mn:
+            model.config._name_or_path = "gpt-j-6b"
+        elif "qwen" in _mn:
+            model.config._name_or_path = "qwen2.5-7b-instruct"
+    else:'''
+
+
+def apply_canonical_name_patch(source: str) -> str:
+    """Normalize _name_or_path after model loading. Idempotent."""
+    if CANONICAL_NAME_ANCHOR not in source:
+        return source
+    if 'model.config._name_or_path = "llama3-8b-instruct"' in source:
+        return source  # Already patched
+    return source.replace(CANONICAL_NAME_ANCHOR, CANONICAL_NAME_PATCH, 1)
+
+
 # --- GLUE context length map patch ---
 GLUE_MAP_ANCHOR = '"gpt2-medium": 1024'
 GLUE_MAP_EXTENDED = '"gpt2-medium": 1024, "qwen2.5-7b-instruct": 4096, "gpt-j-6b": 2048'
@@ -148,9 +177,10 @@ def patch_evaluate_file(alphaedit_root: Path) -> None:
     patched = apply_p_cache_patch(source)
     patched = apply_model_list_patch(patched)
     patched = apply_model_dtype_patch(patched)
+    patched = apply_canonical_name_patch(patched)
     if patched != source:
         eval_path.write_text(patched)
-        print("  Applied P-cache + model-list + dtype patches to evaluate.py")
+        print("  Applied P-cache + model-list + dtype + canonical-name patches to evaluate.py")
     # Also patch layer_stats.py (called by AlphaEdit_main.py for on-the-fly stats)
     patch_layer_stats_file(alphaedit_root)
     # Patch memit_main.py with NaN guard + kwargs for compute_z

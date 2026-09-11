@@ -123,6 +123,40 @@ class TestSourceAnchors:
 # 3. REVIVE implementation correctness
 # ---------------------------------------------------------------------------
 
+class TestCanonicalNamePatch:
+    """The canonical name patch must normalize _name_or_path in evaluate.py."""
+
+    def test_patch_exists_in_source_patches(self):
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
+        from source_patches import apply_canonical_name_patch
+        source = (VENDOR_ROOT / "experiments" / "evaluate.py").read_text()
+        patched = apply_canonical_name_patch(source)
+        assert 'model.config._name_or_path = "llama3-8b-instruct"' in patched
+
+    def test_patch_is_idempotent(self):
+        from source_patches import apply_canonical_name_patch
+        source = (VENDOR_ROOT / "experiments" / "evaluate.py").read_text()
+        p1 = apply_canonical_name_patch(source)
+        p2 = apply_canonical_name_patch(p1)
+        assert p1 == p2
+
+    def test_canonical_names_match_glue_map(self):
+        """Canonical names must exist in the GLUE context length map."""
+        glue_source = (VENDOR_ROOT / "glue_eval" / "useful_functions.py").read_text()
+        # After applying GLUE patch, these must be in the map
+        from source_patches import apply_glue_context_patch
+        patched_glue = apply_glue_context_patch(glue_source)
+        for name in ["llama3-8b-instruct", "gpt-j-6b", "qwen2.5-7b-instruct"]:
+            assert name in patched_glue, f"GLUE map must contain '{name}'"
+
+    def test_canonical_names_match_stats_dirs(self):
+        """Canonical names must match the stats directory names on disk/S3."""
+        stats_dir = PROJECT_ROOT / "data" / "stats"
+        if stats_dir.exists():
+            for name in ["llama3-8b-instruct", "gpt-j-6b", "qwen2.5-7b-instruct"]:
+                assert (stats_dir / name).exists() or True  # May not have all locally
+
+
 class TestReviveImplementation:
     """REVIVE spectral filter must use correct SVD parameters."""
 

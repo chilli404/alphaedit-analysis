@@ -150,17 +150,17 @@ class TestCanonicalModelNames:
     @pytest.mark.parametrize("model_name", LLAMA_VARIANTS)
     def test_llama_variants_all_resolve_same(self, model_name):
         from evaluate_harness import _canonical_name_or_path
-        assert _canonical_name_or_path(model_name) == "Meta-Llama-3-8B-Instruct"
+        assert _canonical_name_or_path(model_name) == "llama3-8b-instruct"
 
     @pytest.mark.parametrize("model_name", GPTJ_VARIANTS)
     def test_gptj_variants_all_resolve_same(self, model_name):
         from evaluate_harness import _canonical_name_or_path
-        assert _canonical_name_or_path(model_name) == "EleutherAI_gpt-j-6B"
+        assert _canonical_name_or_path(model_name) == "gpt-j-6b"
 
     @pytest.mark.parametrize("model_name", QWEN_VARIANTS)
     def test_qwen_variants_all_resolve_same(self, model_name):
         from evaluate_harness import _canonical_name_or_path
-        assert _canonical_name_or_path(model_name) == "Qwen2.5-7B-Instruct"
+        assert _canonical_name_or_path(model_name) == "qwen2.5-7b-instruct"
 
     def test_all_models_produce_distinct_canonical_names(self):
         from evaluate_harness import _canonical_name_or_path
@@ -171,20 +171,26 @@ class TestCanonicalModelNames:
         }
         assert len(names) == 3
 
-    def test_canonical_name_matches_stats_dir_pattern(self):
-        """The canonical name, after replace('/', '_'), must match the stats directory
-        name used by the vendor code: STATS_DIR / model_name / wikipedia_stats."""
+    def test_canonical_name_matches_stats_dir(self):
+        """The canonical name must match the stats directory name exactly.
+
+        Stats live at: data/stats/{name}/wikipedia_stats/
+        Vendor does: model.config._name_or_path.replace("/", "_") for covariance lookup.
+        GLUE does: model.config._name_or_path.lower().split("/")[-1] for context length.
+        All three must resolve to the same string.
+        """
         from evaluate_harness import _canonical_name_or_path
-        # Vendor does: model_name = model.config._name_or_path.replace("/", "_")
-        # Stats are stored under: data/stats/{canonical}/wikipedia_stats/
-        for model, expected_dir in [
-            ("meta-llama/Meta-Llama-3-8B-Instruct", "Meta-Llama-3-8B-Instruct"),
-            ("EleutherAI/gpt-j-6b", "EleutherAI_gpt-j-6B"),
-            ("Qwen/Qwen2.5-7B-Instruct", "Qwen2.5-7B-Instruct"),
+        for model, expected in [
+            ("meta-llama/Meta-Llama-3-8B-Instruct", "llama3-8b-instruct"),
+            ("EleutherAI/gpt-j-6b", "gpt-j-6b"),
+            ("Qwen/Qwen2.5-7B-Instruct", "qwen2.5-7b-instruct"),
         ]:
             canonical = _canonical_name_or_path(model)
-            # After vendor's replace("/", "_") the canonical name IS the dir name
-            assert canonical.replace("/", "_") == expected_dir
+            assert canonical == expected
+            # Vendor covariance: .replace("/", "_") — no-op since no slashes
+            assert canonical.replace("/", "_") == expected
+            # GLUE: .lower().split("/")[-1] — no-op since already lowercase, no slashes
+            assert canonical.lower().split("/")[-1] == expected
 
     @pytest.mark.parametrize("base_alg", ["MEMIT", "AlphaEdit", "NSE", "MEMIT_rect"])
     @pytest.mark.parametrize("model_name", [

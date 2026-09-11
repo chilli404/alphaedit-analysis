@@ -100,7 +100,7 @@ run_and_check "AlphaEdit (checkpoint_runner)" "AlphaEdit" "$CHECKPOINT_ROOT/fail
     --seed $SEED --alg_name AlphaEdit --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
     --save_interval 1 --cuda_device 0 --eval_at_checkpoints_only \
-    --downstream_eval_steps 0
+    --downstream_eval_steps 1
 
 # 2. MEMIT
 run_and_check "MEMIT (checkpoint_runner)" "MEMIT" "$CHECKPOINT_ROOT/failure_curve" \
@@ -108,7 +108,7 @@ run_and_check "MEMIT (checkpoint_runner)" "MEMIT" "$CHECKPOINT_ROOT/failure_curv
     --seed $SEED --alg_name MEMIT --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
     --save_interval 1 --cuda_device 0 --eval_at_checkpoints_only \
-    --downstream_eval_steps 0
+    --downstream_eval_steps 1
 
 # 3. MEMIT-Seq
 run_and_check "MEMIT-Seq (polykernel_seqreg)" "MEMIT-Seq" "$CHECKPOINT_ROOT/polykernel_seqreg" \
