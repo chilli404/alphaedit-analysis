@@ -257,51 +257,50 @@ class TestMetricConventions:
 # ---------------------------------------------------------------------------
 
 class TestGlueEvalCompatibility:
-    """GLUE eval context length map must include all model name variants we use."""
+    """GLUE eval must work with our canonical model names.
+
+    The GLUE code does: model.config._name_or_path.lower().split('/')[-1]
+    to look up context length. Our canonical_name_patch normalizes _name_or_path
+    to the values the GLUE map already has (llama3-8b-instruct, gpt-j-6b, etc).
+    """
 
     GLUE_MAP_FILE = VENDOR_ROOT / "glue_eval" / "useful_functions.py"
 
-    def _get_glue_map_keys(self, patched=True):
-        """Get GLUE map keys, optionally after applying runtime patches."""
+    def _get_glue_map_keys(self):
+        """Get GLUE map keys after applying the context-length patch (always applied at runtime)."""
         source = self.GLUE_MAP_FILE.read_text()
-        if patched:
-            sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
-            from source_patches import apply_glue_context_patch
-            source = apply_glue_context_patch(source)
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
+        from source_patches import apply_glue_context_patch
+        source = apply_glue_context_patch(source)
         import re
         match = re.search(r"MODEL_NAME_TO_MAXIMUM_CONTEXT_LENGTH_MAP\s*=\s*\{([^}]+)\}", source)
         if not match:
             return []
-        keys = re.findall(r'"([^"]+)":\s*\d+', match.group(1))
-        return keys
+        return re.findall(r'"([^"]+)":\s*\d+', match.group(1))
 
     def test_glue_map_file_exists(self):
         assert self.GLUE_MAP_FILE.exists()
 
-    def test_llama_in_glue_map(self):
-        """At least one Llama variant must be in the GLUE context length map."""
+    def test_canonical_name_patch_produces_glue_compatible_names(self):
+        """After canonical_name_patch, _name_or_path resolves to a GLUE map key."""
         keys = self._get_glue_map_keys()
-        llama_keys = [k for k in keys if "llama" in k]
-        assert llama_keys, f"No Llama entry in GLUE map. Keys: {keys}"
+        # The canonical_name_patch sets these exact values:
+        canonical_names = ["llama3-8b-instruct", "gpt-j-6b", "qwen2.5-7b-instruct"]
+        for cn in canonical_names:
+            resolved = cn.lower().split("/")[-1]
+            assert resolved in keys, (
+                f"Canonical name '{cn}' resolves to '{resolved}' which is not in GLUE map {keys}. "
+                f"Either add it to the map or change the canonical name."
+            )
 
-    def test_gptj_in_glue_map(self):
-        keys = self._get_glue_map_keys()
-        gptj_keys = [k for k in keys if "gpt-j" in k or "gpt_j" in k]
-        assert gptj_keys, f"No GPT-J entry in GLUE map. Keys: {keys}"
-
-    @pytest.mark.parametrize("model_name,expected_key", [
-        ("meta-llama/Meta-Llama-3-8B-Instruct", "llama"),
-        ("NousResearch/Meta-Llama-3-8B-Instruct", "llama"),
-        ("EleutherAI/gpt-j-6b", "gpt-j"),
-    ])
-    def test_model_name_resolves_to_glue_key(self, model_name, expected_key):
-        """model.config._name_or_path.lower().split('/')[-1] must match a GLUE map key."""
-        keys = self._get_glue_map_keys()
-        resolved = model_name.lower().split("/")[-1]
-        matching = [k for k in keys if k in resolved or resolved in k]
-        assert matching, (
-            f"Model '{model_name}' resolves to '{resolved}' which has no match in GLUE map. "
-            f"Available keys: {keys}"
+    def test_canonical_name_patch_anchor_exists(self):
+        """The canonical_name_patch anchor must exist in vendor evaluate.py."""
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
+        from source_patches import CANONICAL_NAME_ANCHOR
+        source = (VENDOR_ROOT / "experiments" / "evaluate.py").read_text()
+        already_patched = 'model.config._name_or_path = "llama3-8b-instruct"' in source
+        assert CANONICAL_NAME_ANCHOR in source or already_patched, (
+            "canonical_name_patch anchor must exist in evaluate.py (or already be patched)"
         )
 
 
