@@ -1069,42 +1069,33 @@ class TestVendorFunctionRequirements:
             "run_revive_baseline.sh must load NSE KV caches for BASE_ALG=NSE"
         )
 
-    def test_evoedit_script_loads_kv_cache(self):
-        """run_evoedit_baseline.sh must load KV caches from S3 tars and pass --use_cache.
-        Without caches, EvoEdit's compute_z does 25 gradient steps per edit."""
-        source = (PROJECT_ROOT / "scripts" / "run_evoedit_baseline.sh").read_text()
-        assert "tar xf" in source, "EvoEdit must extract KV cache tars"
-        assert "--use_cache" in source, (
-            "EvoEdit must pass --use_cache to evaluate.py so it reads precomputed v_star"
-        )
-
-    def test_all_baseline_scripts_fail_fast_without_caches(self):
-        """Every baseline script that uses compute_z must exit 1 if caches missing."""
+    def test_nse_cache_not_shared_with_memit_family(self):
+        """NSE cache must NOT be symlinked to _MEMIT. NSE precomputes v_star from
+        the original model W₀, while MEMIT/AlphaEdit/EvoEdit compute from the
+        current edited model W_t. The cached values are NOT interchangeable."""
         for script_name in ["run_nse_baseline.sh", "run_evoedit_baseline.sh"]:
-            source = (PROJECT_ROOT / "scripts" / script_name).read_text()
-            cache_section = source[source.find("kv_cache") if "kv_cache" in source.lower() else 0:]
-            assert "exit 1" in cache_section[:1000], (
-                f"{script_name} must exit 1 if KV caches aren't available"
-            )
-
-    def test_kv_cache_symlinks_memit_to_nse(self):
-        """All algorithms use identical compute_z output. The cache directory name
-        differs ({model}_MEMIT for EvoEdit/AlphaEdit/RECT vs {model}_NSE for NSE)
-        but the v_star files are identical. Scripts must symlink _MEMIT → _NSE
-        so all algorithms find the same cache."""
-        # Check at least one script creates the symlink
-        found = False
-        for script in ["run_nse_baseline.sh", "run_evoedit_baseline.sh", "build_nse_cache.sh"]:
-            path = PROJECT_ROOT / "scripts" / script
+            path = PROJECT_ROOT / "scripts" / script_name
             if path.exists():
                 source = path.read_text()
-                if "_MEMIT" in source and ("ln " in source or "symlink" in source.lower()):
-                    found = True
-                    break
-        assert found, (
-            "At least one baseline script must symlink {model}_MEMIT → {model}_NSE "
-            "in the kvs directory. All algorithms use identical compute_z output — "
-            "only the directory name differs."
+                assert "_MEMIT" not in source, (
+                    f"{script_name} must NOT symlink _MEMIT → _NSE. "
+                    "NSE computes v_star from W₀; MEMIT-family from W_t."
+                )
+
+    def test_evoedit_does_not_use_nse_cache(self):
+        """EvoEdit must NOT load NSE caches or pass --use_cache.
+        EvoEdit computes v_star from the current model state W_t per batch."""
+        source = (PROJECT_ROOT / "scripts" / "run_evoedit_baseline.sh").read_text()
+        assert "nse_kv_cache" not in source, "EvoEdit must not load NSE caches"
+        assert "--use_cache" not in source, "EvoEdit must not use --use_cache"
+
+    def test_nse_script_fails_fast_without_cache(self):
+        """run_nse_baseline.sh must exit 1 if NSE KV cache is missing.
+        NSE precomputes ALL v_star from W₀ — without cache this is very slow."""
+        source = (PROJECT_ROOT / "scripts" / "run_nse_baseline.sh").read_text()
+        cache_section = source[source.find("nse_kv_cache") if "nse_kv_cache" in source else 0:]
+        assert "exit 1" in cache_section[:1000], (
+            "run_nse_baseline.sh must exit 1 if NSE KV cache not available"
         )
 
     def test_nse_kv_cache_tar_structure(self):

@@ -37,31 +37,6 @@ DEVICE="${CUDA_DEVICE:-0}"
 RESULT_ROOT="${RESULT_ROOT:-$PROJECT_DIR/results}"
 CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-${HOME}/.cache/alphaedit_checkpoints}"
 
-# Load KV cache from S3 tars (avoids 25 gradient steps per edit in compute_z)
-_KV_CACHE_S3="/s3-data/continual-learning/alphaedit/nse_kv_cache"
-_KV_CACHE_LOCAL="$EVOEDIT_DIR/share/projects/rewriting-knowledge/kvs"
-if [[ -d "$_KV_CACHE_S3" ]]; then
-    mkdir -p "$_KV_CACHE_LOCAL"
-    for _tar in "$_KV_CACHE_S3"/*.tar; do
-        [[ -f "$_tar" ]] || continue
-        echo "  Extracting KV cache from $(basename $_tar)..."
-        tar xf "$_tar" -C "$_KV_CACHE_LOCAL/"
-    done
-    # All algorithms use identical compute_z. Symlink _MEMIT → _NSE so EvoEdit finds it.
-    for _nse_dir in "$_KV_CACHE_LOCAL"/*_NSE; do
-        [ -d "$_nse_dir" ] || continue
-        _memit_dir="${_nse_dir%_NSE}_MEMIT"
-        [ -e "$_memit_dir" ] || ln -sf "$(basename "$_nse_dir")" "$_memit_dir"
-    done
-    _kv_count=$(find "$_KV_CACHE_LOCAL" -name '*.npz' 2>/dev/null | wc -l)
-    echo "  KV cache loaded: $_kv_count files"
-    [[ "$_kv_count" -lt 100 ]] && { echo "ERROR: KV cache too small ($_kv_count files)"; exit 1; }
-else
-    echo "ERROR: KV cache not found at $_KV_CACHE_S3"
-    echo "  EvoEdit needs precomputed v_star caches (compute_z does 25 grad steps without them)"
-    exit 1
-fi
-
 # Resolve ordering path — GPT-J uses matched_ordering_gptj/
 if [[ -n "${STREAM_PATH:-}" ]]; then
     : # explicit override
@@ -165,7 +140,6 @@ sys.argv = [
     '--save_every=1000',
     '--conserve_memory',
     '--forgetting_eval_interval=0',
-    '--use_cache',
 ]
 
 # Auto-detect existing run directory for resume
