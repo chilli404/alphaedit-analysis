@@ -43,7 +43,6 @@ markers = [
 filterwarnings = [
     "ignore::ResourceWarning",
     "ignore::pytest.PytestUnraisableExceptionWarning",
-    "ignore:.*encountered in matmul:RuntimeWarning",
 ]
 
 [dependency-groups]
