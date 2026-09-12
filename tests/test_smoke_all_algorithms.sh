@@ -100,10 +100,10 @@ run_and_check() {
     log "  Ran in ${elapsed}s (exit=$exit_code)"
 
     # Also check log for errors even if exit code is 0
-    if grep -qiE "error:|Traceback|KeyError|TypeError|unrecognized arguments" "$logfile" 2>/dev/null; then
+    if grep -qiE "error:|Traceback|KeyError|TypeError|unrecognized arguments|OutOfMemory|CUDA out of memory" "$logfile" 2>/dev/null; then
         log "  ❌ $label: errors found in output despite exit code $exit_code"
         log "  Error lines:"
-        grep -iE "error:|Traceback|KeyError|TypeError|unrecognized arguments" "$logfile" | tail -5 | sed 's/^/    /'
+        grep -iE "error:|Traceback|KeyError|TypeError|unrecognized arguments|OutOfMemory|CUDA out of memory" "$logfile" | tail -5 | sed 's/^/    /'
         FAIL=$((FAIL+1))
         ERRORS="$ERRORS\n  $label: errors in output"
         return
@@ -133,6 +133,13 @@ run_and_check() {
             ERRORS="$ERRORS\n  $label: checkpoint not at expected path"
             return
         fi
+    fi
+
+    # Check for OOM in log
+    if grep -qi "CUDA out of memory\|OutOfMemoryError\|OOM" "$logfile" 2>/dev/null; then
+        log "  ❌ $label: GPU OOM detected"
+        grep -i "CUDA out of memory\|OutOfMemoryError" "$logfile" | tail -2 | sed 's/^/    /'
+        FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: GPU OOM"; return
     fi
 
     # Algorithm-specific log validation
