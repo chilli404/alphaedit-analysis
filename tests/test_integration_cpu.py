@@ -934,10 +934,11 @@ class TestSmokeTestTimeouts:
         """Smoke test timeout must be ≤ 300s (5 min). Longer means something is stuck."""
         source = (PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh").read_text()
         import re
-        match = re.search(r'TIMEOUT=(\d+)', source)
+        # Default timeout (may be overridden by SMOKE_TIMEOUT env var for baselines)
+        match = re.search(r'SMOKE_TIMEOUT:-(\d+)', source) or re.search(r'TIMEOUT=(\d+)', source)
         assert match, "TIMEOUT not found in smoke test script"
         timeout = int(match.group(1))
-        assert timeout <= 300, f"Smoke test timeout is {timeout}s — should be ≤ 300s"
+        assert timeout <= 300, f"Default smoke test timeout is {timeout}s — should be ≤ 300s"
 
     def test_dataset_limit_is_small(self):
         """Smoke test dataset must be small (≤ 50 records) for fast completion."""

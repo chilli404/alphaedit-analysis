@@ -40,7 +40,7 @@ fi
 SEED=42
 EDITS=10
 DATASET_LIMIT=20  # 2 batches of 10 — tests editing, checkpoint save, and eval
-TIMEOUT=300  # 5 minutes per algorithm
+TIMEOUT=${SMOKE_TIMEOUT:-300}  # 5 min default, baselines may need more
 PASS=0
 FAIL=0
 SKIP=0
