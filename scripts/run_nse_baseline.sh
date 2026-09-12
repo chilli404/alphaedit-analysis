@@ -49,34 +49,36 @@ if [[ ! -f "$STREAM_PATH" ]]; then
     exit 1
 fi
 
-# Pre-populate NSE kv cache from S3 FUSE mount if available (avoids 6h re-computation)
+# Load NSE kv cache from S3 tar archives. Without these, compute_z does 25
+# gradient steps per edit (~1.5s each on L40S) → 750s for 20 edits.
 _NSE_CACHE_S3="/s3-data/continual-learning/alphaedit/nse_kv_cache"
 _NSE_CACHE_LOCAL="$EVOEDIT_DIR/share/projects/rewriting-knowledge/kvs"
+
 if [ -d "$_NSE_CACHE_S3" ]; then
     mkdir -p "$_NSE_CACHE_LOCAL"
-    # Try tar archives first (faster than many small files over FUSE)
+    _found_tar=0
     for _tar in "$_NSE_CACHE_S3"/*.tar; do
         [ -f "$_tar" ] || continue
         echo "  Extracting NSE kv cache from $(basename $_tar)..."
         tar xf "$_tar" -C "$_NSE_CACHE_LOCAL/"
-        echo "  Extracted."
+        _found_tar=1
     done
-    # Then try directories
-    for _kv_dir in "$_NSE_CACHE_S3"/*/; do
-        [ -d "$_kv_dir" ] || continue
-        _name=$(basename "$_kv_dir")
-        if [ ! -d "$_NSE_CACHE_LOCAL/$_name" ] || [ "$(ls "$_NSE_CACHE_LOCAL/$_name" 2>/dev/null | wc -l)" -lt 1000 ]; then
-            echo "  Pre-populating NSE kv cache: $_name"
-            mkdir -p "$_NSE_CACHE_LOCAL/$_name"
-            cp "$_kv_dir"/*.npz "$_NSE_CACHE_LOCAL/$_name/" 2>/dev/null
-            echo "  Done: $(ls "$_NSE_CACHE_LOCAL/$_name" | wc -l) files cached"
-        else
-            echo "  NSE kv cache already populated: $_name ($(ls "$_NSE_CACHE_LOCAL/$_name" | wc -l) files)"
-        fi
-    done
-    echo "  Total cached: $(find "$_NSE_CACHE_LOCAL" -name '*.npz' | wc -l) files"
+    if [ "$_found_tar" -eq 0 ]; then
+        echo "ERROR: No .tar files found at $_NSE_CACHE_S3"
+        echo "  Upload caches with: bash scripts/build_nse_cache.sh --upload"
+        exit 1
+    fi
+    _kv_count=$(find "$_NSE_CACHE_LOCAL" -name '*.npz' 2>/dev/null | wc -l)
+    echo "  KV cache loaded: $_kv_count files"
+    if [ "$_kv_count" -lt 100 ]; then
+        echo "ERROR: KV cache has only $_kv_count files (expected 10000+)"
+        exit 1
+    fi
 else
-    echo "  No S3 NSE kv cache found at $_NSE_CACHE_S3 — will compute from scratch"
+    echo "ERROR: S3 NSE kv cache not found at $_NSE_CACHE_S3"
+    echo "  On SkyPilot clusters, /s3-data must be mounted."
+    echo "  Locally, run: bash scripts/build_nse_cache.sh"
+    exit 1
 fi
 
 echo "═══════════════════════════════════════════════════════════════"

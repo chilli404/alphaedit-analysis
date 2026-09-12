@@ -1049,6 +1049,61 @@ class TestVendorFunctionRequirements:
             "Cache loading belongs in the script, not the YAML."
         )
 
+    def test_nse_script_uses_tar_only(self):
+        """run_nse_baseline.sh must extract .tar files only — no slow individual
+        .npz copy fallback. Fail fast if tars aren't found."""
+        source = (PROJECT_ROOT / "scripts" / "run_nse_baseline.sh").read_text()
+        assert "tar xf" in source, "Script must extract tar archives"
+        assert 'cp "$_kv_dir"' not in source, (
+            "Script must NOT have individual file copy fallback — "
+            "copying 20K small files over S3 FUSE is ~100x slower than tar"
+        )
+        assert "exit 1" in source[source.find("nse_kv_cache"):], (
+            "Script must fail fast (exit 1) if KV caches aren't available"
+        )
+
+    def test_revive_script_loads_nse_cache(self):
+        """run_revive_baseline.sh must load NSE KV caches when BASE_ALG=NSE."""
+        source = (PROJECT_ROOT / "scripts" / "run_revive_baseline.sh").read_text()
+        assert "nse_kv_cache" in source.lower() or "NSE_CACHE" in source, (
+            "run_revive_baseline.sh must load NSE KV caches for BASE_ALG=NSE"
+        )
+
+    def test_evoedit_script_loads_kv_cache(self):
+        """run_evoedit_baseline.sh must load KV caches from S3 tars.
+        Without them, EvoEdit's compute_z does 25 gradient steps per edit."""
+        source = (PROJECT_ROOT / "scripts" / "run_evoedit_baseline.sh").read_text()
+        assert "tar xf" in source, "EvoEdit must extract KV cache tars"
+        assert "exit 1" in source[source.find("KV"):] if "KV" in source else False, (
+            "EvoEdit must fail fast if KV caches aren't available"
+        )
+
+    def test_all_baseline_scripts_fail_fast_without_caches(self):
+        """Every baseline script that uses compute_z must exit 1 if caches missing."""
+        for script_name in ["run_nse_baseline.sh", "run_evoedit_baseline.sh"]:
+            source = (PROJECT_ROOT / "scripts" / script_name).read_text()
+            # Must have exit 1 after cache check
+            cache_section = source[source.find("kv_cache") if "kv_cache" in source.lower() else 0:]
+            assert "exit 1" in cache_section[:1000], (
+                f"{script_name} must exit 1 if KV caches aren't available"
+            )
+
+    def test_nse_kv_cache_tar_structure(self):
+        """KV cache tars must extract to {model_name}_NSE/{file}.npz matching
+        the path vendor NSE expects at share/projects/rewriting-knowledge/kvs/."""
+        import tarfile
+        tar_path = PROJECT_ROOT / "data" / "nse_kv_cache" / "llama_nse_cache.tar"
+        if not tar_path.exists():
+            pytest.skip("llama_nse_cache.tar not available locally")
+        with tarfile.open(tar_path) as t:
+            names = t.getnames()[:5]
+        assert any("NousResearch" in n or "Meta-Llama" in n for n in names), (
+            f"Tar must contain model-named directory, got: {names}"
+        )
+        assert any(n.endswith(".npz") for n in names), (
+            f"Tar must contain .npz cache files, got: {names}"
+        )
+
     def test_link_stats_copies_p_matrix_locally(self):
         """link_stats.sh must cp (not symlink) the P matrix to vendor/AlphaEdit/.
         S3 FUSE doesn't support ln -sf into it, so P must be copied locally."""

@@ -39,6 +39,26 @@ LAMBDA_PREV="${LAMBDA_PREV:-1.0}"
 LAMBDA_DELTA="${LAMBDA_DELTA:-0.0}"
 BASE_ALG="${BASE_ALG:?ERROR: BASE_ALG must be set (MEMIT or AlphaEdit)}"
 
+# NSE needs precomputed KV caches (25 gradient steps per edit without them)
+if [[ "$BASE_ALG" == "NSE" ]]; then
+    _NSE_CACHE_S3="/s3-data/continual-learning/alphaedit/nse_kv_cache"
+    _NSE_CACHE_LOCAL="$PROJECT_DIR/baselines/EvoEdit/share/projects/rewriting-knowledge/kvs"
+    if [[ -d "$_NSE_CACHE_S3" ]]; then
+        mkdir -p "$_NSE_CACHE_LOCAL"
+        for _tar in "$_NSE_CACHE_S3"/*.tar; do
+            [[ -f "$_tar" ]] || continue
+            echo "  Extracting NSE kv cache from $(basename $_tar)..."
+            tar xf "$_tar" -C "$_NSE_CACHE_LOCAL/"
+        done
+        _kv_count=$(find "$_NSE_CACHE_LOCAL" -name '*.npz' 2>/dev/null | wc -l)
+        echo "  KV cache loaded: $_kv_count files"
+        [[ "$_kv_count" -lt 100 ]] && { echo "ERROR: KV cache too small ($_kv_count files)"; exit 1; }
+    else
+        echo "ERROR: NSE KV cache not found at $_NSE_CACHE_S3"
+        exit 1
+    fi
+fi
+
 # Resolve ordering path — check GPT-J-specific orderings first
 if [[ -n "${STREAM_PATH:-}" ]]; then
     :
