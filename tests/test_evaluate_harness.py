@@ -296,6 +296,47 @@ class TestLoadDatasetVendorGlobals:
         assert mod.REMOTE_ROOT_URL == yml["REMOTE_ROOT_URL"]
 
 
+class TestRequestFormatting:
+    """run_experiment must flatten requested_rewrite to match vendor apply_fn format."""
+
+    def test_flattens_requested_rewrite(self):
+        """Vendor apply functions expect {case_id, prompt, subject, target_new, target_true}
+        not {case_id, requested_rewrite: {prompt, subject, target_new, target_true}}."""
+        from evaluate_harness import ExperimentHooks, run_experiment
+        from unittest.mock import MagicMock
+
+        received_requests = []
+
+        def capture_apply(model, tok, requests, hparams, **kwargs):
+            received_requests.extend(requests)
+            return (MagicMock(), None)
+
+        model = MagicMock()
+        tok = MagicMock()
+        tok.pad_token = None
+        tok.eos_token = "<eos>"
+        hparams = MagicMock()
+        hparams.layers = [4, 5]
+
+        dataset = [{"case_id": 1, "requested_rewrite": {
+            "prompt": "The capital of {} is", "subject": "France",
+            "target_new": {"str": "Berlin"}, "target_true": {"str": "Paris"},
+        }, "paraphrase_prompts": [], "neighborhood_prompts": [], "generation_prompts": []}]
+
+        hooks = ExperimentHooks(should_eval=lambda _: False)
+        run_experiment(model=model, tok=tok, hparams=hparams,
+                      dataset=dataset, apply_fn=capture_apply,
+                      alg_name="MEMIT", num_edits=1,
+                      results_dir=Path("/tmp/test"), hooks=hooks, max_batches=1)
+
+        assert len(received_requests) == 1
+        req = received_requests[0]
+        assert "target_new" in req, "request must have target_new at top level"
+        assert "requested_rewrite" not in req, "request must NOT have nested requested_rewrite"
+        assert req["case_id"] == 1
+        assert req["subject"] == "France"
+
+
 class TestVendorGlobals:
     """Vendor util.globals must be pre-populated before importing vendor modules."""
 

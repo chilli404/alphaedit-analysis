@@ -253,10 +253,17 @@ def run_experiment(
         if hooks.extra_apply_kwargs:
             extra_kwargs = hooks.extra_apply_kwargs(batch_idx)
 
+        # Build requests in vendor format: flatten requested_rewrite to top level
+        requests = [
+            {"case_id": r["case_id"], **r["requested_rewrite"]}
+            if "requested_rewrite" in r else r
+            for r in records
+        ]
+
         # Apply the edit
         start_time = time()
         edit_result = apply_fn(
-            model, tok, records, hparams,
+            model, tok, requests, hparams,
             return_orig_weights=False,
             **conserve_args,
             **extra_kwargs,
