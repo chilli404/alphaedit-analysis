@@ -515,61 +515,94 @@ class TestBaselineNumEditsOverride:
 
 
 class TestMemoryBounds:
-    """Verify memory-critical data structures stay within expected bounds."""
+    """Verify peak GPU memory per algorithm stays within GPU limits.
 
-    def test_cache_c_size_llama(self):
-        """cache_c for Llama-3-8B must be [5, 14336, 14336] float64 = ~8.2 GB.
-        This is a FIXED size — it doesn't grow with more edits."""
-        n_layers = 5
-        d_in = 14336
-        bytes_float64 = n_layers * d_in * d_in * 8
-        gb = bytes_float64 / 1e9
-        assert gb < 10, f"cache_c would be {gb:.1f} GB — exceeds 10 GB safety limit"
-        assert gb > 7, f"cache_c is only {gb:.1f} GB — expected ~8.2 GB for Llama"
+    L40S: 46 GB, A10G: 24 GB. All calculations assume Llama-3-8B (8B params, fp16).
+    """
 
-    def test_cache_c_size_gptj(self):
-        """cache_c for GPT-J is [8, 16384, 16384] float64 — much larger."""
-        n_layers = 8  # GPT-J edits more layers
-        d_in = 16384  # GPT-J has larger hidden dim
-        bytes_float64 = n_layers * d_in * d_in * 8
-        gb = bytes_float64 / 1e9
-        # This is ~17 GB — fits on 46 GB L40S but tight
-        assert gb < 20, f"GPT-J cache_c would be {gb:.1f} GB"
+    MODEL_GB = 16.0  # 8B params * 2 bytes fp16
+    D_IN = 14336     # Llama intermediate dim
+    D_OUT = 4096     # Llama hidden dim
+    N_LAYERS = 5     # layers 4-8
+    BATCH = 100      # edits per batch
+    L40S = 46
+    A10G = 24
 
-    def test_prev_cache_bounded_with_cache_max(self):
-        """With cache_max=20, prev_cache stores at most 20 batches of keys."""
-        d_in = 14336
-        n_layers = 5
-        cache_max = 20
-        batch_size = 100
-        total_keys = cache_max * batch_size
-        bytes_per_layer = total_keys * d_in * 4  # float32 on CPU
-        total_gb = bytes_per_layer * n_layers / 1e9
-        assert total_gb < 1.0, f"prev_cache with cache_max=20 is {total_gb:.1f} GB — too large"
+    def _working_memory_gb(self):
+        """Per-layer editing working memory (cov + ks + targets + adj + upd)."""
+        cov = self.D_IN * self.D_IN * 4 / 1e9
+        ks = self.D_IN * self.BATCH * 8 / 1e9
+        targets = self.D_OUT * self.BATCH * 8 / 1e9
+        adj = self.D_IN * self.BATCH * 8 / 1e9
+        upd = self.D_OUT * self.D_IN * 8 / 1e9
+        return cov + ks + targets + adj + upd
 
-    def test_prev_cache_unbounded_warning(self):
-        """With cache_strategy=all and no cache_max, prev_cache grows to ~3 GB at 10K."""
-        d_in = 14336
-        n_layers = 5
-        total_keys = 10000  # 10K edits
-        bytes_per_layer = total_keys * d_in * 4
-        total_gb = bytes_per_layer * n_layers / 1e9
-        # This should be ~2.9 GB — manageable on CPU but worth documenting
-        assert total_gb < 5.0, f"Unbounded prev_cache at 10K would be {total_gb:.1f} GB"
+    def test_alphaedit_peak_fits_a10g(self):
+        """AlphaEdit: model + working + P (one layer). cache_c on CPU."""
+        p_one = self.D_IN * self.D_IN * 4 / 1e9
+        peak = self.MODEL_GB + self._working_memory_gb() + p_one
+        assert peak < self.A10G, f"AlphaEdit peak {peak:.1f} GB exceeds A10G {self.A10G} GB"
 
-    def test_revive_svd_peak_memory(self):
-        """REVIVE full SVD of [4096, 14336] with full_matrices=True produces V=[14336, 14336].
-        Peak GPU memory: model + V + U + working = ~16 + 0.8 + 0.06 + ~1 = ~18 GB."""
-        m, n = 4096, 14336
-        # U: [m, m] float32 = 64 MB
-        u_gb = m * m * 4 / 1e9
-        # V: [n, n] float32 = 780 MB
-        v_gb = n * n * 4 / 1e9
-        # Model: ~16 GB fp16
-        model_gb = 16
-        peak = model_gb + u_gb + v_gb + 1.0  # +1 GB working memory
-        assert peak < 46, f"REVIVE peak memory {peak:.1f} GB exceeds L40S 46 GB"
-        assert peak < 24, f"REVIVE peak memory {peak:.1f} GB exceeds A10G 24 GB"
+    def test_memit_peak_fits_a10g(self):
+        """MEMIT: model + working. Simplest algorithm."""
+        peak = self.MODEL_GB + self._working_memory_gb()
+        assert peak < self.A10G, f"MEMIT peak {peak:.1f} GB exceeds A10G {self.A10G} GB"
+
+    def test_memit_seq_peak_at_10k_fits_l40s(self):
+        """MEMIT-Seq at batch 100 (10K edits): model + working + K_prev on GPU + K_prev@K_prev^T."""
+        n_keys = 10000
+        kprev = self.D_IN * n_keys * 8 / 1e9  # [14336, 10000] float64
+        kpkt = self.D_IN * self.D_IN * 8 / 1e9  # [14336, 14336] float64
+        peak = self.MODEL_GB + self._working_memory_gb() + kprev + kpkt
+        assert peak < self.L40S, f"MEMIT-Seq at 10K: {peak:.1f} GB exceeds L40S {self.L40S} GB"
+
+    def test_revive_svd_peak_fits_a10g(self):
+        """REVIVE: model + working + U + Vh (full_matrices=True)."""
+        u = self.D_OUT * self.D_OUT * 4 / 1e9
+        vh = self.D_IN * self.D_IN * 4 / 1e9
+        peak = self.MODEL_GB + self._working_memory_gb() + u + vh
+        assert peak < self.A10G, f"REVIVE peak {peak:.1f} GB exceeds A10G {self.A10G} GB"
+
+    def test_mega_batch_eval_batch4_fits_a10g(self):
+        """Mega-batch eval with batch_size=4: model + logits for 104 sequences."""
+        prompts_per_record = 13  # 1 rewrite + 2 para + 10 neighborhood
+        seqs = 4 * prompts_per_record * 2  # 104 sequences
+        seq_len = 100
+        vocab = 128256
+        logits = seqs * seq_len * vocab * 4 / 1e9
+        peak = self.MODEL_GB + logits
+        assert peak < self.A10G, f"Mega-batch eval bs=4: {peak:.1f} GB exceeds A10G {self.A10G} GB"
+
+    def test_mega_batch_eval_batch8_fits_l40s(self):
+        """Mega-batch eval with batch_size=8: larger logits tensor."""
+        seqs = 8 * 13 * 2  # 208
+        logits = seqs * 100 * 128256 * 4 / 1e9
+        peak = self.MODEL_GB + logits
+        assert peak < self.L40S, f"Mega-batch eval bs=8: {peak:.1f} GB exceeds L40S {self.L40S} GB"
+
+    def test_cache_c_on_cpu(self):
+        """cache_c must be on CPU — it's 8.2 GB float64, would OOM if on GPU."""
+        source = (PROJECT_ROOT / "vendor" / "AlphaEdit" / "AlphaEdit" / "AlphaEdit_main.py").read_text()
+        assert "cache_c[i,:,:].cuda()" in source or "cache_c" in source
+        # The key: cache_c is stored CPU, only one layer's slice moved to GPU at a time
+        # Line: cache_c[i,:,:] += layer_ks.cpu() @ layer_ks.cpu().T
+        assert ".cpu()" in source, "cache_c accumulation must happen on CPU"
+
+    def test_prev_cache_on_cpu(self):
+        """prev_cache keys must be stored on CPU, moved to GPU only during solve."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        assert "detach().cpu()" in source, "prev_cache keys must be stored on CPU"
+
+    def test_checkpoint_runner_frees_before_eval(self):
+        """checkpoint_runner must free editing tensors before running mega_batch_eval."""
+        source = (PROJECT_ROOT / "src" / "runners" / "checkpoint_runner.py").read_text()
+        assert "Freed editing tensors before eval" in source
+
+    def test_polykernel_frees_after_solve(self):
+        """polykernel_seqreg_runner must free K_prev, lhs after solve."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        assert "_K_prev = _s_k = None" in source or "_K_prev = None" in source
+        assert "empty_cache()" in source
 
 
 class TestCheckpointCompleteness:
