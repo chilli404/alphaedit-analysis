@@ -234,6 +234,67 @@ class TestLoadDatasetVendorGlobals:
         source = inspect.getsource(load_dataset)
         assert "os.chdir" not in source, "load_dataset should not chdir — use _ensure_vendor_globals"
 
+    def test_vendor_globals_idempotent(self):
+        """Calling _ensure_vendor_globals twice must not crash or override."""
+        from evaluate_harness import _ensure_vendor_globals
+        from pathlib import Path
+        import sys
+
+        vendor_root = Path(__file__).parent.parent / "vendor" / "AlphaEdit"
+        _ensure_vendor_globals(vendor_root)
+        mod1 = sys.modules["util.globals"]
+        _ensure_vendor_globals(vendor_root)
+        mod2 = sys.modules["util.globals"]
+        assert mod1 is mod2, "Second call should be a no-op"
+
+    def test_vendor_globals_has_all_fields(self):
+        """The pre-populated module must have every field that globals.yml provides."""
+        from evaluate_harness import _ensure_vendor_globals
+        from pathlib import Path
+        import sys
+
+        sys.modules.pop("util.globals", None)
+        vendor_root = Path(__file__).parent.parent / "vendor" / "AlphaEdit"
+        _ensure_vendor_globals(vendor_root)
+
+        mod = sys.modules["util.globals"]
+        for field in ["RESULTS_DIR", "DATA_DIR", "STATS_DIR", "HPARAMS_DIR", "KV_DIR", "REMOTE_ROOT_URL"]:
+            assert hasattr(mod, field), f"vendor globals missing {field}"
+
+    def test_vendor_globals_paths_are_absolute(self):
+        """All path fields must be Path objects under the vendor root."""
+        from evaluate_harness import _ensure_vendor_globals
+        from pathlib import Path
+        import sys
+
+        sys.modules.pop("util.globals", None)
+        vendor_root = Path(__file__).parent.parent / "vendor" / "AlphaEdit"
+        _ensure_vendor_globals(vendor_root)
+
+        mod = sys.modules["util.globals"]
+        for field in ["RESULTS_DIR", "DATA_DIR", "STATS_DIR", "HPARAMS_DIR", "KV_DIR"]:
+            val = getattr(mod, field)
+            assert isinstance(val, Path), f"{field} must be a Path, got {type(val)}"
+            assert str(vendor_root) in str(val), f"{field} must be under vendor root"
+
+    def test_vendor_globals_matches_yaml(self):
+        """Pre-populated values must match what globals.yml would provide."""
+        from evaluate_harness import _ensure_vendor_globals
+        from pathlib import Path
+        import sys, yaml
+
+        sys.modules.pop("util.globals", None)
+        vendor_root = Path(__file__).parent.parent / "vendor" / "AlphaEdit"
+        _ensure_vendor_globals(vendor_root)
+        mod = sys.modules["util.globals"]
+
+        with open(vendor_root / "globals.yml") as f:
+            yml = yaml.safe_load(f)
+
+        assert mod.DATA_DIR == vendor_root / yml["DATA_DIR"]
+        assert mod.STATS_DIR == vendor_root / yml["STATS_DIR"]
+        assert mod.REMOTE_ROOT_URL == yml["REMOTE_ROOT_URL"]
+
 
 class TestCheckpointIntegration:
     """Checkpoint hooks must be called at the right times."""
