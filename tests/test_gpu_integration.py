@@ -37,8 +37,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 @pytest.fixture(scope="session")
 def alphaedit_root():
     root = PROJECT_ROOT / "vendor" / "AlphaEdit"
-    if not root.exists():
-        pytest.skip("vendor/AlphaEdit not found")
+    assert root.exists(), "vendor/AlphaEdit not found — run git submodule update --init"
     return root
 
 
@@ -76,8 +75,9 @@ def alphaedit_hparams(alphaedit_root):
 @pytest.fixture(scope="session")
 def P_matrix(alphaedit_root):
     p_path = alphaedit_root / "null_space_project.pt"
-    if not p_path.exists():
-        pytest.skip("null_space_project.pt not found")
+    assert p_path.exists(), (
+        f"P matrix not found at {p_path}. Run link_stats.sh first."
+    )
     return torch.load(str(p_path), map_location="cpu")
 
 

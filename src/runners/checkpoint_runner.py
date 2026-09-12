@@ -221,12 +221,14 @@ def run(args: argparse.Namespace) -> None:
     # Load null-space projection P for AlphaEdit
     P = None
     if "AlphaEdit" in args.alg_name:
-        p_path = alphaedit_root / "data" / "stats" / "null_space_project.pt"
+        p_path = alphaedit_root / "null_space_project.pt"
         if p_path.exists():
             P = torch.load(str(p_path), map_location="cpu")
             print(f"  Loaded null-space projection P from {p_path}")
         else:
-            print(f"  WARNING: null_space_project.pt not found at {p_path}")
+            raise FileNotFoundError(
+                f"P matrix not found at {p_path}. Run link_stats.sh first."
+            )
 
     # Load checkpoint if resuming
     cache_c = None
