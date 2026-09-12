@@ -1123,6 +1123,61 @@ class TestVendorFunctionRequirements:
             f"Tar must contain .npz cache files, got: {names}"
         )
 
+    def test_mega_batch_eval_only_after_all_edits(self):
+        """mega_batch_eval must run ONCE after all edits, not after every batch.
+        Running after every batch = 520+ extra forward passes for 20 edits.
+        EvoEdit timed out at 900s because eval ran after batch 1 AND batch 2."""
+        eval_path = PROJECT_ROOT / "baselines" / "EvoEdit" / "experiments" / "evaluate.py"
+        if not eval_path.exists():
+            pytest.skip("baselines not available")
+        source = eval_path.read_text()
+        if "_mega_batch_eval" not in source:
+            pytest.skip("mega_batch_eval not patched yet")
+        # Find the mega_batch_eval CALL (not definition)
+        call_line_idx = None
+        lines = source.split("\n")
+        for i, line in enumerate(lines):
+            if "_mega_batch_eval(edited_model" in line:
+                call_line_idx = i
+                break
+        assert call_line_idx is not None, "mega_batch_eval call not found"
+        # The call must be OUTSIDE the batch loop (for record_chunks in chunks(ds, num_edits))
+        # Inside = 8+ spaces indent. Outside = 4 spaces.
+        call_line = lines[call_line_idx]
+        indent = len(call_line) - len(call_line.lstrip())
+        # Find the batch loop indent
+        for line in lines:
+            if "for record_chunks in chunks" in line:
+                loop_indent = len(line) - len(line.lstrip())
+                break
+        assert indent <= loop_indent, (
+            f"mega_batch_eval call is at indent {indent} (inside batch loop at indent {loop_indent}). "
+            f"It must be OUTSIDE the loop (at or below loop indent) — "
+            f"running after every batch caused EvoEdit to timeout at 900s for 20 edits."
+        )
+
+    def test_mega_batch_eval_respects_skip_env(self):
+        """The mega_batch_eval patch must check SKIP_MEGA_BATCH_EVAL env var.
+        Smoke tests set this so editing tests don't waste time on evaluation."""
+        eval_path = PROJECT_ROOT / "baselines" / "EvoEdit" / "experiments" / "evaluate.py"
+        if not eval_path.exists():
+            pytest.skip("baselines not available")
+        source = eval_path.read_text()
+        if "_mega_batch_eval" not in source:
+            pytest.skip("mega_batch_eval not patched yet")
+        assert "SKIP_MEGA_BATCH_EVAL" in source, (
+            "mega_batch_eval call must check os.environ.get('SKIP_MEGA_BATCH_EVAL'). "
+            "The editing smoke test sets this to skip eval — eval is the eval cluster's job."
+        )
+
+    def test_smoke_test_sets_skip_eval_for_baselines(self):
+        """The editing smoke test must set SKIP_MEGA_BATCH_EVAL=1 for baseline runs."""
+        source = (PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh").read_text()
+        assert "SKIP_MEGA_BATCH_EVAL" in source, (
+            "Smoke test must set SKIP_MEGA_BATCH_EVAL=1 for baseline runs. "
+            "Eval is the eval cluster's job, not the editing smoke test."
+        )
+
     def test_link_stats_copies_p_matrix_locally(self):
         """link_stats.sh must cp (not symlink) the P matrix to vendor/AlphaEdit/.
         S3 FUSE doesn't support ln -sf into it, so P must be copied locally."""
