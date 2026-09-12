@@ -24,9 +24,7 @@ def test_logit_damage_restore_uses_baseline_weights():
     """The inner script's restore() must copy baseline_w back to model params
     and reset cache_c to baseline_cc. Verify the generated script contains this."""
     import sys
-    sys.path.insert(0, os.path.join(PROJECT_ROOT, "src", "util"))
     from pathlib import Path
-    sys.path.insert(0, os.path.join(PROJECT_ROOT, "src", "runners"))
     from logit_damage_runner import build_inner_script
 
     script = build_inner_script(
@@ -49,7 +47,6 @@ def test_logit_damage_restore_uses_baseline_weights():
 def test_logit_damage_baseline_saved_before_trials():
     """Baseline weights must be saved BEFORE any trial branches."""
     import sys
-    sys.path.insert(0, os.path.join(PROJECT_ROOT, "src", "runners"))
     from logit_damage_runner import build_inner_script
 
     script = build_inner_script(
@@ -276,7 +273,6 @@ def test_no_positional_cache_args_in_runners():
 def test_no_positional_cache_in_generated_scripts():
     """Check generated inner scripts (which are f-string templates)."""
     import sys
-    sys.path.insert(0, os.path.join(PROJECT_ROOT, "src", "runners"))
     from logit_damage_runner import build_inner_script
 
     script = build_inner_script(
@@ -432,7 +428,6 @@ def test_ordering_generation_deterministic():
     """Running the ordering functions twice with the same seed must produce
     identical results."""
     import sys
-    sys.path.insert(0, os.path.join(PROJECT_ROOT, "src", "datasets"))
     import random
     from generate_orderings import (
         assign_fixed_batches,
@@ -468,7 +463,6 @@ def test_ordering_generation_deterministic():
 def test_all_runner_inner_scripts_parse():
     """Every build_inner_script function must produce valid Python."""
     import sys
-    sys.path.insert(0, os.path.join(PROJECT_ROOT, "src", "runners"))
 
     from logit_damage_runner import build_inner_script as ld_script
 

@@ -175,9 +175,10 @@ class TestHighPriorityExperiments:
         counts = fc["edit_counts"]
         assert counts == sorted(counts)
 
-    def test_nullspace_tracking_defined(self, manifest):
-        """Null-space rank consumption experiment should be defined."""
-        assert "nullspace_rank_consumption" in manifest["high_priority_experiments"]
+    def test_failure_curves_defined(self, manifest):
+        """Core failure curve experiments should be defined."""
+        assert "failure_curve_alphaedit" in manifest["high_priority_experiments"]
+        assert "failure_curve_memit" in manifest["high_priority_experiments"]
 
     def test_cache_mitigation_has_variants(self, manifest):
         """Cache mitigation should define variant parameters."""

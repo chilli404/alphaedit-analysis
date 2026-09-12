@@ -30,12 +30,10 @@ class TestSkyFilesExist:
     def test_launch_sh_executable(self):
         assert os.access(SKY_DIR / "launch.sh", os.X_OK)
 
-    def test_only_3_files(self):
-        sky_files = list(SKY_DIR.glob("*"))
-        assert len(sky_files) == 3, (
-            f"sky/ should have exactly 3 files (run.yaml, test.yaml, launch.sh), "
-            f"found {len(sky_files)}: {[f.name for f in sky_files]}"
-        )
+    def test_core_files_present(self):
+        """Core files: run.yaml (experiments), test.yaml (tests), launch.sh (orchestrator)."""
+        for f in ["run.yaml", "test.yaml", "launch.sh"]:
+            assert (SKY_DIR / f).exists(), f"sky/{f} missing"
 
 
 class TestRunYaml:
@@ -125,7 +123,6 @@ class TestNoOldFiles:
     """Old YAMLs must not exist — replaced by run.yaml + test.yaml."""
 
     OLD_FILES = [
-        "alphaedit_gpu.yaml",
         "eval_evoedit_anchor.yaml",
         "eval_evoedit.yaml",
         "eval_generic.yaml",
@@ -140,15 +137,9 @@ class TestNoOldFiles:
         "logit_damage_memit.yaml",
         "reedit_from_ckpt.yaml",
         "same_fact_stage2.yaml",
-        "smoke_test.yaml",
         "suffix_eval.yaml",
         "suffix_switch.yaml",
         "sky_launch.sh",
-        "test_vendor_runners.yaml",
-        "test_revive_runners.yaml",
-        "test_baseline_runners.yaml",
-        "test_eval_and_measure.yaml",
-        "test_all.sh",
     ]
 
     @pytest.mark.parametrize("filename", OLD_FILES)

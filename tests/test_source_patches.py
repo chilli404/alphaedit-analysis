@@ -12,9 +12,9 @@ from pathlib import Path
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
 
-from source_patches import (
+# Use fully-qualified import to avoid src/__init__.py package shadowing
+from util.source_patches import (
     SHAPE_MODEL_LIST_ANCHOR,
     SHAPE_MODEL_LIST_EXTENDED,
     GLUE_MAP_ANCHOR,

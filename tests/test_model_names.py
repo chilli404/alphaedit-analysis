@@ -12,7 +12,6 @@ from pathlib import Path
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
 
 RUNNER_DIR = PROJECT_ROOT / "src" / "runners"
 POLYKERNEL_DIR = PROJECT_ROOT / "src" / "polykernel"

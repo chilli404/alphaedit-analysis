@@ -95,7 +95,6 @@ class TestAllPatchesApply:
 
     def test_all_evaluate_patches_apply(self):
         """All 4 evaluate.py patches apply without error."""
-        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
         from source_patches import (
             apply_p_cache_patch, apply_model_list_patch,
             apply_model_dtype_patch, apply_canonical_name_patch,
@@ -108,7 +107,6 @@ class TestAllPatchesApply:
         assert patched != source or "already patched" # at least one patch changed something
 
     def test_evaluate_patches_idempotent(self):
-        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
         from source_patches import (
             apply_p_cache_patch, apply_model_list_patch,
             apply_model_dtype_patch, apply_canonical_name_patch,
@@ -121,7 +119,6 @@ class TestAllPatchesApply:
         assert once == twice
 
     def test_nan_guard_applies_and_idempotent(self):
-        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
         from source_patches import apply_nan_guard_patch
         source = (VENDOR_ROOT / "memit" / "memit_main.py").read_text()
         once = apply_nan_guard_patch(source)
@@ -129,7 +126,6 @@ class TestAllPatchesApply:
         assert once == twice
 
     def test_glue_patch_applies_and_idempotent(self):
-        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
         from source_patches import apply_glue_context_patch
         source = (VENDOR_ROOT / "glue_eval" / "useful_functions.py").read_text()
         once = apply_glue_context_patch(source)
@@ -138,7 +134,6 @@ class TestAllPatchesApply:
 
     def test_canonical_name_sets_correct_values(self):
         """After canonical_name_patch, _name_or_path is set to GLUE-compatible values."""
-        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
         from source_patches import apply_canonical_name_patch
         source = (VENDOR_ROOT / "experiments" / "evaluate.py").read_text()
         patched = apply_canonical_name_patch(source)
@@ -184,7 +179,6 @@ class TestCanonicalNamePatch:
     """The canonical name patch must normalize _name_or_path in evaluate.py."""
 
     def test_patch_exists_in_source_patches(self):
-        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
         from source_patches import apply_canonical_name_patch
         source = (VENDOR_ROOT / "experiments" / "evaluate.py").read_text()
         patched = apply_canonical_name_patch(source)
@@ -335,7 +329,6 @@ class TestGlueEvalCompatibility:
     def _get_glue_map_keys(self):
         """Get GLUE map keys after applying the context-length patch (always applied at runtime)."""
         source = self.GLUE_MAP_FILE.read_text()
-        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
         from source_patches import apply_glue_context_patch
         source = apply_glue_context_patch(source)
         import re
@@ -361,7 +354,6 @@ class TestGlueEvalCompatibility:
 
     def test_canonical_name_patch_anchor_exists(self):
         """The canonical_name_patch anchor must exist in vendor evaluate.py."""
-        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
         from source_patches import CANONICAL_NAME_ANCHOR
         source = (VENDOR_ROOT / "experiments" / "evaluate.py").read_text()
         already_patched = 'model.config._name_or_path = "llama3-8b-instruct"' in source

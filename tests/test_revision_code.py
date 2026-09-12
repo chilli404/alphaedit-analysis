@@ -16,10 +16,6 @@ import numpy as np
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "src" / "datasets"))
-sys.path.insert(0, str(PROJECT_ROOT / "src" / "runners"))
-sys.path.insert(0, str(PROJECT_ROOT / "src" / "mechanism"))
-sys.path.insert(0, str(PROJECT_ROOT / "src" / "experiments"))
 
 
 # ─── Test Data Helpers ───────────────────────────────────────────────────────
@@ -533,7 +529,6 @@ class TestZsrePoolLimit:
 
     def test_select_clean_pool_searches_full(self):
         """With no pool_limit, should be able to find more unique subjects."""
-        sys.path.insert(0, str(PROJECT_ROOT / "src" / "datasets"))
         from generate_zsre_orderings import select_clean_pool
 
         # Create synthetic data: 200 records, first 100 have duplicate subjects

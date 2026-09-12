@@ -23,9 +23,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 VENDOR_ROOT = PROJECT_ROOT / "vendor" / "AlphaEdit"
 BASELINES_ROOT = PROJECT_ROOT / "baselines" / "EvoEdit"
 
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
-sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
-sys.path.insert(0, str(PROJECT_ROOT / "src" / "polykernel"))
 
 
 # ===========================================================================

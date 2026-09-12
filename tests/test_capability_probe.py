@@ -11,7 +11,6 @@ import pytest
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from capability_probe import _format_mmlu_question, compute_perplexity
 

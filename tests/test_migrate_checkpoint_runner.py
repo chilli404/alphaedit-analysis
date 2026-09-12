@@ -19,8 +19,6 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RUNNER_PATH = PROJECT_ROOT / "src" / "runners" / "checkpoint_runner.py"
 
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
-sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
 
 
 class TestCheckpointRunnerMigration:

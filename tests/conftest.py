@@ -10,9 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 VENDOR_ROOT = PROJECT_ROOT / "vendor" / "AlphaEdit"
 BASELINES_ROOT = PROJECT_ROOT / "baselines" / "EvoEdit"
 
-# Add src paths
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
-sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
+# pythonpath = ["src", "src/util"] is set in pyproject.toml [tool.pytest.ini_options]
 
 # Disable S3 path guard during tests (pytest may run on SkyPilot clusters)
 os.environ["_PYTEST_RUNNING"] = "1"

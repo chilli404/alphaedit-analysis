@@ -17,7 +17,12 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import torch
 
+pytestmark = pytest.mark.skipif(
+    not torch.cuda.is_available(),
+    reason="Requires GPU and model access"
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ALPHAEDIT_RESULTS = PROJECT_ROOT / "vendor" / "AlphaEdit" / "results"
@@ -32,7 +37,7 @@ def run_smoke_experiment(seed: int, run_label: str) -> Path:
 
     cmd = [
         sys.executable,
-        str(PROJECT_ROOT / "src" / "seeded_runner.py"),
+        str(PROJECT_ROOT / "src" / "runners" / "seeded_runner.py"),
         "--seed", str(seed),
         "--cuda_device", "0",
         "--alg_name", "AlphaEdit",

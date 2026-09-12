@@ -24,10 +24,6 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 VENDOR_ROOT = PROJECT_ROOT / "vendor" / "AlphaEdit"
 
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
-sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
-sys.path.insert(0, str(PROJECT_ROOT / "src" / "polykernel"))
-sys.path.insert(0, str(PROJECT_ROOT / "src" / "runners"))
 
 # Runners and their source files
 EDIT_LOOP_RUNNERS = {

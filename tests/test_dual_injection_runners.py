@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
-"""Tests for dual-injection runners that still use exec(compile()).
+"""Tests for dual-injection runners.
 
-These 4 runners patch BOTH memit_main.py (algorithm internals) AND evaluate.py
-(edit loop). The memit_main.py exec must stay (kernel solve patches). The
-evaluate.py exec CAN be replaced with evaluate_harness but requires significant
-refactoring of shared state management.
-
-Migration status: NOT MIGRATED — these tests verify current correctness.
-Migration blocker: algorithm-level state (_memit_prev_cache, _memit_batch_idx,
-_memit_log) is shared between apply_fn and eval loop via exec namespace.
+Originally tested the exec(compile()) pattern for 4 runners. Several of these
+runners have been partially or fully migrated to evaluate_harness + algorithm hooks.
+Tests that check for the OLD exec(compile()) internals are now skipped.
 
 Run with: uv run pytest tests/test_dual_injection_runners.py -v
 """
@@ -21,15 +16,15 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 VENDOR_ROOT = PROJECT_ROOT / "vendor" / "AlphaEdit"
 
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
-sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
 
+# Only runners that STILL use dual exec(compile()) — migrated ones are excluded
 DUAL_INJECTION_RUNNERS = [
-    ("src/runners/memit_sequential_runner.py", "memit_main.py", "evaluate.py"),
     ("src/polykernel/polykernel_seqreg_runner.py", "memit_main.py", "evaluate.py"),
-    ("src/runners/pathguard_runner.py", "memit_main.py", "evaluate.py"),
     ("src/polykernel/polykernel_editor_runner.py", "memit_main.py OR AlphaEdit_main.py", "evaluate.py"),
 ]
+
+# Migrated runners: memit_sequential_runner now uses hooks + evaluate_harness,
+# pathguard_runner uses hooks + modified injection. Tested in test_algorithm_hooks.py.
 
 
 class TestDualInjectionStructure:

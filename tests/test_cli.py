@@ -11,7 +11,6 @@ from unittest.mock import MagicMock
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 
 class TestMethodRegistry:
@@ -110,7 +109,6 @@ class TestCLIBuildArgs:
         return ns
 
     def test_alphaedit_args(self):
-        sys.path.insert(0, str(PROJECT_ROOT / "src"))
         import importlib.util
         spec = importlib.util.spec_from_file_location("src_main", str(PROJECT_ROOT / "src" / "__main__.py"))
         cli = importlib.util.module_from_spec(spec)

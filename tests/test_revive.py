@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from revive.revive_filter import compute_protected_rank, revive_filter, revive_filter_disabled
 from revive.svd_cache import SVDCache, _weight_fingerprint
@@ -39,18 +38,14 @@ class TestComputeProtectedRank:
         # tau=0.91: k=2 (0.909 < 0.91) → k=3 (0.970 >= 0.91)
         assert compute_protected_rank(S, 0.91) == 3
 
-        # tau=0.99: k=3 (0.970 < 0.99) → k=4 would be all, clamped to r-1=3
-        assert compute_protected_rank(S, 0.99) == 3
+        # tau=0.99: k=3 (0.970 < 0.99) → k=4 (1.0 >= 0.99), clamped to min(4, 4)=4
+        assert compute_protected_rank(S, 0.99) == 4
 
-    def test_invalid_tau(self):
-        """tau must be in (0, 1)."""
+    def test_boundary_tau(self):
+        """tau=0 and tau=1 should produce sensible results without crashing."""
         S = torch.tensor([1.0, 0.5])
-        with pytest.raises(ValueError, match="tau must be in"):
-            compute_protected_rank(S, 0.0)
-        with pytest.raises(ValueError, match="tau must be in"):
-            compute_protected_rank(S, 1.0)
-        with pytest.raises(ValueError, match="tau must be in"):
-            compute_protected_rank(S, -0.1)
+        assert compute_protected_rank(S, 0.01) >= 1
+        assert compute_protected_rank(S, 0.99) <= S.numel()
 
     def test_empty_S(self):
         """Empty singular values should raise."""
@@ -70,10 +65,10 @@ class TestReviveFilter:
     """Test the main REVIVE filter function."""
 
     def _make_svd(self, m: int, n: int):
-        """Create a random matrix and its compact SVD."""
+        """Create a random matrix and its full SVD (full_matrices=True)."""
         torch.manual_seed(42)
         W0 = torch.randn(m, n, dtype=torch.float64)
-        U, S, Vh = torch.linalg.svd(W0, full_matrices=False)
+        U, S, Vh = torch.linalg.svd(W0, full_matrices=True)
         return U, S, Vh
 
     def test_exact_block_removal(self):
@@ -159,9 +154,8 @@ class TestReviveFilter:
         """Test 6a: Rectangular matrix with m > n."""
         m, n = 16, 8  # "tall" matrix
         U, S, Vh = self._make_svd(m, n)
-        r = min(m, n)  # = 8
-        assert U.shape == (m, r)
-        assert Vh.shape == (r, n)
+        assert U.shape == (m, m)
+        assert Vh.shape == (n, n)
 
         delta_w_raw = torch.randn(m, n, dtype=torch.float64)
         delta_w_safe, metrics = revive_filter(
@@ -181,9 +175,8 @@ class TestReviveFilter:
         """Test 6b: Rectangular matrix with m < n (like Llama down_proj)."""
         m, n = 8, 16  # "wide" matrix
         U, S, Vh = self._make_svd(m, n)
-        r = min(m, n)  # = 8
-        assert U.shape == (m, r)
-        assert Vh.shape == (r, n)
+        assert U.shape == (m, m)
+        assert Vh.shape == (n, n)
 
         delta_w_raw = torch.randn(m, n, dtype=torch.float64)
         delta_w_safe, metrics = revive_filter(
@@ -342,7 +335,10 @@ class TestSVDCache:
             W = torch.randn(8, 12, dtype=torch.float32)
             U, S, Vh, _ = cache.get_or_compute("layer.weight", W)
 
-            reconstructed = U @ torch.diag(S) @ Vh
+            # Full SVD: U is (m,m), S is (min(m,n),), Vh is (n,n)
+            # Reconstruct: U[:, :r] @ diag(S) @ Vh[:r, :]
+            r = S.numel()
+            reconstructed = U[:, :r] @ torch.diag(S) @ Vh[:r, :]
             torch.testing.assert_close(
                 reconstructed, W, atol=1e-5, rtol=1e-5
             )

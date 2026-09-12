@@ -20,7 +20,6 @@ VENDOR_ROOT = PROJECT_ROOT / "vendor" / "AlphaEdit"
 BASELINES_ROOT = PROJECT_ROOT / "baselines" / "EvoEdit"
 PATCHES_DIR = PROJECT_ROOT / "scripts" / "patches"
 
-sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
 sys.path.insert(0, str(PATCHES_DIR))
 
 
@@ -212,7 +211,6 @@ class TestSourcePatchesDeprecation:
 
     def test_orchestrators_are_idempotent(self):
         """Calling orchestrators twice on the same files must be a no-op the second time."""
-        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
         from source_patches import apply_p_cache_patch, apply_nan_guard_patch, apply_glue_context_patch
         # Read vendor files
         eval_src = (VENDOR_ROOT / "experiments" / "evaluate.py").read_text()

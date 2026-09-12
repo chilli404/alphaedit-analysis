@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from mechanism.pathguard_solver import (
     select_vulnerable,

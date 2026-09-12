@@ -2,1054 +2,140 @@
 """
 Polykernel-Augmented MEMIT+SeqReg: Kernel-weighted sequential regularization.
 
-Combines two existing approaches:
-  1. MEMIT+SeqReg (memit_sequential_runner.py): Augments MEMIT's LHS with
-     lambda_prev * K_prev@K_prev^T + lambda_delta * I
-  2. Polykernel Editor (polykernel_editor_runner.py): Replaces linear K@K^T
-     with kernel-weighted K@(G*s)@K^T
+Uses evaluate_harness.run_experiment() + composable algorithm hooks instead of
+exec(compile(evaluate.py)) + exec(compile(memit_main.py)).
 
-Mathematical formulation:
-    Standard SeqReg:    lhs = alpha*C0 + K@K^T + lp*K_prev@K_prev^T + ld*I
-    Polykernel SeqReg:  lhs = alpha*C0 + K@(G_k*s)@K^T + lp*K_prev@(G_kp*s_p)@K_prev^T + ld*I
-    Hybrid SeqReg:      lhs = alpha*C0 + K@(G_k*s)@K^T + lp*K_prev@K_prev^T + ld*I
+Supports multiple base algorithms via --base_alg:
+  - MEMIT (default): apply_memit_with_hooks + seqreg_hooks
+  - AlphaEdit: apply_alphaedit_with_hooks + seqreg_hooks
+  - NSE / MEMIT_rect: legacy exec(compile()) fallback (not yet migrated)
 
-Motivation: K_prev accumulates keys that become increasingly collinear over
-many batches. Kernel weighting on current keys amplifies within-batch
-regularization (100 keys), but applying it to K_prev (thousands of keys)
-causes catastrophic over-regularization at scale. The hybrid mode
-(--no_kernel_prev) applies the kernel only to current-batch keys while
-keeping linear accumulation for previous keys — combining poly2's benefit
-on within-batch geometry with linear SeqReg's stable long-run behavior.
-
-Implementation: Dual source injection (patches memit_main.py + evaluate.py).
+REVIVE spectral filter composes with any base: compose_hooks(seqreg, revive)
 
 Usage:
-    python src/polykernel/polykernel_seqreg_runner.py \\
-        --seed 42 --dataset_size_limit 2000 --num_edits 100 \\
-        --lambda_prev 1.0 --lambda_delta 1.0 \\
-        --kernel_type poly --kernel_degree 2 \\
+    python src/polykernel/polykernel_seqreg_runner.py \
+        --seed 42 --dataset_size_limit 2000 --num_edits 100 \
+        --lambda_prev 1.0 --lambda_delta 1.0 \
+        --kernel_type poly --kernel_degree 2 \
         --fast_checkpoint --save_interval 10
 
-    python src/polykernel/polykernel_seqreg_runner.py \\
-        --seed 42 --dataset_size_limit 2000 --num_edits 100 \\
-        --lambda_prev 1.0 --lambda_delta 1.0 \\
-        --kernel_type rbf --kernel_sigma median \\
-        --eval_at_checkpoints_only --save_interval 10
-
-    ORDERING=key_clustered:
-    python src/polykernel/polykernel_seqreg_runner.py \\
-        --seed 42 --dataset_size_limit 5000 --num_edits 100 \\
-        --lambda_prev 1.0 --lambda_delta 1.0 \\
-        --kernel_type poly --kernel_degree 2 \\
-        --dataset_override results/matched_ordering/orderings/key_clustered_seed42.json \\
-        --ordering key_clustered --fast_checkpoint
+    # With REVIVE:
+    python src/polykernel/polykernel_seqreg_runner.py \
+        --seed 42 --base_alg MEMIT --revive --revive_tau 0.1 \
+        --dataset_size_limit 10000 --num_edits 100 \
+        --ordering fb_high_exposure \
+        --dataset_override results/matched_ordering/orderings/fb_high_exposure_seed42.json
 """
 
 import argparse
 import json
 import os
-import subprocess
+import random
 import sys
-import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
+import torch
+
 _SRC_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_SRC_DIR / "util"))
+sys.path.insert(0, str(_SRC_DIR))
 
 from model_registry import DEFAULT_MODEL
 from model_resolve import resolve_model_path
 from setup_hparams import link_hparams
-from source_patches import patch_evaluate_file
 from eval_config import hash_eval_config
 from paths import get_project_root, get_alphaedit_root, get_result_root, get_checkpoint_root
+from evaluate_harness import (
+    run_experiment, load_model_and_tok, load_dataset,
+    ExperimentHooks,
+)
+from checkpoint_io import (
+    save_checkpoint, load_checkpoint, find_latest_checkpoint,
+    should_save, should_skip, validate_checkpoint_path,
+)
 from mega_batch_eval import get_mega_batch_eval_source
 from experiment_config import ExperimentConfig
-
-
-# --- Source anchors (commit b84624f) ---
-
-# evaluate.py
-CUDA_PATCH_TARGET = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
-PRE_EDIT_ANCHOR = '        start = time()\n        if any(alg in alg_name for alg in ["AlphaEdit", "MEMIT_seq", "NSE"]):'
-POST_EDIT_ANCHOR = '        exec_time = time() - start'
-MEMIT_IMPORT_ANCHOR = 'from memit.memit_main import apply_memit_to_model, get_context_templates'
-
-# memit_main.py
-SOLVE_ANCHOR = '        adj_k = torch.linalg.solve(\n            hparams.mom2_update_weight * cov.double() + layer_ks @ layer_ks.T,\n            layer_ks,\n        )'
-DELTAS_ANCHOR = '            deltas[weight_name] = ('
-WEIGHT_UPDATE_ANCHOR = '        # Update model weights and record desired changes in `delta` variable'
-
-
-def resolve_checkpoint_dir(  # DEPRECATED: use ExperimentConfig.checkpoint_dir() instead
-    explicit_dir: str | None,
-    seed: int,
-    lambda_prev: float,
-    lambda_delta: float,
-    cache_max: int | None = None,
-    kernel_type: str = "poly",
-    kernel_degree: int = 2,
-    kernel_sigma: str = "median",
-    ordering: str | None = None,
-    kernel_prev: bool = True,
-    revive: bool = False,
-    revive_tau: float = 0.1,
-    model_name: str | None = None,
-    base_alg: str = "MEMIT",
-) -> Path:
-    """Resolve checkpoint directory for Polykernel+SeqReg.
-
-    Convention:
-        Standard:         {CHECKPOINT_ROOT}/polykernel_seqreg/{model_tag}/{variant}/seed{N}/
-        Matched ordering: {CHECKPOINT_ROOT}/polykernel_seqreg/{model_tag}/{variant}/{ordering}/seed{N}/
-    Non-default models get a model_tag subdirectory; Llama (default) has none for backwards compat.
-    """
-    if explicit_dir:
-        return Path(explicit_dir)
-
-    cache_max_str = str(cache_max) if cache_max is not None else "0"
-    kernel_tag = f"poly{kernel_degree}" if kernel_type == "poly" else f"rbf_{kernel_sigma}"
-    if not kernel_prev:
-        kernel_tag += "-hybrid"
-    if revive:
-        kernel_tag += f"-REVIVE-tau{revive_tau}"
-    _base_prefix = "MEMIT-Seq" if base_alg == "MEMIT" else base_alg
-    variant_name = f"{_base_prefix}-{kernel_tag}-lp{lambda_prev}-ld{lambda_delta}-cache{cache_max_str}"
-
-    # Model tag for cross-model isolation
-    _default = DEFAULT_MODEL
-    _mn = (model_name or "").lower()
-    _model_tag = ""
-    if _mn and _mn != _default.lower() and not _mn.endswith("meta-llama-3-8b-instruct"):
-        if "gpt-j" in _mn:
-            _model_tag = "gpt-j-6b"
-        elif "qwen2.5-7b" in _mn:
-            _model_tag = "qwen2.5-7b"
-        else:
-            _model_tag = _mn.rsplit("/", 1)[-1]
-
-    base = get_checkpoint_root() / "polykernel_seqreg"
-    if _model_tag:
-        base = base / _model_tag
-
-    if ordering:
-        return base / variant_name / ordering / f"seed{seed}"
-
-    return base / variant_name / f"seed{seed}"
-
-
-def find_latest_checkpoint(ckpt_dir: Path) -> tuple[int, Path] | None:
-    """Find the latest checkpoint batch in the directory."""
-    if not ckpt_dir.exists():
-        return None
-
-    batch_dirs = sorted(
-        [d for d in ckpt_dir.glob("batch_*") if d.is_dir()],
-        key=lambda d: int(d.name.split("_")[1]) if d.name.split("_")[1].isdigit() else -1,
-    )
-    if not batch_dirs:
-        return None
-
-    for batch_dir in reversed(batch_dirs):
-        metadata_file = batch_dir / "metadata.json"
-        if metadata_file.exists():
-            try:
-                batch_idx = int(batch_dir.name.split("_")[1])
-                return (batch_idx, batch_dir)
-            except (ValueError, IndexError):
-                continue
-
-    return None
-
-
-def build_polykernel_seqreg_script(
-    seed: int,
-    cuda_device: str,
-    alg_name: str,
-    model_name: str,
-    hparams_fname: str,
-    ds_name: str,
-    dataset_size_limit: int,
-    num_edits: int,
-    downstream_eval_steps: int,
-    conserve_memory: bool,
-    lambda_prev: float,
-    lambda_delta: float,
-    cache_strategy: str,
-    cache_max: int | None,
-    kernel_type: str,
-    kernel_degree: int,
-    kernel_sigma: str,
-    output_jsonl: str,
-    fast_checkpoint: bool = False,
-    eval_at_checkpoints_only: bool = False,
-    order_id: int = 0,
-    save_interval: int = 10,
-    checkpoint_dir: str = "",
-    start_from_batch: int = 0,
-    dataset_override: str | None = None,
-    eval_results_dir: str = "",
-    variant_name: str = "",
-    kernel_prev: bool = True,
-    revive: bool = False,
-    revive_tau: float = 0.1,
-    revive_svd_device: str = "cuda",
-    revive_svd_dtype: str = "float32",
-    revive_cache_dir: str = "",
-    revive_log_interval: int = 1,
-    revive_mode: str = "hard",
-) -> str:
-    """
-    Build inline Python script for Polykernel+SeqReg.
-    Uses dual source injection: patches memit_main.py and evaluate.py.
-    """
-    argv_parts = [
-        "experiments.evaluate",
-        f"--alg_name={alg_name}",
-        f"--model_name={model_name}",
-        f"--hparams_fname={hparams_fname}",
-        f"--ds_name={ds_name}",
-        f"--dataset_size_limit={dataset_size_limit}",
-        f"--num_edits={num_edits}",
-        f"--downstream_eval_steps={downstream_eval_steps}",
-        "--generation_test_interval=1",
-    ]
-    if conserve_memory:
-        argv_parts.append("--conserve_memory")
-
-    argv_str = repr(argv_parts)
-    cache_max_repr = repr(cache_max)
-
-    # Injection code for memit_main.py: kernel-augmented solve replacement
-    # kernel_prev controls whether to apply kernel to K_prev (True) or use linear (False)
-    _kernel_prev_flag = kernel_prev
-
-    solve_replacement = r'''        # === MEMIT+SeqReg+Kernel: kernel-augmented solve (injected) ===
-        # Shared kernel Gram computation function
-        def _compute_kernel_gram(_K, _degree, _ktype, _sigma):
-            """Compute kernel Gram matrix and trace-equalizing scale."""
-            _G_lin = _K.T @ _K
-            _trace_lin = _G_lin.trace().clamp(min=1e-12)
-            if _ktype == "poly":
-                _G_kernel = (1.0 + _G_lin).pow(_degree)
-            else:  # rbf
-                _diag = _G_lin.diag()
-                _dist_sq = _diag.unsqueeze(0) + _diag.unsqueeze(1) - 2.0 * _G_lin
-                _dist_sq = _dist_sq.clamp(min=0.0)
-                if _sigma == "median":
-                    _n = _dist_sq.shape[0]
-                    _mask = ~torch.eye(_n, dtype=torch.bool, device=_dist_sq.device)
-                    _sigma_sq = _dist_sq[_mask].median().clamp(min=1e-12)
-                else:
-                    _sigma_sq = torch.tensor(float(_sigma)**2, device=_dist_sq.device, dtype=_dist_sq.dtype)
-                _G_kernel = (-_dist_sq / (2.0 * _sigma_sq)).exp()
-            _frob_inner = (_G_kernel * _G_lin).sum().clamp(min=1e-12)
-            _scale = (_trace_lin / _frob_inner).item()
-            return _G_kernel, _scale, _G_lin
-
-        # Current keys: kernel-weighted K@K^T
-        _G_k, _s_k, _G_lin_k = _compute_kernel_gram(layer_ks, _pk_degree, _pk_type, _pk_sigma)
-        _KKT_kernel = layer_ks @ (_G_k * _s_k) @ layer_ks.T
-
-        # Base LHS with kernel-weighted current keys
-        _lhs_base = hparams.mom2_update_weight * cov.double() + _KKT_kernel
-        _base_lhs_norm = torch.linalg.norm(_lhs_base, ord='fro').item()
-
-        # Previous keys: kernel-weighted or linear K_prev@K_prev^T
-        _K_prev = None
-        _kpkp_norm = 0.0
-        if _memit_lambda_prev > 0 and layer in _memit_prev_cache and len(_memit_prev_cache[layer]) > 0:
-            _K_prev = torch.cat(_memit_prev_cache[layer], dim=1).to(layer_ks.device).double()
-            if _pk_kernel_prev:
-                # Full kernel on K_prev (original polykernel_seqreg behavior)
-                _G_kp, _s_kp, _ = _compute_kernel_gram(_K_prev, _pk_degree, _pk_type, _pk_sigma)
-                _KPKP = _K_prev @ (_G_kp * _s_kp) @ _K_prev.T
-                del _G_kp
-            else:
-                # Hybrid: linear K_prev@K_prev^T (no kernel on accumulated keys)
-                _KPKP = _K_prev @ _K_prev.T
-            _kpkp_norm = torch.linalg.norm(_KPKP, ord='fro').item()
-
-        # Augmented LHS
-        _lhs = _lhs_base
-        if _K_prev is not None:
-            _lhs = _lhs + _memit_lambda_prev * _KPKP
-            del _KPKP
-        if _memit_lambda_delta > 0:
-            _lhs = _lhs + _memit_lambda_delta * torch.eye(_lhs.shape[0], device=_lhs.device, dtype=_lhs.dtype)
-
-        # Store norms for logging
-        _memit_lhs_norms = {
-            "base_lhs_norm": _base_lhs_norm,
-            "kpkp_norm": _kpkp_norm,
-            "identity_dim": _lhs.shape[0],
-            "kernel_scale_current": _s_k,
-            "kernel_G_lin_rank": int((_G_lin_k.diag() > 1e-8).sum().item()),
-            "kernel_prev": _pk_kernel_prev,
-        }
-        del _G_k, _G_lin_k, _KKT_kernel
-
-        adj_k = torch.linalg.solve(_lhs, layer_ks)
-        # Free large intermediates to prevent OOM on 46GB GPUs (L40S)
-        _lhs = _lhs_base = _K_prev = _s_k = None
-        torch.cuda.empty_cache()
-        # === END kernel-augmented solve ==='''
-
-    # Injection code for memit_main.py: before deltas storage (log + cache)
-    log_and_cache_code = r'''            # === MEMIT+SeqReg+Kernel: log + store keys (injected) ===
-            _upd_norm = torch.linalg.norm(upd_matrix).item()
-            _dw_kprev_norm = 0.0
-            _cache_batches = len(_memit_prev_cache.get(layer, []))
-            _cache_keys = sum(k.shape[1] for k in _memit_prev_cache.get(layer, []))
-            # Recompute dw_kprev_norm from cache (K_prev freed in solve for memory)
-            if _memit_lambda_prev > 0 and layer in _memit_prev_cache and len(_memit_prev_cache[layer]) > 0:
-                _kp_for_log = torch.cat(_memit_prev_cache[layer], dim=1).to(upd_matrix.device).double()
-                _dw_kprev_norm = torch.linalg.norm(upd_matrix.double() @ _kp_for_log).item()
-                del _kp_for_log
-                torch.cuda.empty_cache()
-
-            _log_entry = {
-                "batch": _memit_batch_idx[0], "layer": int(layer),
-                "upd_norm": _upd_norm, "dw_kprev_norm": _dw_kprev_norm,
-                "cache_batches": _cache_batches, "cache_keys": _cache_keys,
-            }
-            if '_memit_lhs_norms' in locals():
-                _log_entry.update(_memit_lhs_norms)
-            _memit_log.append(_log_entry)
-
-            # Append current keys to cache
-            if _memit_lambda_prev > 0 or _memit_cache_strategy == "all":
-                if layer not in _memit_prev_cache:
-                    _memit_prev_cache[layer] = []
-                _memit_prev_cache[layer].append(layer_ks.detach().cpu())
-                if _memit_cache_max is not None and len(_memit_prev_cache[layer]) > _memit_cache_max:
-                    if _memit_cache_strategy == "recent":
-                        _memit_prev_cache[layer] = _memit_prev_cache[layer][-_memit_cache_max:]
-            # === END log + store keys ==='''
-
-    # Injection into evaluate.py: increment batch counter after each edit
-    batch_increment_hook = r'''        # === MEMIT+SeqReg+Kernel: increment batch (injected) ===
-        if '_memit_batch_idx' in globals():
-            _memit_batch_idx[0] += 1
-            _cur_edits = _memit_batch_idx[0] * num_edits
-            if _memit_batch_idx[0] % 10 == 0:
-                print(f"=================================================================={_cur_edits}_edit==================================================================", flush=True)
-        # === END batch increment ===
-'''
-
-    # Mega-batch eval injection (same as memit_sequential_runner)
-    # Mega-batch eval injection (from shared module src/util/mega_batch_eval.py)
-    _mbe_fn_source = get_mega_batch_eval_source()
-    _mbe_fn_indented = '\n'.join('    ' + line for line in _mbe_fn_source.strip().split('\n'))
-    mega_batch_eval_injection = _mbe_fn_indented + '''
-    # --- Call mega-batch eval or skip ---
-    if _do_final_eval:
-        _records_to_eval = list(ds)
-        if _memit_fast_mode:
-            _records_to_eval = [r for r in ds if r["case_id"] in case_ids]
-        _mega_batch_eval(edited_model, tok, _records_to_eval, case_result_template, num_edits, case_ids, exec_time)
-    # === END mega-batch eval ===
-    for record in ds:
-        break  # Mega-batch handles all eval above; skip vendor fallback loop
-        out_file = Path(case_result_template.format(num_edits, record["case_id"]))'''
-
-    script = textwrap.dedent(f"""\
-import os, sys, random, json
-import numpy as np
-import torch
-
-# 1. Seed all sources of randomness
-seed = {seed}
-random.seed(seed)
-np.random.seed(seed)
-torch.manual_seed(seed)
-torch.cuda.manual_seed_all(seed)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-torch.use_deterministic_algorithms(True, warn_only=True)
-
-# 2. Set sys.argv
-sys.argv = {argv_str}
-
-# 3. MEMIT+SeqReg+Kernel parameters (shared state)
-_memit_lambda_prev = {lambda_prev}
-_memit_lambda_delta = {lambda_delta}
-_memit_prev_cache = {{}}
-_memit_cache_max = {cache_max_repr}
-_memit_cache_strategy = "{cache_strategy}"
-_memit_batch_idx = [0]  # mutable container: shared across exec namespaces
-_memit_log = []
-_memit_output_jsonl = "{output_jsonl}"
-_memit_fast_mode = {fast_checkpoint}
-
-# 3b. Kernel parameters
-_pk_degree = {kernel_degree}
-_pk_type = "{kernel_type}"
-_pk_sigma = "{kernel_sigma}"
-_pk_kernel_prev = {_kernel_prev_flag}
-
-# 3c. REVIVE parameters
-_revive_enabled = {revive}
-_revive_tau = {revive_tau}
-_revive_svd_device = "{revive_svd_device}"
-_revive_svd_dtype = "{revive_svd_dtype}"
-_revive_cache_dir = "{revive_cache_dir}"
-_revive_log_interval = {revive_log_interval}
-_revive_mode = "{revive_mode}"
-_revive_svd_cache = {{}}  # UNUSED — kept for backward compat; SVD now computed dynamically
-_revive_original_weights = {{}}  # UNUSED — kept for backward compat
-
-def _revive_init(model, hparams):
-    \"\"\"Initialize REVIVE config. SVD is computed dynamically from CURRENT weights each batch.
-
-    Matches reference REVIVE (baselines/REVIVEEDIT/code.py):
-      - SVD of CURRENT weight (not pretrained) with full_matrices=True
-      - Recomputed every batch so the spectral basis tracks accumulated edits
-    \"\"\"
-    if not _revive_enabled:
-        return
-    _n_layers = len(hparams.layers)
-    _sample_name = hparams.rewrite_module_tmp.format(hparams.layers[0]) + ".weight"
-    _sample_param = dict(model.named_parameters()).get(_sample_name)
-    _shape_str = str(tuple(_sample_param.shape)) if _sample_param is not None else "?"
-    print(f"  [REVIVE] Initialized: {{_n_layers}} layers, tau={{_revive_tau}}, "
-          f"svd_device={{_revive_svd_device}}, svd_dtype={{_revive_svd_dtype}}, "
-          f"full_matrices=True, weight_shape={{_shape_str}}")
-    print(f"  [REVIVE] Dynamic SVD: recomputed from CURRENT weights each batch (not cached)")
-
-def _revive_apply(upd_matrix, weight_name, layer, current_weight):
-    \"\"\"Apply REVIVE filter to a proposed update. Returns filtered update.
-
-    Matches reference REVIVE (baselines/REVIVEEDIT/code.py):
-      1. Compute full SVD of CURRENT weight (not pretrained): full_matrices=True
-      2. split_rank = first index where cumsum(s)/sum(s) > tau
-      3. Zero top-k rows AND top-k columns of u.T @ deltaW @ v
-      4. Reconstruct: u @ projected_coff @ v.T
-
-    Args:
-        upd_matrix: Proposed weight update [m, n].
-        weight_name: Parameter name for logging.
-        layer: Layer index for logging.
-        current_weight: The CURRENT model weight (post all prior edits, pre this update).
-    \"\"\"
-    import time as _rv_time
-    _rv_t0 = _rv_time.perf_counter()
-
-    _dtype_map = {{"float32": torch.float32, "float64": torch.float64}}
-    _svd_dtype = _dtype_map.get(_revive_svd_dtype, torch.float32)
-
-    # 1. Compute full SVD of CURRENT weight (reference: project(CurrentW, deltaW, thresh))
-    w_for_svd = current_weight.detach().to(dtype=_svd_dtype, device=_revive_svd_device)
-    U, S, Vh = torch.linalg.svd(w_for_svd, full_matrices=True)
-    # Reference convention: v = vh.T, so v.T = Vh
-    del w_for_svd
-
-    _rv_svd_time = _rv_time.perf_counter() - _rv_t0
-
-    # 2. Compute split_rank: smallest k where cumulative energy >= tau (Eq. 5).
-    #    Released code uses > and argmax, giving k-1. We use searchsorted for >= with +1.
-    cumfrac = S.cumsum(dim=0) / S.sum()
-    split_rank = int(torch.searchsorted(cumfrac, torch.tensor(_revive_tau, device=cumfrac.device), right=False).item()) + 1
-    split_rank = min(split_rank, S.numel())
-
-    # Move SVD factors to update device for projection
-    _dev = upd_matrix.device
-    _dt = upd_matrix.dtype
-    U_d = U.to(device=_dev, dtype=torch.float32)
-    S_d = S.to(device=_dev, dtype=torch.float32)
-    Vh_d = Vh.to(device=_dev, dtype=torch.float32)
-    del U, S, Vh  # Free CPU copies
-
-    upd_f = upd_matrix.float()
-
-    # 3 & 4. Project: zero top-k rows/cols, reconstruct
-    #    Reference: projected_coff = u.T @ deltaW @ v;  projected_coff[:k,:]=0; [:,:k]=0
-    #              Safe_Update = u @ projected_coff @ v.T
-    #    Equivalent memory-efficient form (only multiply tail portions):
-    #              U_tail @ (U_tail.T @ delta @ Vh_tail.T) @ Vh_tail
-    if split_rank > 0:
-        U_tail = U_d[:, split_rank:]     # [m, m-k]
-        Vh_tail = Vh_d[split_rank:, :]   # [n-k, n]  (note: n-k can be >> m-k for full SVD)
-        left_proj = U_tail.T @ upd_f     # [m-k, n]
-        A_tail = left_proj @ Vh_tail.T   # [m-k, n-k]
-        upd_safe = (U_tail @ A_tail @ Vh_tail).to(_dt)
-        del U_tail, Vh_tail, left_proj, A_tail
-    else:
-        # split_rank == 0: no filtering (tau too small or first SV already exceeds threshold)
-        upd_safe = upd_matrix
-
-    del U_d, Vh_d
-
-    _rv_total_time = _rv_time.perf_counter() - _rv_t0
-
-    # Log metrics
-    batch_idx = _memit_batch_idx[0]
-    m, n = upd_matrix.shape
-    r = S_d.numel()
-
-    if batch_idx % _revive_log_interval == 0:
-        eps = 1e-12
-        total_energy = S_d.sum().item()
-        raw_fro = torch.linalg.norm(upd_matrix, ord='fro').item()
-        safe_fro = torch.linalg.norm(upd_safe, ord='fro').item()
-        removed_fro = torch.linalg.norm(upd_matrix - upd_safe, ord='fro').item()
-        removed_frac = removed_fro / (raw_fro + eps)
-        inner = (upd_matrix.float() * upd_safe.float()).sum().item()
-        cos_sim = inner / (raw_fro * safe_fro + eps)
-        protected_energy = S_d[:split_rank].sum().item() / (total_energy + eps) if split_rank > 0 else 0.0
-
-        _memit_log.append({{
-            "phase": "revive",
-            "batch": batch_idx,
-            "layer": int(layer),
-            "param_name": weight_name,
-            "tau": _revive_tau,
-            "split_rank": split_rank,
-            "r": int(r),
-            "n": int(n),
-            "full_svd": True,
-            "split_rank_fraction": round(split_rank / r, 4) if r > 0 else 0.0,
-            "protected_energy_fraction": round(protected_energy, 4),
-            "raw_norm_fro": round(raw_fro, 6),
-            "safe_norm_fro": round(safe_fro, 6),
-            "removed_norm_fro": round(removed_fro, 6),
-            "removed_fraction": round(removed_frac, 6),
-            "raw_safe_cosine": round(cos_sim, 6),
-            "svd_time_s": round(_rv_svd_time, 3),
-            "total_time_s": round(_rv_total_time, 3),
-        }})
-
-    # Validate output
-    assert upd_safe.shape == upd_matrix.shape, (
-        f"REVIVE shape mismatch: {{upd_safe.shape}} vs {{upd_matrix.shape}}"
-    )
-    if not torch.isfinite(upd_safe).all():
-        print(f"  [REVIVE] WARNING: non-finite output for {{weight_name}} batch {{batch_idx}}, "
-              f"falling back to unfiltered update")
-        return upd_matrix  # Fallback to unfiltered
-
-    if batch_idx % _revive_log_interval == 0:
-        sigma1_share = (S_d[0] / S_d.sum()).item() if S_d.numel() > 0 else 0
-        upd_ratio = (upd_safe.norm() / upd_f.norm()).item() if upd_f.norm() > 0 else 1.0
-        print(f"  [REVIVE] layer={{layer}} split_rank={{split_rank}}/{{r}} sigma1={{sigma1_share:.3f}} "
-              f"removed={{removed_frac:.1%}} upd_ratio={{upd_ratio:.4f}} svd={{_rv_svd_time:.1f}}s")
-
-    del S_d
-
-    return upd_safe
-
-# 3d. Checkpoint parameters
-_ckpt_save_interval = {save_interval}
-_ckpt_dir = "{checkpoint_dir}"
-_ckpt_start_batch = {start_from_batch}
-_ckpt_num_edits = {num_edits}
-_ckpt_eval_at_checkpoints_only = {eval_at_checkpoints_only}
-_ckpt_base_alg = "{alg_name}"
-
-def _ckpt_save(cnt, model, hparams):
-    \"\"\"Save model weights, prev_cache, batch_idx, and log at checkpoint boundary.\"\"\"
-    from pathlib import Path
-    from datetime import datetime, timezone
-
-    batch_dir = Path(_ckpt_dir) / f"batch_{{cnt}}"
-    # Guard: verify checkpoint path matches base algorithm (catches stale code)
-    _expected = "MEMIT-Seq" if _ckpt_base_alg == "MEMIT" else _ckpt_base_alg
-    if _expected not in _ckpt_dir:
-        raise RuntimeError(
-            f"CHECKPOINT PATH MISMATCH: base_alg={{_ckpt_base_alg}} expects "
-            f"'{{_expected}}' in path, got: {{_ckpt_dir}}"
-        )
-    batch_dir.mkdir(parents=True, exist_ok=True)
-
-    # Save edited layer weights (use rewrite_module_tmp for architecture portability)
-    layer_weights = {{}}
-    _all_params = dict(model.named_parameters())
-    for layer_idx in hparams.layers:
-        _rewrite_key = hparams.rewrite_module_tmp.format(layer_idx) + ".weight"
-        if _rewrite_key in _all_params:
-            layer_weights[_rewrite_key] = _all_params[_rewrite_key].data.cpu()
-    if not layer_weights:
-        print(f"  [CHECKPOINT] WARNING: No matching parameters for rewrite_module_tmp='{{hparams.rewrite_module_tmp}}'")
-    torch.save(layer_weights, str(batch_dir / "model_weights.pt"))
-
-    # Save prev_cache (dict of layer -> list of key tensors)
-    torch.save(_memit_prev_cache, str(batch_dir / "prev_cache.pt"))
-
-    # Save log entries so far
-    with open(str(batch_dir / "mechanism_log.jsonl"), "w") as f:
-        for entry in _memit_log:
-            f.write(json.dumps(entry) + "\\n")
-
-    # Save metadata
-    metadata = {{
-        "batch_idx": cnt,
-        "total_edits": (cnt + 1) * _ckpt_num_edits,
-        "batch_idx_counter": _memit_batch_idx[0],
-        "lambda_prev": _memit_lambda_prev,
-        "lambda_delta": _memit_lambda_delta,
-        "cache_strategy": _memit_cache_strategy,
-        "kernel_type": _pk_type,
-        "kernel_degree": _pk_degree,
-        "kernel_sigma": _pk_sigma,
-        "kernel_prev": _pk_kernel_prev,
-        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-    }}
-    with open(str(batch_dir / "metadata.json"), "w") as f:
-        json.dump(metadata, f, indent=2)
-
-    print(f"  [CHECKPOINT] Saved batch {{cnt}} ({{(cnt+1) * _ckpt_num_edits}} edits) -> {{batch_dir}}")
-
-def _ckpt_load(model, hparams):
-    \"\"\"Load checkpoint state: model weights, prev_cache, log.\"\"\"
-    from pathlib import Path
-
-    if _ckpt_start_batch <= 0:
-        return False
-
-    batch_dir = Path(_ckpt_dir) / f"batch_{{_ckpt_start_batch - 1}}"
-    if not batch_dir.exists():
-        print(f"  [CHECKPOINT] WARNING: Expected checkpoint at {{batch_dir}} not found. Starting from scratch.")
-        return False
-
-    # Load model weights
-    weights_file = batch_dir / "model_weights.pt"
-    if weights_file.exists():
-        layer_weights = torch.load(str(weights_file), map_location="cuda")
-        param_dict = dict(model.named_parameters())
-        loaded_count = 0
-        for param_name, param_data in layer_weights.items():
-            if param_name in param_dict:
-                param_dict[param_name].data.copy_(param_data)
-                loaded_count += 1
-        print(f"  [CHECKPOINT] Loaded {{loaded_count}} parameter tensors")
-
-    # Load prev_cache — MUST mutate in-place (clear + update)
-    cache_file = batch_dir / "prev_cache.pt"
-    if cache_file.exists():
-        global _memit_prev_cache
-        _loaded_cache = torch.load(str(cache_file), map_location="cpu")
-        _memit_prev_cache.clear()
-        _memit_prev_cache.update(_loaded_cache)
-        del _loaded_cache
-        total_keys = sum(sum(k.shape[1] for k in v) for v in _memit_prev_cache.values())
-        print(f"  [CHECKPOINT] Loaded prev_cache ({{len(_memit_prev_cache)}} layers, {{total_keys}} total keys)")
-
-    # Load log entries
-    log_file = batch_dir / "mechanism_log.jsonl"
-    if log_file.exists():
-        global _memit_log
-        _memit_log.clear()
-        with open(str(log_file)) as f:
-            for line in f:
-                _memit_log.append(json.loads(line))
-        print(f"  [CHECKPOINT] Loaded {{len(_memit_log)}} log entries")
-
-    # Restore batch counter
-    _memit_batch_idx[0] = _ckpt_start_batch
-    print(f"  [CHECKPOINT] Resuming from batch {{_ckpt_start_batch}} ({{_ckpt_start_batch * _ckpt_num_edits}} edits already applied)")
-    return True
-
-def _ckpt_should_skip(cnt):
-    \"\"\"Return True if this batch was already processed.\"\"\"
-    return cnt < _ckpt_start_batch
-
-def _ckpt_should_save(cnt):
-    \"\"\"Return True if we should save a checkpoint at this batch.\"\"\"
-    return _ckpt_dir and (cnt + 1) % _ckpt_save_interval == 0
-
-# 4. Read and patch memit_main.py
-with open("memit/memit_main.py", "r") as f:
-    _memit_source = f.read()
-
-# Fix relative imports for standalone exec
-_memit_source = _memit_source.replace("from .compute_ks", "from memit.compute_ks")
-_memit_source = _memit_source.replace("from .compute_z", "from memit.compute_z")
-_memit_source = _memit_source.replace("from .memit_hparams", "from memit.memit_hparams")
-
-# Inject kernel-augmented solve (replace original solve)
-_solve_anchor = {repr(SOLVE_ANCHOR)}
-assert _solve_anchor in _memit_source, (
-    "SOLVE_ANCHOR not found in memit_main.py. "
-    "Upstream code has changed from pinned commit b84624f."
-)
-_solve_replacement = {repr(solve_replacement)}
-_memit_source = _memit_source.replace(_solve_anchor, _solve_replacement, 1)
-
-# Inject log + cache storage before deltas assignment
-_deltas_anchor = {repr(DELTAS_ANCHOR)}
-assert _deltas_anchor in _memit_source, (
-    "DELTAS_ANCHOR not found in memit_main.py. "
-    "Upstream code has changed from pinned commit b84624f."
-)
-_log_cache_code = {repr(log_and_cache_code)}
-_memit_source = _memit_source.replace(_deltas_anchor, _log_cache_code + "\\n" + _deltas_anchor, 1)
-
-# Inject REVIVE filter before weight update (if enabled)
-if _revive_enabled:
-    _weight_update_anchor = {repr(WEIGHT_UPDATE_ANCHOR)}
-    assert _weight_update_anchor in _memit_source, (
-        "WEIGHT_UPDATE_ANCHOR not found in memit_main.py. "
-        "Upstream code has changed from pinned commit b84624f."
-    )
-    _revive_injection = '''        # === REVIVE: filter update through current-weight spectral subspace ===
-        if _revive_enabled:
-            assert upd_matrix.shape == weights[weight_name].shape, (
-                f"REVIVE orientation check failed: upd_matrix {{upd_matrix.shape}} "
-                f"!= weight {{weights[weight_name].shape}}"
-            )
-            upd_matrix = _revive_apply(upd_matrix, weight_name, layer, weights[weight_name])
-        # === END REVIVE ===
-'''
-    _memit_source = _memit_source.replace(_weight_update_anchor, _revive_injection + _weight_update_anchor, 1)
-
-# Verify injections
-assert "MEMIT+SeqReg+Kernel: kernel-augmented solve" in _memit_source, "Solve injection failed"
-assert "MEMIT+SeqReg+Kernel: log + store keys" in _memit_source, "Log/cache injection failed"
-if _revive_enabled:
-    assert "REVIVE: filter update through current-weight spectral subspace" in _memit_source, "REVIVE injection failed"
-
-# 5. Compile and exec patched memit
-_memit_ns = {{
-    "__name__": "memit.memit_main",
-    "__file__": "memit/memit_main.py",
-    "_memit_lambda_prev": _memit_lambda_prev,
-    "_memit_lambda_delta": _memit_lambda_delta,
-    "_memit_prev_cache": _memit_prev_cache,
-    "_memit_cache_max": _memit_cache_max,
-    "_memit_cache_strategy": _memit_cache_strategy,
-    "_memit_batch_idx": _memit_batch_idx,
-    "_memit_log": _memit_log,
-    "_pk_degree": _pk_degree,
-    "_pk_type": _pk_type,
-    "_pk_sigma": _pk_sigma,
-    "_pk_kernel_prev": _pk_kernel_prev,
-    "_revive_enabled": _revive_enabled,
-    "_revive_apply": _revive_apply,
-    "_revive_tau": _revive_tau,
-}}
-exec(compile(_memit_source, "memit/memit_main.py", "exec"), _memit_ns)
-_patched_apply_memit = _memit_ns["apply_memit_to_model"]
-_patched_get_context_templates = _memit_ns["get_context_templates"]
-
-print("[SeqReg+Kernel] memit_main.py patched successfully")
-print(f"  lambda_prev={{_memit_lambda_prev}}, lambda_delta={{_memit_lambda_delta}}")
-print(f"  cache_strategy={{_memit_cache_strategy}}, cache_max={{_memit_cache_max}}")
-print(f"  kernel_type={{_pk_type}}, degree={{_pk_degree}}, sigma={{_pk_sigma}}")
-print(f"  kernel_prev={{_pk_kernel_prev}} ({'kernel on K_prev' if _kernel_prev_flag else 'HYBRID: linear K_prev'})")
-
-# 6. Read and patch evaluate.py
-with open("experiments/evaluate.py", "r") as f:
-    _eval_source = f.read()
-
-# Replace MEMIT import (we provide it via exec globals)
-_import_anchor = {repr(MEMIT_IMPORT_ANCHOR)}
-assert _import_anchor in _eval_source, (
-    "MEMIT_IMPORT_ANCHOR not found in evaluate.py. "
-    "Upstream code has changed from pinned commit b84624f."
-)
-_eval_source = _eval_source.replace(
-    _import_anchor,
-    "# apply_memit_to_model patched by polykernel_seqreg_runner",
-)
-
-# Patch CUDA
-_cuda_target = {repr(CUDA_PATCH_TARGET)}
-assert _cuda_target in _eval_source, "CUDA patch target not found in evaluate.py."
-_eval_source = _eval_source.replace(
-    _cuda_target,
-    "# CUDA_VISIBLE_DEVICES managed by polykernel_seqreg_runner",
-)
-
-# Override RESULTS_DIR
-_globals_import = 'from util.globals import *'
-assert _globals_import in _eval_source, "globals import not found in evaluate.py"
-_eval_source = _eval_source.replace(
-    _globals_import,
-    _globals_import + '\\nRESULTS_DIR = Path("{eval_results_dir}")\\n',
-    1,
-)
-print(f"  [RESULTS_DIR] Overridden to: {eval_results_dir}")
-
-# Override dir_name to use variant
-_eval_source = _eval_source.replace(
-    'dir_name=args.alg_name,',
-    'dir_name="{variant_name}",',
-    1,
-)
-
-# Inject order shuffle + fingerprint before loop
-_loop_anchor = '    for record_chunks in chunks(ds, num_edits):'
-assert _loop_anchor in _eval_source, "Loop anchor not found in evaluate.py."
-
-_seqreg_order_id = {order_id}
-if _seqreg_order_id > 0:
-    _shuffle_code = (
-        f'    # === ORDER SHUFFLE: shuffle dataset with order_id={{_seqreg_order_id}} (injected) ===\\n'
-        f'    import random as _order_rng_module\\n'
-        f'    _order_rng = _order_rng_module.Random({{_seqreg_order_id}})\\n'
-        f'    _shuffled_indices = list(range(len(ds)))\\n'
-        f'    _order_rng.shuffle(_shuffled_indices)\\n'
-        f'    ds.data = [ds.data[i] for i in _shuffled_indices]\\n'
-        f'    print("ORDER SHUFFLE: shuffled " + str(len(ds)) + " records with order_id={{_seqreg_order_id}}")\\n'
-        f'    # === END order shuffle ===\\n'
-    )
-    _eval_source = _eval_source.replace(_loop_anchor, _shuffle_code + _loop_anchor, 1)
-
-# Inject fingerprint
-_fp_code = '''    # === FINGERPRINT: compute dataset fingerprint (injected) ===
-    import hashlib as _fp_hashlib
-    import json as _fp_json
-    _fp_case_ids = [r["case_id"] for r in ds]
-    _fp_id_bytes = _fp_json.dumps(_fp_case_ids, separators=(",", ":")).encode("utf-8")
-    _fp_sha256 = _fp_hashlib.sha256(_fp_id_bytes).hexdigest()
-    print(f"  [FINGERPRINT] Dataset: {{len(ds)}} records, SHA-256: {{_fp_sha256[:16]}}...")
-    print(f"  [FINGERPRINT] Order ID: ''' + str(_seqreg_order_id) + ''', first 5 IDs: {{_fp_case_ids[:5]}}")
-    _fp_ordering_path = run_dir / "edit_ordering.json"
-    _fp_ordering = {{
-        "case_ids_ordered": _fp_case_ids,
-        "n_records": len(ds),
-        "order_id": ''' + str(_seqreg_order_id) + ''',
-        "fingerprint": {{
-            "sha256": _fp_sha256,
-            "n_records": len(ds),
-            "first_5_ids": _fp_case_ids[:5],
-            "last_5_ids": _fp_case_ids[-5:] if len(_fp_case_ids) >= 5 else _fp_case_ids,
-        }},
-    }}
-    with open(str(_fp_ordering_path), "w") as _fp_f:
-        _fp_json.dump(_fp_ordering, _fp_f, indent=2)
-    # === END fingerprint ===
-'''
-_eval_source = _eval_source.replace(_loop_anchor, _fp_code + _loop_anchor, 1)
-
-# Inject dataset override (for coupling streams, etc.)
-_ds_override_path = {repr(dataset_override) if dataset_override else 'None'}
-if _ds_override_path:
-    _ds_override_code = '''    # === DATASET OVERRIDE: replace ds.data with external file (injected) ===
-    import json as _dsov_json
-    with open("{dataset_override}", "r") as _dsov_f:
-        ds.data = _dsov_json.load(_dsov_f)
-    print(f"  [OVERRIDE] Loaded {{len(ds)}} records from {dataset_override}")
-    # === END dataset override ===
-'''
-    _eval_source = _eval_source.replace(_loop_anchor, _ds_override_code + _loop_anchor, 1)
-
-# Inject checkpoint LOAD + REVIVE init before the loop
-_ckpt_load_injection = '''    # === CHECKPOINT: load state from previous run (injected) ===
-    exec_time = 0  # Default: prevents UnboundLocalError if all batches skipped
-    edited_model = model  # Default: if all batches skipped, model IS the edited model
-    case_result_template = str(run_dir / "{{}}_edits-case_{{}}.json")
-    case_ids = [r["case_id"] for r in ds]
-    if _ckpt_start_batch > 0 and '_ckpt_load' in globals():
-        _ckpt_load(model, hparams)
-    # === END checkpoint load ===
-    # === REVIVE: initialize SVD cache from pretrained weights (injected) ===
-    if '_revive_init' in globals():
-        _revive_init(model, hparams)
-    # === END REVIVE init ===
-'''
-_eval_source = _eval_source.replace(_loop_anchor, _ckpt_load_injection + _loop_anchor, 1)
-
-# Inject SKIP guard before per-batch edit call
-_pre_anchor = {repr(PRE_EDIT_ANCHOR)}
-assert _pre_anchor in _eval_source, "PRE_EDIT_ANCHOR not found in evaluate.py."
-_skip_injection = '''        # === CHECKPOINT: skip already-processed batches (injected) ===
-        if '_ckpt_should_skip' in globals() and _ckpt_should_skip(cnt):
-            cnt += 1
-            continue
-        # === END checkpoint skip ===
-'''
-_eval_source = _eval_source.replace(_pre_anchor, _skip_injection + _pre_anchor, 1)
-
-# Inject REVIVE post-edit filter at evaluate.py level (for AlphaEdit/NSE/EvoEdit)
-# MEMIT already has REVIVE inside memit_main.py; this handles non-MEMIT algorithms.
-if _revive_enabled and {repr(alg_name)} != "MEMIT":
-    _revive_pre_capture = '''        # === REVIVE (eval-level): capture pre-edit weights for filtering ===
-        _revive_pre_weights = {{}}
-        if '_revive_apply' in globals() and _revive_enabled:
-            import torch as _rtorch
-            from util import nethook as _rnethook
-            for _rl in hparams.layers:
-                _rw_name = f"{{hparams.rewrite_module_tmp.format(_rl)}}.weight"
-                _revive_pre_weights[_rw_name] = _rnethook.get_parameter(model, _rw_name).detach().clone()
-        # === END REVIVE pre-capture ===
-'''
-    _eval_source = _eval_source.replace(_pre_anchor, _revive_pre_capture + _pre_anchor, 1)
-
-    _revive_post_filter = '''        # === REVIVE (eval-level): filter weight deltas post-edit ===
-        if '_revive_apply' in globals() and _revive_enabled and _revive_pre_weights:
-            import torch as _rtorch
-            from util import nethook as _rnethook
-            with _rtorch.no_grad():
-                for _rl_idx, _rl in enumerate(hparams.layers):
-                    _rw_name = f"{{hparams.rewrite_module_tmp.format(_rl)}}.weight"
-                    _rw_current = _rnethook.get_parameter(model, _rw_name)
-                    _rw_pre = _revive_pre_weights[_rw_name].to(_rw_current.device)
-                    _rw_delta = (_rw_current - _rw_pre).float()
-                    if _rw_delta.abs().max() > 1e-10:
-                        _rw_filtered = _revive_apply(_rw_delta, _rw_name, _rl, _rw_current)
-                        _rw_current.copy_(_rw_pre + _rw_filtered.to(_rw_current.dtype))
-                    del _rw_pre, _rw_delta
-            _revive_pre_weights.clear()
-        # === END REVIVE post-filter ===
-'''
-else:
-    _revive_post_filter = ''
-
-# Inject batch increment + checkpoint save AFTER POST_EDIT_ANCHOR (exec_time line)
-_post_anchor = {repr(POST_EDIT_ANCHOR)}
-assert _post_anchor in _eval_source, "POST_EDIT_ANCHOR not found in evaluate.py."
-_batch_hook = {repr(batch_increment_hook)}
-_ckpt_save_hook = '''        # === CHECKPOINT: save at interval boundaries (injected) ===
-        if '_ckpt_should_save' in globals() and _ckpt_should_save(cnt):
-            _ckpt_save(cnt, model, hparams)
-        # === END checkpoint save ===
-'''
-_eval_source = _eval_source.replace(_post_anchor, _post_anchor + "\\n" + _revive_post_filter + _batch_hook + _ckpt_save_hook, 1)
-
-# Inject CHECKPOINT-ONLY EVAL guard
-_eval_start_anchor = '    # torch.save(hs, "post_edit_hs_memit.pt")\\n    start = time()'
-assert _eval_start_anchor in _eval_source, (
-    "Evaluation start anchor not found in evaluate.py. "
-    "Upstream code has changed from pinned commit b84624f."
-)
-_checkpoint_eval_skip = '''    # torch.save(hs, "post_edit_hs_memit.pt")
-    # Always run final mega-batch eval (checkpoint-only mode skips INTERMEDIATE evals, not the final one)
-    _do_final_eval = True
-    start = time()'''
-_eval_source = _eval_source.replace(_eval_start_anchor, _checkpoint_eval_skip, 1)
-
-# Inject MEGA-BATCH evaluation to replace the per-record eval loop.
-_eval_anchor = '    for record in ds:\\n        out_file = Path(case_result_template.format(num_edits, record["case_id"]))'
-assert _eval_anchor in _eval_source, (
-    "Evaluation loop anchor not found in evaluate.py. "
-    "Upstream code has changed from pinned commit b84624f."
-)
-
-_mega_batch_eval_injection = {repr(mega_batch_eval_injection)}
-_eval_source = _eval_source.replace(_eval_anchor, _mega_batch_eval_injection, 1)
-
-print("[SeqReg+Kernel] evaluate.py patched successfully")
-if {fast_checkpoint}:
-    print("  Fast checkpoint mode: ENABLED (only evaluate edited batch)")
-if {eval_at_checkpoints_only}:
-    print("  Eval at checkpoints only: ENABLED (milestone mode)")
-if _revive_enabled:
-    print(f"  [REVIVE] ENABLED: tau={{_revive_tau}}, mode={revive_mode}, svd_device={revive_svd_device}")
-
-# 7. Execute patched evaluate.py
-exec(compile(_eval_source, "experiments/evaluate.py", "exec"), {{
-    "__name__": "__main__",
-    "__file__": "experiments/evaluate.py",
-    "__builtins__": __builtins__,
-    "apply_memit_to_model": _patched_apply_memit,
-    "get_context_templates": _patched_get_context_templates,
-    "_memit_lambda_prev": _memit_lambda_prev,
-    "_memit_lambda_delta": _memit_lambda_delta,
-    "_memit_prev_cache": _memit_prev_cache,
-    "_memit_cache_max": _memit_cache_max,
-    "_memit_cache_strategy": _memit_cache_strategy,
-    "_memit_batch_idx": _memit_batch_idx,
-    "_memit_log": _memit_log,
-    "_memit_fast_mode": _memit_fast_mode,
-    "_pk_degree": _pk_degree,
-    "_pk_type": _pk_type,
-    "_pk_sigma": _pk_sigma,
-    "_pk_kernel_prev": _pk_kernel_prev,
-    "_revive_enabled": _revive_enabled,
-    "_revive_init": _revive_init,
-    "_revive_apply": _revive_apply,
-    "_revive_svd_cache": _revive_svd_cache,
-    "_revive_original_weights": _revive_original_weights,
-    "_ckpt_start_batch": _ckpt_start_batch,
-    "_ckpt_save_interval": _ckpt_save_interval,
-    "_ckpt_dir": _ckpt_dir,
-    "_ckpt_eval_at_checkpoints_only": _ckpt_eval_at_checkpoints_only,
-    "_ckpt_save": _ckpt_save,
-    "_ckpt_load": _ckpt_load,
-    "_ckpt_should_skip": _ckpt_should_skip,
-    "_ckpt_should_save": _ckpt_should_save,
-}})
-
-# 8. Write log to JSONL
-with open(_memit_output_jsonl, "w") as f:
-    for entry in _memit_log:
-        f.write(json.dumps(entry) + "\\n")
-
-print(f"\\n[SeqReg+Kernel] Log written: {{_memit_output_jsonl}} ({{len(_memit_log)}} entries)")
-""")
-    return script
-
-
-def validate_anchors() -> None:
-    """Verify all source anchors exist in the pinned code."""
-    alphaedit_root = get_alphaedit_root()
-
-    eval_source = (alphaedit_root / "experiments" / "evaluate.py").read_text()
-    for name, anchor in [
-        ("CUDA_PATCH_TARGET", CUDA_PATCH_TARGET),
-        ("PRE_EDIT_ANCHOR", PRE_EDIT_ANCHOR),
-        ("POST_EDIT_ANCHOR", POST_EDIT_ANCHOR),
-        ("MEMIT_IMPORT_ANCHOR", MEMIT_IMPORT_ANCHOR),
-    ]:
-        assert anchor in eval_source, f"{name} not found in evaluate.py"
-
-    memit_source = (alphaedit_root / "memit" / "memit_main.py").read_text()
-    for name, anchor in [
-        ("SOLVE_ANCHOR", SOLVE_ANCHOR),
-        ("DELTAS_ANCHOR", DELTAS_ANCHOR),
-        ("WEIGHT_UPDATE_ANCHOR", WEIGHT_UPDATE_ANCHOR),
-    ]:
-        assert anchor in memit_source, f"{name} not found in memit_main.py"
-
-    print("  All source anchors validated.")
+from algorithms.hooks import AlgorithmHooks, compose_hooks
+from algorithms.hook_presets import seqreg_hooks, revive_hooks, polykernel_hooks
+from algorithms.memit_with_hooks import apply_memit_with_hooks
+from algorithms.alphaedit_with_hooks import apply_alphaedit_with_hooks
+
+
+def _seed_everything(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True, warn_only=True)
+
+
+def _make_eval_fn(fast_mode: bool = False):
+    ns = {}
+    exec(get_mega_batch_eval_source(), ns)
+    mbe_fn = ns["_mega_batch_eval"]
+
+    if fast_mode:
+        def fast_eval(model, tok, records, template, num_edits, case_ids, exec_time):
+            batch_records = [r for r in records if r["case_id"] in case_ids[-num_edits:]]
+            mbe_fn(model, tok, batch_records, template, num_edits, case_ids, exec_time, batch_size=2)
+        return fast_eval
+    return mbe_fn
 
 
 def run(args: argparse.Namespace) -> None:
-    """Launch Polykernel+SeqReg experiment."""
     alphaedit_root = get_alphaedit_root()
-
     if not alphaedit_root.exists():
         print(f"ERROR: AlphaEdit not found at {alphaedit_root}")
-        print("Run: git submodule update --init --recursive")
         sys.exit(1)
 
     link_hparams()
-    patch_evaluate_file(alphaedit_root)
+    _seed_everything(args.seed)
 
-    model_name = resolve_model_path(args.model_name)
-
-    print("Validating source anchors...")
-    validate_anchors()
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_device
+    os.environ["PYTHONHASHSEED"] = str(args.seed)
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
     # Parse cache_max
     cache_max = None if args.cache_max == "none" else int(args.cache_max)
+    ordering = getattr(args, 'ordering', None)
 
-    # Build variant name
-    cache_max_str = str(cache_max) if cache_max is not None else "0"
-    kernel_tag = f"poly{args.kernel_degree}" if args.kernel_type == "poly" else f"rbf_{args.kernel_sigma}"
-    if not args.kernel_prev:
-        kernel_tag += "-hybrid"
-    if args.revive:
-        kernel_tag += f"-REVIVE-tau{args.revive_tau}"
-    _base_prefix = "MEMIT-Seq" if args.base_alg == "MEMIT" else args.base_alg
-    variant_name = f"{_base_prefix}-{kernel_tag}-lp{args.lambda_prev}-ld{args.lambda_delta}-cache{cache_max_str}"
+    # Build config — SINGLE source of truth for variant_name and paths
+    exp_config = ExperimentConfig(
+        base_alg=args.base_alg, seed=args.seed, ordering=ordering,
+        model_name=args.model_name,
+        lambda_prev=args.lambda_prev, lambda_delta=args.lambda_delta,
+        cache_max=cache_max, kernel_type=args.kernel_type,
+        kernel_degree=args.kernel_degree, kernel_sigma=args.kernel_sigma,
+        kernel_prev=args.kernel_prev,
+        revive=args.revive, revive_tau=args.revive_tau,
+        experiment_type="polykernel_seqreg",
+    )
+    variant_name = exp_config.variant_name
 
-    # Output directory — use failure_curve_checkpointed so method_comparison.py discovers it
-    # Non-default models get a model-tagged experiment name for isolation
-    _default_model = DEFAULT_MODEL
+    # Checkpoint directory
+    if args.checkpoint_dir:
+        ckpt_dir = Path(args.checkpoint_dir)
+    else:
+        ckpt_dir = exp_config.checkpoint_dir()
+    validate_checkpoint_path(str(ckpt_dir), args.base_alg)
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    # Results directory
+    model_name = resolve_model_path(args.model_name)
     _mn = (args.model_name or "").lower()
-    if _mn and _mn != _default_model.lower() and not _mn.endswith("meta-llama-3-8b-instruct"):
-        if "gpt-j" in _mn:
-            _exp_name = "failure_curve_gptj"
-        elif "qwen2.5-7b" in _mn:
-            _exp_name = "failure_curve_qwen"
-        else:
-            _exp_name = f"failure_curve_{_mn.rsplit('/', 1)[-1]}"
+    if "gpt-j" in _mn:
+        _exp_name = "failure_curve_gptj"
+    elif "qwen2.5-7b" in _mn:
+        _exp_name = "failure_curve_qwen"
     else:
         _exp_name = "failure_curve_checkpointed"
 
-    ordering = getattr(args, 'ordering', None)
     if ordering:
         results_dir = (
             get_result_root() / "matched_ordering" / ordering
@@ -1061,47 +147,13 @@ def run(args: argparse.Namespace) -> None:
             / f"seed{args.seed}" / f"{args.dataset_size_limit}edits"
         )
     results_dir.mkdir(parents=True, exist_ok=True)
-
-    # Variant-specific output directory (log + metadata go here alongside run_000/)
     variant_dir = results_dir / variant_name
-    # Validate results path contains the correct base algorithm prefix
-    _expected_prefix = "MEMIT-Seq" if args.base_alg == "MEMIT" else args.base_alg
-    if _expected_prefix not in variant_name:
-        raise RuntimeError(
-            f"Results variant mismatch: --base_alg={args.base_alg} expects "
-            f"'{_expected_prefix}' in variant name, but got: {variant_name}\n"
-            f"This likely means the code is stale. Commit and redeploy."
-        )
     variant_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     output_jsonl = variant_dir / f"log_seed{args.seed}_{timestamp}.jsonl"
 
-    # Resolve checkpoint directory and auto-detect resume point
-    if args.checkpoint_dir:
-        ckpt_dir = Path(args.checkpoint_dir)
-    else:
-        _exp_config = ExperimentConfig(
-            base_alg=args.base_alg, seed=args.seed, ordering=ordering,
-            model_name=args.model_name,
-            lambda_prev=args.lambda_prev, lambda_delta=args.lambda_delta,
-            cache_max=cache_max, kernel_type=args.kernel_type,
-            kernel_degree=args.kernel_degree, kernel_sigma=args.kernel_sigma,
-            kernel_prev=args.kernel_prev,
-            revive=args.revive, revive_tau=args.revive_tau,
-            experiment_type="polykernel_seqreg",
-        )
-        ckpt_dir = _exp_config.checkpoint_dir()
-    # Validate checkpoint path contains the correct base algorithm prefix
-    _expected_prefix = "MEMIT-Seq" if args.base_alg == "MEMIT" else args.base_alg
-    if _expected_prefix not in str(ckpt_dir):
-        raise RuntimeError(
-            f"Checkpoint path mismatch: --base_alg={args.base_alg} expects "
-            f"'{_expected_prefix}' in checkpoint path, but got: {ckpt_dir}\n"
-            f"This likely means the code is stale. Commit and redeploy."
-        )
-    ckpt_dir.mkdir(parents=True, exist_ok=True)
-
+    # Auto-detect resume point
     total_batches = args.dataset_size_limit // args.num_edits
     start_from_batch = args.start_from_batch
     if start_from_batch < 0:
@@ -1117,65 +169,13 @@ def run(args: argparse.Namespace) -> None:
             start_from_batch = 0
             print("  No existing checkpoints found. Starting from batch 0.")
 
-    # Resolve REVIVE SVD cache directory
-    revive_cache_dir = None
-    if args.revive:
-        if args.revive_cache_dir:
-            revive_cache_dir = Path(args.revive_cache_dir)
-        else:
-            revive_cache_dir = get_checkpoint_root() / "revive_svd_cache"
-        revive_cache_dir.mkdir(parents=True, exist_ok=True)
-
-    script = build_polykernel_seqreg_script(
-        seed=args.seed,
-        cuda_device=args.cuda_device,
-        alg_name=args.base_alg,
-        model_name=model_name,
-        hparams_fname=args.hparams_fname,
-        ds_name=args.ds_name,
-        dataset_size_limit=args.dataset_size_limit,
-        num_edits=args.num_edits,
-        downstream_eval_steps=args.downstream_eval_steps,
-        conserve_memory=args.conserve_memory,
-        lambda_prev=args.lambda_prev,
-        lambda_delta=args.lambda_delta,
-        cache_strategy=args.cache_strategy,
-        cache_max=cache_max,
-        kernel_type=args.kernel_type,
-        kernel_degree=args.kernel_degree,
-        kernel_sigma=args.kernel_sigma,
-        output_jsonl=str(output_jsonl),
-        fast_checkpoint=args.fast_checkpoint,
-        eval_at_checkpoints_only=args.eval_at_checkpoints_only,
-        order_id=args.order_id,
-        save_interval=args.save_interval,
-        checkpoint_dir=str(ckpt_dir),
-        start_from_batch=start_from_batch,
-        dataset_override=args.dataset_override,
-        eval_results_dir=str(results_dir),
-        variant_name=variant_name,
-        kernel_prev=args.kernel_prev,
-        revive=args.revive,
-        revive_tau=args.revive_tau,
-        revive_svd_device=args.revive_svd_device,
-        revive_svd_dtype=args.revive_svd_dtype,
-        revive_cache_dir=str(revive_cache_dir) if args.revive else "",
-        revive_log_interval=args.revive_log_interval,
-        revive_mode=args.revive_mode,
-    )
-
-    # Environment
-    env = os.environ.copy()
-    env["PYTHONHASHSEED"] = str(args.seed)
-    env["CUDA_VISIBLE_DEVICES"] = args.cuda_device
-    env["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
-    env["TOKENIZERS_PARALLELISM"] = "false"
-    env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-
-    print(f"\n{'=' * 70}")
-    print("Polykernel+SeqReg Runner")
-    print(f"  Seed:           {args.seed}")
+    # Print config
+    eval_mode = "Milestone" if args.eval_at_checkpoints_only else ("Fast" if args.fast_checkpoint else "Full")
     kernel_mode = "HYBRID (kernel current only, linear K_prev)" if not args.kernel_prev else "full (kernel both)"
+    print(f"\n{'=' * 70}")
+    print("Polykernel+SeqReg Runner (harness-based)")
+    print(f"  Seed:           {args.seed}")
+    print(f"  Base algorithm: {args.base_alg}")
     print(f"  Kernel:         {args.kernel_type} (degree={args.kernel_degree}, sigma={args.kernel_sigma})")
     print(f"  Kernel mode:    {kernel_mode}")
     print(f"  lambda_prev:    {args.lambda_prev}")
@@ -1187,26 +187,217 @@ def run(args: argparse.Namespace) -> None:
     print(f"  Total batches:  {total_batches}")
     print(f"  Resume from:    batch {start_from_batch} ({start_from_batch * args.num_edits} edits)")
     print(f"  Save interval:  every {args.save_interval} batches")
-    print(f"  Checkpoint dir: {ckpt_dir}")
-    if args.eval_at_checkpoints_only:
-        eval_mode = f"Milestone only (every {args.save_interval} batches)"
-    elif args.fast_checkpoint:
-        eval_mode = "Fast (edited batch only)"
-    else:
-        eval_mode = "Full (all facts every batch)"
     print(f"  Evaluation:     {eval_mode}")
-    print(f"  CUDA:           device {args.cuda_device}")
+    print(f"  Checkpoint dir: {ckpt_dir}")
     print(f"  Model:          {args.model_name}")
     if args.dataset_override:
         print(f"  Dataset override: {args.dataset_override}")
     if args.revive:
         print(f"  REVIVE:         ENABLED (tau={args.revive_tau}, mode={args.revive_mode})")
         print(f"  REVIVE SVD:     device={args.revive_svd_device}, dtype={args.revive_svd_dtype}")
-        print(f"  REVIVE cache:   {revive_cache_dir}")
     print(f"  Variant:        {variant_name}")
     print(f"  Output:         {output_jsonl}")
     print(f"  Started:        {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print(f"{'=' * 70}")
+
+    # Load model + tokenizer
+    model, tok = load_model_and_tok(args.model_name)
+
+    # Load dataset
+    dataset = load_dataset(
+        args.ds_name, args.dataset_size_limit, alphaedit_root,
+        dataset_override=args.dataset_override,
+    )
+
+    # Shuffle if order_id > 0
+    if args.order_id > 0:
+        _r = random.Random(args.order_id)
+        _r.shuffle(dataset)
+        print(f"  Dataset shuffled with order_id={args.order_id}")
+
+    # Load hparams
+    sys.path.insert(0, str(alphaedit_root))
+    alg_for_hparams = "AlphaEdit" if args.base_alg == "AlphaEdit" else "MEMIT"
+    if args.base_alg == "AlphaEdit":
+        from AlphaEdit import AlphaEditHyperParams as HParams
+    else:
+        from memit import MEMITHyperParams as HParams
+    hparams_path = alphaedit_root / "hparams" / alg_for_hparams / args.hparams_fname
+    hparams = HParams.from_json(hparams_path)
+
+    # Build algorithm hooks — compose seqreg + optional revive + optional polykernel
+    hook_list = []
+
+    # SeqReg augmentation (K_prev regularization + key caching)
+    hook_list.append(seqreg_hooks(
+        lambda_prev=args.lambda_prev,
+        lambda_delta=args.lambda_delta,
+        cache_strategy=args.cache_strategy,
+        cache_max=cache_max,
+        kernel_type=args.kernel_type,
+        kernel_degree=args.kernel_degree,
+        kernel_sigma=args.kernel_sigma,
+        kernel_prev=args.kernel_prev,
+    ))
+
+    # REVIVE spectral filter
+    if args.revive:
+        hook_list.append(revive_hooks(
+            revive_tau=args.revive_tau,
+            revive_svd_device=args.revive_svd_device,
+            revive_svd_dtype=args.revive_svd_dtype,
+        ))
+
+    algo_hooks = compose_hooks(*hook_list)
+    algo_state = algo_hooks.get_state()
+
+    # Load checkpoint if resuming
+    if start_from_batch > 0:
+        ckpt_result = load_checkpoint(
+            model, hparams, str(ckpt_dir), start_from_batch - 1,
+            extra_state_keys=["prev_cache.pt", "mechanism_log.jsonl"],
+        )
+        if ckpt_result.get("prev_cache.pt") is not None:
+            algo_state["prev_cache"] = ckpt_result["prev_cache.pt"]
+            total_keys = sum(sum(k.shape[1] for k in v) for v in algo_state["prev_cache"].values())
+            print(f"  [CHECKPOINT] Loaded prev_cache ({len(algo_state['prev_cache'])} layers, {total_keys} total keys)")
+        if ckpt_result.get("mechanism_log.jsonl") is not None:
+            algo_state["mechanism_log"] = ckpt_result["mechanism_log.jsonl"]
+            print(f"  [CHECKPOINT] Loaded {len(algo_state['mechanism_log'])} log entries")
+        algo_state["batch_idx"] = [start_from_batch]
+
+    # Select apply function based on base_alg
+    if args.base_alg == "MEMIT":
+        base_apply = apply_memit_with_hooks
+    elif args.base_alg == "AlphaEdit":
+        base_apply = apply_alphaedit_with_hooks
+    else:
+        raise NotImplementedError(
+            f"base_alg={args.base_alg} not yet migrated to harness. "
+            f"Use the legacy runner for NSE/MEMIT_rect."
+        )
+
+    # For AlphaEdit: load P matrix and initialize cache_c
+    cache_c = None
+    P = None
+    if args.base_alg == "AlphaEdit":
+        from AlphaEdit.AlphaEdit_main import get_cov
+        n_layers = len(hparams.layers)
+        d_in = hparams.mom2_n_samples if hasattr(hparams, 'mom2_n_samples') else 4096
+        # Load P matrix
+        stats_dir = alphaedit_root / "data" / "stats"
+        p_path = stats_dir / "null_space_project.pt"
+        if not p_path.exists():
+            model_stats = stats_dir / model.config._name_or_path.replace("/", "_") / "wikipedia_stats"
+            p_path = model_stats / "null_space_project.pt"
+        if p_path.exists():
+            P = torch.load(str(p_path), map_location="cpu")
+            print(f"  [AlphaEdit] Loaded P matrix from {p_path} (shape: {P.shape})")
+        else:
+            print(f"  [AlphaEdit] WARNING: P matrix not found at {p_path}")
+
+        # Initialize cache_c
+        if P is not None:
+            d = P.shape[-1]
+            cache_c = torch.zeros(n_layers, d, d)
+
+    # Wrap apply_fn to pass hooks, state, and AlphaEdit extras
+    def apply_fn(model, tok, requests, hparams, **kwargs):
+        extra = {}
+        if args.base_alg == "AlphaEdit" and cache_c is not None and P is not None:
+            extra["cache_c"] = cache_c
+            extra["P"] = P
+        # Pass current weights to state for REVIVE
+        if args.revive:
+            weights_dict = {}
+            for layer in hparams.layers:
+                wn = f"{hparams.rewrite_module_tmp.format(layer)}.weight"
+                param = dict(model.named_parameters()).get(wn)
+                if param is not None:
+                    weights_dict[wn] = param.data
+            algo_state["_current_weights"] = weights_dict
+
+        return base_apply(
+            model, tok, requests, hparams,
+            hooks=algo_hooks, state=algo_state,
+            **extra, **kwargs,
+        )
+
+    # Build eval function
+    mbe_fn = _make_eval_fn(fast_mode=args.fast_checkpoint)
+
+    # Build experiment hooks
+    def after_edit(batch_idx, model, records, hparams, edit_extra, exec_time):
+        nonlocal cache_c
+        algo_state["batch_idx"] = [batch_idx + 1]
+
+        # AlphaEdit returns updated cache_c
+        if edit_extra is not None and args.base_alg == "AlphaEdit":
+            cache_c = edit_extra
+
+        if should_save(batch_idx, args.save_interval):
+            extra_state = {
+                "prev_cache.pt": algo_state.get("prev_cache", {}),
+                "mechanism_log.jsonl": algo_state.get("mechanism_log", []),
+            }
+            save_checkpoint(
+                batch_idx, model, hparams, str(ckpt_dir), args.num_edits,
+                extra_state=extra_state,
+                metadata={
+                    "lambda_prev": args.lambda_prev,
+                    "lambda_delta": args.lambda_delta,
+                    "cache_strategy": args.cache_strategy,
+                    "kernel_type": args.kernel_type,
+                    "kernel_degree": args.kernel_degree,
+                    "kernel_sigma": args.kernel_sigma,
+                    "kernel_prev": args.kernel_prev,
+                    "base_alg": args.base_alg,
+                    "revive": args.revive,
+                    "revive_tau": args.revive_tau if args.revive else None,
+                    "batch_idx_counter": algo_state["batch_idx"][0],
+                },
+                base_alg=args.base_alg,
+            )
+
+        if (batch_idx + 1) % 10 == 0:
+            total_edits = (batch_idx + 1) * args.num_edits
+            print(f"{'=' * 30}{total_edits}_edit{'=' * 30}", flush=True)
+        print(f"Execution took {exec_time}", flush=True)
+
+    def should_eval_fn(batch_idx):
+        if args.eval_at_checkpoints_only:
+            return should_save(batch_idx, args.save_interval)
+        return True
+
+    hooks = ExperimentHooks(
+        after_edit=after_edit,
+        should_eval=should_eval_fn,
+        eval_fn=mbe_fn,
+    )
+
+    alg_results_dir = variant_dir
+
+    # Run
+    summary = run_experiment(
+        model=model,
+        tok=tok,
+        hparams=hparams,
+        dataset=dataset,
+        apply_fn=apply_fn,
+        alg_name=args.base_alg,
+        num_edits=args.num_edits,
+        results_dir=alg_results_dir,
+        ds_name=args.ds_name,
+        conserve_memory=args.conserve_memory,
+        hooks=hooks,
+    )
+
+    # Write mechanism log
+    log_entries = algo_state.get("mechanism_log", [])
+    with open(output_jsonl, "w") as f:
+        for entry in log_entries:
+            f.write(json.dumps(entry) + "\n")
+    print(f"\n[SeqReg] Log written: {output_jsonl} ({len(log_entries)} entries)")
 
     # Save metadata
     metadata = {
@@ -1221,41 +412,30 @@ def run(args: argparse.Namespace) -> None:
         "kernel_degree": args.kernel_degree,
         "kernel_sigma": args.kernel_sigma,
         "kernel_prev": args.kernel_prev,
+        "base_alg": args.base_alg,
         "revive": args.revive,
         "revive_tau": args.revive_tau if args.revive else None,
         "revive_mode": args.revive_mode if args.revive else None,
-        "revive_svd_device": args.revive_svd_device if args.revive else None,
-        "revive_svd_dtype": args.revive_svd_dtype if args.revive else None,
         "model_name": args.model_name,
         "hparams_fname": args.hparams_fname,
         "ds_name": args.ds_name,
         "dataset_size_limit": args.dataset_size_limit,
         "num_edits": args.num_edits,
-        "downstream_eval_steps": args.downstream_eval_steps,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "alphaedit_commit": "b84624f",
         "eval_config_hash": hash_eval_config(),
-        "output_jsonl": str(output_jsonl),
+        "runner": "polykernel_seqreg_runner (harness-based)",
         "variant_name": variant_name,
     }
     meta_path = variant_dir / f"metadata_seed{args.seed}.json"
     with open(meta_path, "w") as f:
         json.dump(metadata, f, indent=2)
 
-    # Launch
-    result = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=str(alphaedit_root),
-        env=env,
-    )
-
-    if result.returncode != 0:
-        print(f"\nERROR: Experiment failed with return code {result.returncode}")
-        sys.exit(result.returncode)
-
     print(f"\n{'=' * 70}")
     print("Polykernel+SeqReg completed.")
     print(f"  Finished:  {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    print(f"  Batches:   {summary['batches_run']}")
+    print(f"  Edits:     {summary['total_edits']}")
     print(f"  Log:       {output_jsonl}")
     print(f"  Metadata:  {meta_path}")
     print(f"{'=' * 70}")
@@ -1284,74 +464,41 @@ def main():
                         help="Base editing algorithm (default: MEMIT)")
 
     # SeqReg parameters
-    parser.add_argument("--lambda_prev", type=float, default=1.0,
-                        help="Previous-key protection strength (default: 1.0)")
-    parser.add_argument("--lambda_delta", type=float, default=1.0,
-                        help="Ridge regularization strength (default: 1.0)")
-    parser.add_argument("--cache_strategy", default="all", choices=["recent", "all"],
-                        help="Cache management strategy (default: all)")
-    parser.add_argument("--cache_max", default="none",
-                        help="Max batches in cache (default: none/unlimited, use integer to cap)")
+    parser.add_argument("--lambda_prev", type=float, default=1.0)
+    parser.add_argument("--lambda_delta", type=float, default=1.0)
+    parser.add_argument("--cache_strategy", default="all", choices=["recent", "all"])
+    parser.add_argument("--cache_max", default="none")
 
     # Kernel parameters
-    parser.add_argument("--kernel_type", choices=["poly", "rbf"], default="poly",
-                        help="Kernel type: 'poly' for polynomial, 'rbf' for Gaussian RBF.")
-    parser.add_argument("--kernel_degree", type=int, default=2,
-                        help="Polynomial kernel degree (default: 2). Only used with --kernel_type poly.")
-    parser.add_argument("--kernel_sigma", default="median",
-                        help="RBF bandwidth: 'median' for median heuristic, or a float. Only used with --kernel_type rbf.")
-    parser.add_argument("--no_kernel_prev", dest="kernel_prev", action="store_false",
-                        help="Hybrid mode: apply kernel only to current-batch keys, use linear K_prev@K_prev^T. "
-                             "Prevents catastrophic over-regularization at high edit counts.")
+    parser.add_argument("--kernel_type", choices=["poly", "rbf"], default="poly")
+    parser.add_argument("--kernel_degree", type=int, default=2)
+    parser.add_argument("--kernel_sigma", default="median")
+    parser.add_argument("--no_kernel_prev", dest="kernel_prev", action="store_false")
     parser.set_defaults(kernel_prev=True)
 
     # REVIVE spectral subspace filter
-    parser.add_argument("--revive", action="store_true",
-                        help="Enable REVIVE: filter updates to remove components in the dominant "
-                             "spectral subspace of pretrained weights.")
-    parser.add_argument("--revive_tau", type=float, default=0.1,
-                        help="REVIVE energy threshold (default: 0.1, matches reference). "
-                             "split_rank is the first index where cumsum(S)/sum(S) > tau. "
-                             "Higher tau = more aggressive filtering. "
-                             "Sweep {0.05, 0.10, 0.20, 0.30, 0.40} to calibrate.")
-    parser.add_argument("--revive_svd_device", default="cuda",
-                        help="Device for SVD computation and storage (default: cpu)")
-    parser.add_argument("--revive_svd_dtype", default="float32",
-                        choices=["float32", "float64"],
-                        help="Dtype for SVD computation (default: float32)")
-    parser.add_argument("--revive_cache_dir", default=None,
-                        help="Directory for persistent SVD cache (default: $CHECKPOINT_ROOT/revive_svd_cache)")
-    parser.add_argument("--revive_log_interval", type=int, default=1,
-                        help="Log REVIVE metrics every N batches (default: 1)")
-    parser.add_argument("--revive_mode", default="hard", choices=["hard"],
-                        help="REVIVE mode (default: hard). Only 'hard' zeroing implemented.")
+    parser.add_argument("--revive", action="store_true")
+    parser.add_argument("--revive_tau", type=float, default=0.1)
+    parser.add_argument("--revive_svd_device", default="cuda")
+    parser.add_argument("--revive_svd_dtype", default="float32", choices=["float32", "float64"])
+    parser.add_argument("--revive_cache_dir", default=None)
+    parser.add_argument("--revive_log_interval", type=int, default=1)
+    parser.add_argument("--revive_mode", default="hard", choices=["hard"])
 
     # Checkpoint and resume
-    parser.add_argument("--save_interval", type=int, default=10,
-                        help="Save checkpoint every N batches (default: 10)")
-    parser.add_argument("--checkpoint_dir", default=None,
-                        help="Explicit checkpoint directory (default: auto-resolved)")
-    parser.add_argument("--start_from_batch", type=int, default=-1,
-                        help="Resume from this batch (-1 = auto-detect from latest checkpoint)")
+    parser.add_argument("--save_interval", type=int, default=10)
+    parser.add_argument("--checkpoint_dir", default=None)
+    parser.add_argument("--start_from_batch", type=int, default=-1)
 
     # Evaluation modes
     eval_group = parser.add_mutually_exclusive_group()
-    eval_group.add_argument("--fast_checkpoint", action="store_true",
-                        help="Fast checkpoint mode: only evaluate edited batch (much faster)")
-    eval_group.add_argument("--eval_at_checkpoints_only", action="store_true",
-                        help="Milestone mode: evaluate full dataset only at checkpoint boundaries (RECOMMENDED)")
+    eval_group.add_argument("--fast_checkpoint", action="store_true")
+    eval_group.add_argument("--eval_at_checkpoints_only", action="store_true")
 
-    # Dataset override (for ordering streams)
-    parser.add_argument("--dataset_override", type=str, default=None,
-                        help="Path to JSON file to replace dataset (e.g., ordering stream)")
-
-    # Order sensitivity
-    parser.add_argument("--order_id", type=int, default=0,
-                        help="Edit ordering ID (0=canonical, >0=shuffle with Random(order_id))")
-
-    # Matched ordering
-    parser.add_argument("--ordering", type=str, default=None,
-                        help="Ordering type (e.g. key_clustered, key_dispersed)")
+    # Dataset override and ordering
+    parser.add_argument("--dataset_override", type=str, default=None)
+    parser.add_argument("--order_id", type=int, default=0)
+    parser.add_argument("--ordering", type=str, default=None)
 
     args = parser.parse_args()
     run(args)
