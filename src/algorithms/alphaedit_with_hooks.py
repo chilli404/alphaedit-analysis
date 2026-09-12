@@ -116,25 +116,24 @@ def apply_alphaedit_with_hooks(
         # === HOOK: build_lhs ===
         # Hooks provide the INNER term only. AlphaEdit always wraps with:
         #   lhs = P @ (inner + cache_c) + L2*I
-        # This ensures the LHS is full-rank even when the inner term is low-rank.
-        # Cast everything to double upfront — P is float32, layer_ks may be float16
-        P_i = P[i, :, :].cuda().double()
-        cache_c_i = cache_c[i, :, :].cuda().double() if cache_c is not None else torch.zeros(
-            layer_ks.shape[0], layer_ks.shape[0], device="cuda", dtype=torch.float64)
-        L2_eye = hparams.L2 * torch.eye(layer_ks.shape[0], device="cuda", dtype=torch.float64)
+        # P is [14336, 14336] per layer — too large for GPU alongside the model.
+        # Compute LHS on CPU, then move result to GPU for the solve.
+        P_i = P[i, :, :].double()  # stays on CPU
+        cache_c_i = cache_c[i, :, :].double() if cache_c is not None else torch.zeros(
+            layer_ks.shape[0], layer_ks.shape[0], dtype=torch.float64)
 
         if hooks.build_lhs is not None:
-            inner = hooks.build_lhs(layer, layer_ks, None, hparams, state)
+            inner = hooks.build_lhs(layer, layer_ks, None, hparams, state).cpu().double()
         else:
-            inner = layer_ks.double() @ layer_ks.double().T
+            _ks_cpu = layer_ks.cpu().double()
+            inner = _ks_cpu @ _ks_cpu.T
 
-        lhs = P_i @ (inner.double() + cache_c_i) + L2_eye
+        lhs = (P_i @ (inner + cache_c_i)
+               + hparams.L2 * torch.eye(layer_ks.shape[0], dtype=torch.float64))
 
-        # AlphaEdit solve: lhs @ upd = P @ K @ resid^T
-        # Cast to double BEFORE matmul — P is float32, layer_ks may be float16
-        upd_matrix = torch.linalg.solve(
-            lhs.double(), P_i.double() @ layer_ks.double() @ resid.double().T
-        )
+        # Move LHS and RHS to GPU for the solve (much smaller than P itself)
+        rhs = (P_i @ layer_ks.cpu().double() @ resid.cpu().double().T)
+        upd_matrix = torch.linalg.solve(lhs.cuda(), rhs.cuda())
 
         weight_name = f"{hparams.rewrite_module_tmp.format(layer)}.weight"
         upd_matrix = _match_shape(upd_matrix, weights[weight_name].shape)
