@@ -145,6 +145,14 @@ run_and_check() {
     # Algorithm-specific log validation
     validate_log "$label" "$logfile" || return
 
+    # Verify per-case result files were produced
+    local result_files=$(find "$RESULT_ROOT" -name "100_edits-case_*.json" 2>/dev/null | wc -l)
+    if [ "$result_files" -gt 0 ]; then
+        log "  ✓ $result_files per-case result file(s) produced"
+    else
+        log "  ⚠ No per-case result files found (eval may have been skipped)"
+    fi
+
     PASS=$((PASS+1))
     log "✓ $label PASSED (${elapsed}s)"
 }
@@ -156,24 +164,22 @@ validate_log() {
     case "$label" in
         *REVIVE*)
             # REVIVE must compute SVD and report split_rank per layer
+            if ! grep -q "\[REVIVE\]" "$logfile"; then
+                log "  ❌ REVIVE filter not running — no [REVIVE] output"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: REVIVE not running"; return 1
+            fi
+            # Verify per-layer SVD reports (hooks-based: "[REVIVE] layer=N split_rank=K/D removed=X%")
             if ! grep -q "\[REVIVE\] layer=" "$logfile"; then
-                log "  ❌ REVIVE SVD not computed — filter not running"
+                log "  ❌ REVIVE SVD not computed per-layer"
                 FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: REVIVE SVD missing"; return 1
             fi
-            if ! grep -q "full_matrices=True" "$logfile"; then
-                log "  ❌ REVIVE not using full_matrices=True"
-                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: wrong SVD mode"; return 1
-            fi
-            if ! grep -q "svd_device=cuda" "$logfile"; then
-                log "  ❌ REVIVE SVD not on GPU (should be cuda)"
-                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: SVD on CPU"; return 1
-            fi
-            if ! grep -q "Dynamic SVD" "$logfile"; then
-                log "  ❌ REVIVE not using dynamic SVD (current weight)"
-                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: static SVD"; return 1
+            # Verify filter is removing something (not a no-op)
+            if ! grep -q "removed=" "$logfile"; then
+                log "  ❌ REVIVE filter output missing 'removed=' metric"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: REVIVE no removal"; return 1
             fi
             local svd_count=$(grep -c "\[REVIVE\] layer=" "$logfile")
-            log "  ✓ REVIVE: SVD computed ${svd_count}x, full_matrices=True, device=cuda, dynamic"
+            log "  ✓ REVIVE: SVD computed ${svd_count}x with spectral filtering"
             ;;
         *AlphaEdit*checkpoint*)
             # AlphaEdit checkpoint_runner must resolve model name correctly
@@ -423,6 +429,14 @@ run_baseline() {
         ERRORS="$ERRORS\n  $label: errors in output"
     elif [ "$exit_code" -eq 0 ]; then
         validate_log "$label" "$logfile" && {
+            # Verify baseline produced some output
+            local output_count=$(find "$RESULT_ROOT" "$CHECKPOINT_ROOT" \
+                -name "model_weights.pt" -o -name "100_edits-case_*.json" 2>/dev/null | wc -l)
+            if [ "$output_count" -eq 0 ]; then
+                log "  ⚠ WARNING: No output files produced by $label"
+            else
+                log "  ✓ $output_count output file(s) produced"
+            fi
             PASS=$((PASS+1))
             log "✓ $label PASSED (${elapsed}s)"
         }

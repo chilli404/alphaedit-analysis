@@ -22,8 +22,8 @@ run: |
   set -euo pipefail
   cd ~/sky_workdir
   set -a && source ~/.env 2>/dev/null || source ~/sky_workdir/.env && set +a
-  export RESULT_ROOT="/s3-data/continual-learning/alphaedit/results/_smoke_test"
-  export CHECKPOINT_ROOT="/s3-data/continual-learning/alphaedit/checkpoints/_smoke_test"
+  export RESULT_ROOT="/s3-data/continual-learning/alphaedit/results/_smoke_test/eval"
+  export CHECKPOINT_ROOT="/s3-data/continual-learning/alphaedit/checkpoints/_smoke_test/eval"
 
   bash scripts/link_stats.sh
   bash scripts/link_dsets.sh
@@ -31,12 +31,9 @@ run: |
 
   echo "=== CPU tests (eval + measurement infrastructure) ==="
   uv run pytest tests/test_shared_infrastructure.py tests/test_evaluate_harness.py \
-      tests/test_measurement_runners.py --tb=short -q
+      tests/test_measurement_runners.py tests/test_runner_integration.py \
+      tests/test_integration_cpu.py --tb=short -q
 
   echo ""
-  echo "=== GPU: Eval correctness (AlphaEdit 1 batch + verify per-case files) ==="
-  # Run one quick AlphaEdit edit + eval to verify mega_batch_eval produces correct output
-  bash tests/test_smoke_all_algorithms.sh --skypilot AlphaEdit
-
-  echo ""
-  echo "=== All eval and measurement tests passed ==="
+  echo "=== All eval and measurement CPU tests passed ==="
+  echo "(GPU eval correctness is tested via test-vendor cluster's AlphaEdit run)"

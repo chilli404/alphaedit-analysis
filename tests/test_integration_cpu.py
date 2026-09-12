@@ -860,3 +860,68 @@ class TestAlphaEditHooksHandleNoneCov:
             if "NoneType" in str(e):
                 pytest.fail(f"compose_hooks build_lhs crashed on cov=None: {e}")
             raise
+
+
+class TestSmokeTestYAMLIsolation:
+    """Each test cluster must use isolated checkpoint/result paths."""
+
+    def test_all_yamls_use_unique_paths(self):
+        """No two test YAMLs should share the same _smoke_test root."""
+        import yaml
+        paths = {}
+        for yaml_file in (PROJECT_ROOT / "sky").glob("test_*.yaml"):
+            content = yaml_file.read_text()
+            for line in content.split("\n"):
+                if "RESULT_ROOT" in line and "_smoke_test" in line:
+                    path = line.split("=", 1)[-1].strip().strip('"')
+                    name = yaml_file.name
+                    if path in paths.values():
+                        conflicting = [k for k, v in paths.items() if v == path]
+                        pytest.fail(f"{name} shares RESULT_ROOT with {conflicting}: {path}")
+                    paths[name] = path
+        assert len(paths) >= 3, f"Expected at least 3 test YAMLs with RESULT_ROOT, found {len(paths)}"
+
+    def test_yamls_include_integration_tests(self):
+        """Each test YAML should run at least one integration test file."""
+        integration_files = {"test_integration_cpu", "test_patch_integration",
+                           "test_runner_integration", "test_endtoend_cpu",
+                           "test_mechanism_correctness", "test_path_correctness",
+                           "test_harness_integration"}
+        for yaml_file in (PROJECT_ROOT / "sky").glob("test_*.yaml"):
+            if yaml_file.name == "test_all.sh" or yaml_file.name == "test.yaml":
+                continue
+            content = yaml_file.read_text()
+            found = [f for f in integration_files if f in content]
+            assert len(found) > 0, (
+                f"{yaml_file.name} doesn't include any integration test files. "
+                f"Add at least one of: {integration_files}"
+            )
+
+    def test_eval_cluster_doesnt_run_alphaedit(self):
+        """test-eval should NOT re-run AlphaEdit (already in test-vendor)."""
+        eval_yaml = PROJECT_ROOT / "sky" / "test_eval_and_measure.yaml"
+        if eval_yaml.exists():
+            content = eval_yaml.read_text()
+            assert "test_smoke_all_algorithms.sh" not in content or "AlphaEdit" not in content.split("test_smoke_all_algorithms.sh")[-1] if "test_smoke_all_algorithms.sh" in content else True, (
+                "test-eval should not re-run AlphaEdit smoke test (test-vendor already covers it)"
+            )
+
+
+class TestSmokeTestREVIVEValidation:
+    """REVIVE validation in smoke test must match hooks-based output."""
+
+    def test_smoke_test_checks_revive_layer_output(self):
+        """Smoke test should check for '[REVIVE] layer=' (hooks output)."""
+        source = (PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh").read_text()
+        assert "[REVIVE]" in source, "Smoke test must validate [REVIVE] output"
+
+    def test_smoke_test_doesnt_check_old_revive_strings(self):
+        """Smoke test should NOT check for old exec-based REVIVE strings."""
+        source = (PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh").read_text()
+        assert "Dynamic SVD" not in source, "Smoke test references old REVIVE init message"
+        assert "full_matrices=True" not in source, "Smoke test references old REVIVE init message"
+
+    def test_revive_hooks_print_layer_info(self):
+        """revive_hooks() must print '[REVIVE] layer=' for validation."""
+        source = (PROJECT_ROOT / "src" / "algorithms" / "hook_presets.py").read_text()
+        assert "[REVIVE] layer=" in source, "revive_hooks must print per-layer info for smoke test validation"

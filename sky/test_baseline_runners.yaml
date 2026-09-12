@@ -21,8 +21,8 @@ run: |
   set -euo pipefail
   cd ~/sky_workdir
   set -a && source ~/.env 2>/dev/null || source ~/sky_workdir/.env && set +a
-  export RESULT_ROOT="/s3-data/continual-learning/alphaedit/results/_smoke_test"
-  export CHECKPOINT_ROOT="/s3-data/continual-learning/alphaedit/checkpoints/_smoke_test"
+  export RESULT_ROOT="/s3-data/continual-learning/alphaedit/results/_smoke_test/baseline"
+  export CHECKPOINT_ROOT="/s3-data/continual-learning/alphaedit/checkpoints/_smoke_test/baseline"
 
   bash scripts/link_stats.sh
   bash scripts/link_dsets.sh
@@ -30,7 +30,8 @@ run: |
 
   echo "=== CPU tests ==="
   uv run pytest tests/test_path_isolation.py tests/test_all_runners.py \
-      tests/test_patches.py --tb=short -q
+      tests/test_patches.py tests/test_patch_integration.py \
+      tests/test_integration_cpu.py --tb=short -q
 
   echo ""
   echo "=== GPU: Baselines (EvoEdit, NSE, RECT) ==="
