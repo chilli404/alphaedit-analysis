@@ -456,3 +456,240 @@ class TestDataPathConsistency:
             for model in ["Mistral-7B.json", "Qwen2.5-7B.json"]:
                 path = hparams_dir / alg / model
                 assert path.exists(), f"Missing cross-model hparams: {path}"
+
+
+# ---------------------------------------------------------------------------
+# 10. Checkpoint paths match GPU smoke test expectations
+# ---------------------------------------------------------------------------
+
+
+class TestCheckpointPathsMatchSmokeTest:
+    """Every GPU smoke test algorithm must have its checkpoint path reproduced on CPU.
+
+    The smoke test checks for files at specific S3 paths. If ExperimentConfig
+    produces a different path, the checkpoint will be written to the wrong location
+    and the smoke test will report 'checkpoint not found'.
+    """
+
+    @pytest.mark.parametrize("label,config_kwargs,expected_fragment", [
+        (
+            "AlphaEdit",
+            dict(base_alg="AlphaEdit", seed=42, experiment_type="failure_curve"),
+            "failure_curve/AlphaEdit/seed42",
+        ),
+        (
+            "MEMIT",
+            dict(base_alg="MEMIT", seed=42, experiment_type="failure_curve"),
+            "failure_curve/MEMIT/seed42",
+        ),
+        (
+            "MEMIT-Seq",
+            dict(base_alg="MEMIT", seed=42, lambda_prev=1.0, lambda_delta=0.0,
+                 kernel_degree=1, kernel_prev=True, experiment_type="polykernel_seqreg"),
+            "polykernel_seqreg/MEMIT-Seq-poly1-lp1.0-ld0.0-cache0/seed42",
+        ),
+        (
+            "REVIVE+MEMIT",
+            dict(base_alg="MEMIT", seed=42, lambda_prev=0.0, lambda_delta=0.0,
+                 kernel_degree=1, kernel_prev=True, revive=True, revive_tau=0.1,
+                 experiment_type="polykernel_seqreg"),
+            "polykernel_seqreg/MEMIT-Seq-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/seed42",
+        ),
+        (
+            "REVIVE+AlphaEdit",
+            dict(base_alg="AlphaEdit", seed=42, lambda_prev=0.0, lambda_delta=0.0,
+                 kernel_degree=1, kernel_prev=True, revive=True, revive_tau=0.1,
+                 experiment_type="polykernel_seqreg"),
+            "polykernel_seqreg/AlphaEdit-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/seed42",
+        ),
+        (
+            "REVIVE+NSE",
+            dict(base_alg="NSE", seed=42, lambda_prev=0.0, lambda_delta=0.0,
+                 kernel_degree=1, kernel_prev=True, revive=True, revive_tau=0.1,
+                 experiment_type="polykernel_seqreg"),
+            "polykernel_seqreg/NSE-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/seed42",
+        ),
+        (
+            "REVIVE+RECT",
+            dict(base_alg="MEMIT_rect", seed=42, lambda_prev=0.0, lambda_delta=0.0,
+                 kernel_degree=1, kernel_prev=True, revive=True, revive_tau=0.1,
+                 experiment_type="polykernel_seqreg"),
+            "polykernel_seqreg/MEMIT_rect-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/seed42",
+        ),
+    ], ids=lambda x: x if isinstance(x, str) else "")
+    def test_checkpoint_path(self, label, config_kwargs, expected_fragment, tmp_path):
+        from experiment_config import ExperimentConfig
+        config = ExperimentConfig(**config_kwargs)
+        ckpt = str(config.checkpoint_dir(tmp_path))
+        assert expected_fragment in ckpt, (
+            f"{label}: expected '{expected_fragment}' in checkpoint path, "
+            f"got: {ckpt}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 11. Hook composition for every REVIVE+X combo
+# ---------------------------------------------------------------------------
+
+
+class TestHookCompositionAllCombos:
+    """Every REVIVE+X combination the GPU smoke test runs must compose correctly."""
+
+    def _make_mock_tensors(self, d=64, n=10):
+        import torch
+        layer_ks = torch.randn(d, n, dtype=torch.float64)
+        cov = torch.eye(d, dtype=torch.float64)
+        return layer_ks, cov
+
+    def _make_mock_hparams(self):
+        from unittest.mock import MagicMock
+        hp = MagicMock()
+        hp.mom2_update_weight = 15000.0
+        hp.layers = [4, 5, 6, 7, 8]
+        return hp
+
+    def test_revive_plus_memit_seqreg(self):
+        from algorithms.hooks import compose_hooks
+        from algorithms.hook_presets import seqreg_hooks, revive_hooks
+        hooks = compose_hooks(
+            seqreg_hooks(lambda_prev=0.0, lambda_delta=0.0),
+            revive_hooks(revive_tau=0.1),
+        )
+        assert hooks.build_lhs is not None
+        assert hooks.post_solve is not None
+        state = hooks.get_state()
+        layer_ks, cov = self._make_mock_tensors()
+        hp = self._make_mock_hparams()
+        lhs = hooks.build_lhs(4, layer_ks, cov, hp, state)
+        assert lhs.shape == (64, 64)
+
+    def test_revive_plus_alphaedit(self):
+        """AlphaEdit+REVIVE: seqreg builds LHS, revive filters update."""
+        from algorithms.hooks import compose_hooks
+        from algorithms.hook_presets import seqreg_hooks, revive_hooks
+        import torch
+        hooks = compose_hooks(
+            seqreg_hooks(lambda_prev=0.0, lambda_delta=0.0),
+            revive_hooks(revive_tau=0.1, revive_svd_device="cpu"),
+        )
+        state = hooks.get_state()
+        layer_ks, cov = self._make_mock_tensors()
+        hp = self._make_mock_hparams()
+        lhs = hooks.build_lhs(4, layer_ks, cov, hp, state)
+        upd = torch.randn(64, 64, dtype=torch.float64)
+        adj_k = torch.randn(64, 10, dtype=torch.float64)
+        # post_solve needs _current_weights in state for revive
+        state["_current_weights"] = {"test.weight": torch.randn(64, 64)}
+        filtered = hooks.post_solve(4, upd, adj_k, layer_ks, "test.weight", state)
+        assert filtered.shape == upd.shape
+
+    def test_revive_only_for_nse(self):
+        """NSE+REVIVE: no seqreg, just revive filter."""
+        from algorithms.hook_presets import revive_hooks
+        import torch
+        hooks = revive_hooks(revive_tau=0.1, revive_svd_device="cpu")
+        assert hooks.post_solve is not None
+        assert hooks.build_lhs is None  # NSE doesn't augment LHS
+        upd = torch.randn(64, 64, dtype=torch.float64)
+        state = {"_current_weights": {"test.weight": torch.randn(64, 64)}}
+        filtered = hooks.post_solve(4, upd, None, None, "test.weight", state)
+        assert filtered.shape == upd.shape
+
+    def test_revive_only_for_rect(self):
+        """RECT+REVIVE: same as NSE — revive filter only."""
+        from algorithms.hook_presets import revive_hooks
+        import torch
+        hooks = revive_hooks(revive_tau=0.1, revive_svd_device="cpu")
+        upd = torch.randn(64, 64, dtype=torch.float64)
+        state = {"_current_weights": {"test.weight": torch.randn(64, 64)}}
+        filtered = hooks.post_solve(4, upd, None, None, "test.weight", state)
+        assert torch.linalg.norm(filtered) <= torch.linalg.norm(upd) + 1e-6
+
+
+# ---------------------------------------------------------------------------
+# 12. Baseline script existence and vendor function availability
+# ---------------------------------------------------------------------------
+
+
+class TestBaselineScriptsAndFunctions:
+    """Baseline scripts must exist and their vendor functions must be findable."""
+
+    @pytest.mark.parametrize("script,function_name,source_file", [
+        ("scripts/run_evoedit_baseline.sh", "apply_EvoEdit_to_model",
+         "baselines/EvoEdit/EvoEdit/EvoEdit_main.py"),
+        ("scripts/run_nse_baseline.sh", "apply_nse_to_model",
+         "baselines/EvoEdit/nse/nse_main.py"),
+        ("scripts/run_rect_aligned_paper_replication.sh", "apply_memit_seq_rect_to_model",
+         "baselines/EvoEdit/memit/memit_seq_rect_main.py"),
+    ])
+    def test_baseline_script_and_function(self, script, function_name, source_file):
+        assert (PROJECT_ROOT / script).exists(), f"Missing script: {script}"
+        source_path = PROJECT_ROOT / source_file
+        if source_path.exists():
+            source = source_path.read_text()
+            assert f"def {function_name}" in source, (
+                f"{source_file} missing {function_name}"
+            )
+        else:
+            pytest.skip(f"{source_file} not present (baselines not cloned)")
+
+
+# ---------------------------------------------------------------------------
+# 13. Ordering paths
+# ---------------------------------------------------------------------------
+
+
+class TestOrderingPaths:
+    """Ordering experiments must produce correct subdirectory paths."""
+
+    @pytest.mark.parametrize("ordering", [
+        "fb_high_exposure", "fb_low_exposure", "fb_random0",
+        "key_clustered", "key_dispersed",
+    ])
+    def test_ordering_in_checkpoint_dir(self, ordering, tmp_path):
+        from experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg="MEMIT", seed=42, ordering=ordering,
+            lambda_prev=1.0, kernel_degree=1,
+            experiment_type="polykernel_seqreg",
+        )
+        ckpt = str(config.checkpoint_dir(tmp_path))
+        assert ordering in ckpt, f"Ordering '{ordering}' not in checkpoint path: {ckpt}"
+
+    @pytest.mark.parametrize("ordering", [
+        "fb_high_exposure", "fb_low_exposure", "fb_random0",
+        "key_clustered", "key_dispersed",
+    ])
+    def test_ordering_in_results_dir(self, ordering, tmp_path):
+        from experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg="MEMIT", seed=42, ordering=ordering,
+        )
+        results = str(config.results_dir(tmp_path))
+        assert ordering in results, f"Ordering '{ordering}' not in results path: {results}"
+
+    def test_no_ordering_omits_matched_ordering(self, tmp_path):
+        from experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg="MEMIT", seed=42, ordering=None,
+            experiment_type="failure_curve",
+        )
+        results = str(config.results_dir(tmp_path))
+        assert "matched_ordering" not in results
+
+    @pytest.mark.parametrize("model_name,expected_tag", [
+        ("meta-llama/Meta-Llama-3-8B-Instruct", ""),
+        ("EleutherAI/gpt-j-6b", "gpt-j-6b"),
+        ("Qwen/Qwen2.5-7B-Instruct", "qwen2.5-7b"),
+    ])
+    def test_model_tag_in_checkpoint_dir(self, model_name, expected_tag, tmp_path):
+        from experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg="MEMIT", seed=42, model_name=model_name,
+            experiment_type="polykernel_seqreg", lambda_prev=1.0, kernel_degree=1,
+        )
+        ckpt = str(config.checkpoint_dir(tmp_path))
+        if expected_tag:
+            assert expected_tag in ckpt, f"model_tag '{expected_tag}' not in: {ckpt}"
+        else:
+            assert "gpt-j" not in ckpt and "qwen" not in ckpt
