@@ -1032,12 +1032,15 @@ class TestVendorFunctionRequirements:
             "build_nse_cache.sh must extract KV caches from S3"
         )
 
-    def test_smoke_test_fails_fast_without_kv_cache(self):
-        """Smoke test must fail fast for NSE/EvoEdit if KV caches aren't populated."""
-        source = (PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh").read_text()
-        assert "kv_count" in source or "KV cache" in source, (
-            "Smoke test must check for KV cache before running NSE/EvoEdit "
-            "(without cache, compute_z takes 25 grad steps per edit → guaranteed timeout)"
+    def test_only_nse_loads_kv_cache(self):
+        """Only run_nse_baseline.sh should load the NSE KV cache.
+        EvoEdit computes v_star from the current model state per batch — no cache."""
+        nse_source = (PROJECT_ROOT / "scripts" / "run_nse_baseline.sh").read_text()
+        assert "nse_kv_cache" in nse_source, "NSE script must load KV cache"
+
+        evoedit_source = (PROJECT_ROOT / "scripts" / "run_evoedit_baseline.sh").read_text()
+        assert "nse_kv_cache" not in evoedit_source, (
+            "EvoEdit must NOT load NSE KV cache — it computes v_star from current W_t"
         )
 
     def test_nse_baseline_script_loads_kv_cache(self):

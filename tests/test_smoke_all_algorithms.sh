@@ -419,18 +419,8 @@ run_baseline() {
     local real_result_root="/s3-data/continual-learning/alphaedit/results"
     [ ! -d "$real_result_root/matched_ordering/orderings" ] && real_result_root="$PROJECT_DIR/results"
 
-    # Fail fast: NSE/EvoEdit need KV caches or compute_z takes 25 grad steps per edit (~15 min)
-    if echo "$label" | grep -qiE "NSE|EvoEdit"; then
-        local kv_dir="$PROJECT_DIR/baselines/EvoEdit/share/projects/rewriting-knowledge/kvs"
-        local kv_count=$(find "$kv_dir" -name "*.npz" 2>/dev/null | wc -l)
-        if [ "$kv_count" -lt 10 ]; then
-            log "  ❌ KV cache not populated ($kv_count files in $kv_dir)"
-            log "     Run: bash scripts/build_nse_cache.sh"
-            FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: KV cache missing (would timeout)"
-            return
-        fi
-        log "  ✓ KV cache: $kv_count files"
-    fi
+    # NSE/EvoEdit scripts extract KV caches from S3 and fail fast if missing.
+    # No pre-check needed here — the scripts handle it.
 
     # Skip mega_batch_eval — the editing smoke test validates edits + checkpoints, not eval.
     # Eval is tested by the eval cluster (test_eval_and_measure.yaml).
