@@ -37,9 +37,30 @@ run: |
   uv run python scripts/patches/apply_all.py
 
   # CPU tests (fast — catches code issues before GPU work)
+  # Run only our test files (skip legacy tests that import unavailable modules)
   echo "=== CPU Tests ==="
-  uv run pytest tests/ --tb=short -q --ignore=tests/test_runner_script.py \
-    --ignore=tests/test_seeded_runner.py --ignore=tests/test_source_patches.py
+  uv run pytest \
+    tests/test_path_isolation.py \
+    tests/test_source_integrity.py \
+    tests/test_all_runners.py \
+    tests/test_shared_infrastructure.py \
+    tests/test_evaluate_harness.py \
+    tests/test_patches.py \
+    tests/test_checkpoint_dir_dedup.py \
+    tests/test_runner_logging.py \
+    tests/test_model_names.py \
+    tests/test_cli.py \
+    tests/test_migrate_seeded_runner.py \
+    tests/test_runner_migrations.py \
+    tests/test_measurement_runners.py \
+    tests/test_legacy_runners.py \
+    tests/test_legacy_runner_migration.py \
+    tests/test_algorithm_hooks.py \
+    tests/test_measurement_harness.py \
+    tests/test_skypilot_yamls.py \
+    tests/test_scientific_integrity.py \
+    tests/test_revision_code.py \
+    --tb=short -q
 
   # GPU smoke test (unless SKIP_GPU=1)
   if [[ "${SKIP_GPU:-}" != "1" ]]; then
