@@ -157,6 +157,8 @@ def _execute_memit_with_hooks(
         layer_ks, targets = layer_ks.double(), targets.double()
 
         # === HOOK: build_lhs ===
+        # Free GPU memory before building the LHS — cov.double() is 1.53 GiB for Llama
+        torch.cuda.empty_cache()
         if hooks.build_lhs is not None:
             lhs = hooks.build_lhs(layer, layer_ks, cov, hparams, state)
         else:
