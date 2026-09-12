@@ -300,6 +300,7 @@ def run(args: argparse.Namespace) -> None:
     # Initialize cache_c and P for algorithms that need them
     cache_c = None
     P = None
+    error_cache = None
     n_layers = len(hparams.layers)
 
     if args.base_alg == "AlphaEdit":
@@ -326,13 +327,18 @@ def run(args: argparse.Namespace) -> None:
         print(f"  [NSE] Initialized cache_c: ({n_layers}, {d}, {d})")
 
     elif args.base_alg == "MEMIT_rect":
-        # RECT's execute_memit adds cache_c to cov + K@K^T. Both cov and K are in the
-        # INPUT dimension of down_proj (compute_ks returns [0] = input activations).
+        # RECT's execute_memit adds cache_c and error_cache to cov + K@K^T.
+        # Both cov and K are in the INPUT dimension of down_proj.
         sample_layer = hparams.layers[0]
         weight_name = f"{hparams.rewrite_module_tmp.format(sample_layer)}.weight"
-        d = dict(model.named_parameters())[weight_name].shape[1]  # INPUT dim
-        cache_c = torch.zeros(n_layers, d, d)
-        print(f"  [RECT] Initialized cache_c: ({n_layers}, {d}, {d})")
+        w = dict(model.named_parameters())[weight_name]
+        d_in = w.shape[1]  # INPUT dim for cache_c (cov + K@K^T space)
+        cache_c = torch.zeros(n_layers, d_in, d_in)
+        # error_cache accumulates rectification residuals — same shape as upd_matrix
+        # upd_matrix shape depends on weight shape: [d_out, d_in] or [d_in, d_out]
+        error_cache = torch.zeros(n_layers, w.shape[0], w.shape[1])
+        print(f"  [RECT] Initialized cache_c: ({n_layers}, {d_in}, {d_in}), "
+              f"error_cache: ({n_layers}, {w.shape[0]}, {w.shape[1]})")
 
     # MEMIT and AlphaEdit accept hooks= kwarg and call post_solve internally.
     # NSE and RECT are vendor functions that silently ignore hooks via **_kwargs.
@@ -359,6 +365,8 @@ def run(args: argparse.Namespace) -> None:
             extra["P"] = P
         if _nse_cache_template is not None:
             extra["cache_template"] = _nse_cache_template
+        if error_cache is not None:
+            extra["error_cache"] = error_cache
 
         if _hooks_aware:
             if args.revive:

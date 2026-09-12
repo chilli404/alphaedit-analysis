@@ -114,26 +114,25 @@ def apply_alphaedit_with_hooks(
         resid = targets / (len(hparams.layers) - i)
 
         # === HOOK: build_lhs ===
-        # Hooks provide the INNER term only. AlphaEdit always wraps with:
-        #   lhs = P @ (inner + cache_c) + L2*I
-        # P is [14336, 14336] per layer — too large for GPU alongside the model.
-        # Compute LHS on CPU, then move result to GPU for the solve.
-        P_i = P[i, :, :].double()  # stays on CPU
-        cache_c_i = cache_c[i, :, :].double() if cache_c is not None else torch.zeros(
-            layer_ks.shape[0], layer_ks.shape[0], dtype=torch.float64)
+        # Match vendor: GPU float32, free P_i immediately after use.
+        torch.cuda.empty_cache()
+        P_i = P[i, :, :].cuda()
+        cache_c_i = cache_c[i, :, :].cuda() if cache_c is not None else torch.zeros(
+            layer_ks.shape[0], layer_ks.shape[0], device="cuda")
 
         if hooks.build_lhs is not None:
-            inner = hooks.build_lhs(layer, layer_ks, None, hparams, state).cpu().double()
+            inner = hooks.build_lhs(layer, layer_ks, None, hparams, state)
+            if inner.device.type == "cpu":
+                inner = inner.cuda()
         else:
-            _ks_cpu = layer_ks.cpu().double()
-            inner = _ks_cpu @ _ks_cpu.T
+            inner = layer_ks.float() @ layer_ks.float().T
 
-        lhs = (P_i @ (inner + cache_c_i)
-               + hparams.L2 * torch.eye(layer_ks.shape[0], dtype=torch.float64))
-
-        # Move LHS and RHS to GPU for the solve (much smaller than P itself)
-        rhs = (P_i @ layer_ks.cpu().double() @ resid.cpu().double().T)
-        upd_matrix = torch.linalg.solve(lhs.cuda(), rhs.cuda())
+        lhs = P_i @ (inner.float() + cache_c_i) + hparams.L2 * torch.eye(
+            layer_ks.shape[0], device="cuda")
+        rhs = P_i @ layer_ks.float() @ resid.float().T
+        del P_i, cache_c_i
+        torch.cuda.empty_cache()
+        upd_matrix = torch.linalg.solve(lhs, rhs)
 
         weight_name = f"{hparams.rewrite_module_tmp.format(layer)}.weight"
         upd_matrix = _match_shape(upd_matrix, weights[weight_name].shape)

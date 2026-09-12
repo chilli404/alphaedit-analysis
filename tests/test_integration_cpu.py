@@ -1343,14 +1343,13 @@ class TestAlphaEditSolveRegularization:
         lhs_section = source[source.find("build_lhs"):source.find("post_solve")]
         assert "L2" in lhs_section, "L2 regularization must appear in the LHS construction"
 
-    def test_alphaedit_computes_in_float64(self):
-        """AlphaEdit LHS and RHS must be computed in float64, not float16/32.
-        P is float32, layer_ks may be float16. All matmuls must use .double()."""
+    def test_alphaedit_frees_p_after_solve(self):
+        """AlphaEdit must del P_i and empty_cache after the solve to free GPU memory.
+        P_i is [14336, 14336] = 0.77 GiB in float32."""
         source = (PROJECT_ROOT / "src" / "algorithms" / "alphaedit_with_hooks.py").read_text()
-        lhs_section = source[source.find("build_lhs"):source.find("post_solve")]
-        assert ".double()" in lhs_section, (
-            "AlphaEdit LHS/RHS computation must use .double() — "
-            "mixed float16/float32 matmuls crash or lose precision."
+        solve_section = source[source.find("build_lhs"):source.find("post_solve")]
+        assert "del P_i" in solve_section, (
+            "AlphaEdit must free P_i after the solve to reclaim GPU memory"
         )
 
 
