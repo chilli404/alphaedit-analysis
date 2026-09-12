@@ -394,7 +394,7 @@ class TestEvalMetrics:
         mbe = ns["_mega_batch_eval"]
 
         case_ids = [r["case_id"] for r in small_dataset[:10]]
-        template = str(tmp_path / "10_edits-case_{}.json")
+        template = str(tmp_path / "{}_edits-case_{}.json")
         mbe(model, tok, list(small_dataset[:10]), template, 10, case_ids, 1.0, batch_size=2)
 
         # Verify output files
@@ -423,7 +423,7 @@ class TestEvalMetrics:
         mbe = ns["_mega_batch_eval"]
 
         case_ids = [r["case_id"] for r in small_dataset[:10]]
-        template = str(tmp_path / "10_edits-case_{}.json")
+        template = str(tmp_path / "{}_edits-case_{}.json")
         mbe(model, tok, list(small_dataset[:10]), template, 10, case_ids, 1.0, batch_size=2)
 
         import json as json_mod

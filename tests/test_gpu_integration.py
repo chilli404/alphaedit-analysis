@@ -250,8 +250,8 @@ class TestCrossAlgorithm:
 
         # AlphaEdit
         n_layers = len(alphaedit_hparams.layers)
-        d_in = next(v.shape[0] for k, v in w0.items())
-        cache_c = torch.zeros(n_layers, d_in, d_in)
+        d = P_matrix.shape[-1]  # P operates in input-dim space (14336 for Llama down_proj)
+        cache_c = torch.zeros(n_layers, d, d)
 
         _seed()
         _restore_weights(model, w0)
