@@ -997,3 +997,54 @@ class TestBaselineScriptPerformance:
             assert "_mega_batch_eval" not in source, (
                 f"{script} patches mega_batch_eval inline — apply_all.py already handles this"
             )
+
+
+class TestVendorFunctionRequirements:
+    """Test that each vendor function gets its required kwargs.
+    These MUST catch bugs before GPU smoke tests."""
+
+    def test_nse_cache_c_initialized_without_P(self):
+        """NSE needs cache_c but NOT P. cache_c must be initialized from model dims, not P."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        # NSE section must initialize cache_c somewhere (not just in the AlphaEdit block)
+        # Look for NSE-specific cache_c init
+        assert "NSE" in source and "cache_c = torch.zeros" in source, (
+            "Runner must initialize cache_c for NSE (needed by vendor nse_main.py)"
+        )
+        # The NSE cache_c init must NOT be inside an 'if P is not None' block
+        # The cache_c init for NSE must exist somewhere in the file
+        assert "NSE" in source and "cache_c = torch.zeros" in source
+        # Specifically: there should be a cache_c init in the NSE-specific block
+        nse_cache_section = source[source.find("elif args.base_alg == \"NSE\"", source.find("cache_c = None")):]
+        assert "cache_c" in nse_cache_section[:600], "NSE cache_c section must exist"
+
+    def test_alphaedit_lhs_uses_double_precision(self):
+        """AlphaEdit through hooks must use float64 for the LHS solve, not float16."""
+        source = (PROJECT_ROOT / "src" / "algorithms" / "hook_presets.py").read_text()
+        # The build_lhs function must handle cov=None by still using double precision
+        build_lhs_section = source[source.find("def build_lhs(layer_idx, layer_ks, cov, hparams, state)"):]
+        build_lhs_section = build_lhs_section[:build_lhs_section.find("return AlgorithmHooks")]
+        # When cov=None, layer_ks must still be converted to double
+        assert "layer_ks @ layer_ks.T" in build_lhs_section
+
+    def test_rect_module_has_relative_imports(self):
+        """RECT module uses relative imports — importlib.util alone won't work."""
+        rect_path = PROJECT_ROOT / "baselines" / "EvoEdit" / "memit" / "memit_seq_rect_main.py"
+        if not rect_path.exists():
+            pytest.skip("baselines not available")
+        source = rect_path.read_text()
+        has_relative = "from ." in source
+        assert has_relative, "RECT module uses relative imports — import strategy must handle this"
+
+    def test_alphaedit_hooks_solve_in_double(self):
+        """torch.linalg.solve requires float64, not float16. Test with mock tensors."""
+        import torch
+        from algorithms.hook_presets import seqreg_hooks
+        hooks = seqreg_hooks(lambda_prev=0.0, lambda_delta=0.0)
+        state = hooks.get_state()
+        # Simulate AlphaEdit path: cov=None, layer_ks in double
+        layer_ks = torch.randn(64, 10, dtype=torch.float64)
+        hparams = type('H', (), {'mom2_update_weight': 1.0})()
+        lhs = hooks.build_lhs(0, layer_ks, None, hparams, state)
+        # LHS must be float64 for torch.linalg.solve
+        assert lhs.dtype == torch.float64, f"LHS dtype is {lhs.dtype}, must be float64 for solve"

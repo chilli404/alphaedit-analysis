@@ -122,8 +122,8 @@ def apply_alphaedit_with_hooks(
 
         # AlphaEdit solve: lhs @ upd = P @ K @ resid^T
         if hooks.build_lhs is not None:
-            upd_matrix = torch.linalg.solve(lhs, layer_ks)
-            upd_matrix = resid @ upd_matrix.T
+            upd_matrix = torch.linalg.solve(lhs.double(), layer_ks.double())
+            upd_matrix = resid.double() @ upd_matrix.T
         else:
             upd_matrix = torch.linalg.solve(lhs, P[i, :, :].cuda() @ layer_ks @ resid.T)
 

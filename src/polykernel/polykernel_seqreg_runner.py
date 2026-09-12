@@ -282,24 +282,26 @@ def run(args: argparse.Namespace) -> None:
         from nse.nse_main import apply_nse_to_model
         base_apply = apply_nse_to_model
     elif args.base_alg == "MEMIT_rect":
-        import importlib.util
-        rect_path = get_project_root() / "baselines" / "EvoEdit" / "memit" / "memit_seq_rect_main.py"
-        spec = importlib.util.spec_from_file_location("memit_seq_rect_main", str(rect_path))
-        rect_mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(rect_mod)
-        base_apply = rect_mod.apply_memit_seq_rect_to_model
+        # RECT module uses relative imports (from .compute_ks) so we must import
+        # it as part of the baselines memit package, not standalone
+        baselines_root = str(get_project_root() / "baselines" / "EvoEdit")
+        old_memit = sys.modules.pop("memit", None)
+        sys.path.insert(0, baselines_root)
+        from memit.memit_seq_rect_main import apply_memit_seq_rect_to_model
+        base_apply = apply_memit_seq_rect_to_model
+        sys.path.remove(baselines_root)
+        if old_memit is not None:
+            sys.modules["memit"] = old_memit
     else:
         raise ValueError(f"Unknown base_alg: {args.base_alg}")
 
-    # For AlphaEdit and NSE: load P matrix and initialize cache_c
-    # Both vendor functions require cache_c (accumulated key covariance)
+    # Initialize cache_c and P for algorithms that need them
     cache_c = None
     P = None
-    if args.base_alg in ("AlphaEdit", "NSE"):
-        from AlphaEdit.AlphaEdit_main import get_cov
-        n_layers = len(hparams.layers)
-        d_in = hparams.mom2_n_samples if hasattr(hparams, 'mom2_n_samples') else 4096
-        # Load P matrix
+    n_layers = len(hparams.layers)
+
+    if args.base_alg == "AlphaEdit":
+        # AlphaEdit needs both P (null-space projection) and cache_c
         stats_dir = alphaedit_root / "data" / "stats"
         p_path = stats_dir / "null_space_project.pt"
         if not p_path.exists():
@@ -308,13 +310,18 @@ def run(args: argparse.Namespace) -> None:
         if p_path.exists():
             P = torch.load(str(p_path), map_location="cpu")
             print(f"  [AlphaEdit] Loaded P matrix from {p_path} (shape: {P.shape})")
+            d = P.shape[-1]
+            cache_c = torch.zeros(n_layers, d, d)
         else:
             print(f"  [AlphaEdit] WARNING: P matrix not found at {p_path}")
 
-        # Initialize cache_c
-        if P is not None:
-            d = P.shape[-1]
-            cache_c = torch.zeros(n_layers, d, d)
+    elif args.base_alg == "NSE":
+        # NSE needs cache_c but NOT P. Get d from model weight dimensions.
+        sample_layer = hparams.layers[0]
+        weight_name = f"{hparams.rewrite_module_tmp.format(sample_layer)}.weight"
+        d = dict(model.named_parameters())[weight_name].shape[0]
+        cache_c = torch.zeros(n_layers, d, d)
+        print(f"  [NSE] Initialized cache_c: ({n_layers}, {d}, {d})")
 
     # Wrap apply_fn to pass hooks, state, and AlphaEdit extras
     def apply_fn(model, tok, requests, hparams, **kwargs):
