@@ -1160,6 +1160,26 @@ class TestVendorFunctionRequirements:
             "Eval is the eval cluster's job, not the editing smoke test."
         )
 
+    def test_eval_cluster_tests_mega_batch_eval(self):
+        """The eval cluster YAML must test mega_batch_eval correctness."""
+        yaml_path = PROJECT_ROOT / "sky" / "test_eval_and_measure.yaml"
+        if not yaml_path.exists():
+            pytest.skip("test_eval_and_measure.yaml not tracked")
+        source = yaml_path.read_text()
+        assert "TestEvalMetrics" in source, (
+            "Eval cluster must test TestEvalMetrics (includes mega_batch_eval)"
+        )
+
+    def test_eval_cluster_does_not_skip_eval(self):
+        """The eval cluster must NOT set SKIP_MEGA_BATCH_EVAL."""
+        yaml_path = PROJECT_ROOT / "sky" / "test_eval_and_measure.yaml"
+        if not yaml_path.exists():
+            pytest.skip("test_eval_and_measure.yaml not tracked")
+        source = yaml_path.read_text()
+        assert "SKIP_MEGA_BATCH_EVAL" not in source, (
+            "Eval cluster must NOT skip mega_batch_eval — it's the eval cluster's job to test it"
+        )
+
     def test_link_stats_copies_p_matrix_locally(self):
         """link_stats.sh must cp (not symlink) the P matrix to vendor/AlphaEdit/.
         S3 FUSE doesn't support ln -sf into it, so P must be copied locally."""

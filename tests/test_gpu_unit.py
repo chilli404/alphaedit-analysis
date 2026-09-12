@@ -375,3 +375,74 @@ class TestEvalMetrics:
         assert argmax_success <= prob_pref_success + 1, (  # +1 for measurement noise
             f"Argmax ({argmax_success}/{total}) should not exceed prob-pref ({prob_pref_success}/{total})"
         )
+
+    @requires_gpu
+    def test_mega_batch_eval_produces_per_case_jsons(self, model_and_tok, small_dataset, memit_hparams, tmp_path):
+        """mega_batch_eval must produce per-case JSON files with both metric types."""
+        model, tok = model_and_tok
+        from algorithms.memit_with_hooks import apply_memit_with_hooks
+
+        # Edit 10 records
+        requests = _flatten_requests(small_dataset[:10])
+        apply_memit_with_hooks(model, tok, requests, memit_hparams, return_orig_weights=False)
+
+        # Run mega_batch_eval
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
+        from mega_batch_eval import get_mega_batch_eval_source
+        ns = {}
+        exec(get_mega_batch_eval_source(), ns)
+        mbe = ns["_mega_batch_eval"]
+
+        case_ids = [r["case_id"] for r in small_dataset[:10]]
+        template = str(tmp_path / "10_edits-case_{}.json")
+        mbe(model, tok, list(small_dataset[:10]), template, 10, case_ids, 1.0, batch_size=2)
+
+        # Verify output files
+        json_files = list(tmp_path.glob("*.json"))
+        assert len(json_files) >= 5, f"Expected ≥5 per-case JSONs, got {len(json_files)}"
+
+        # Verify structure
+        import json as json_mod
+        with open(json_files[0]) as f:
+            data = json_mod.load(f)
+        assert "case_id" in data
+        assert "post" in data
+        post = data["post"]
+        assert "rewrite_prompts_probs" in post, "Must have prob-pref NLL values"
+        assert "rewrite_prompts_correct" in post, "Must have argmax correctness"
+
+    @requires_gpu
+    def test_mega_batch_eval_prob_pref_geq_argmax(self, model_and_tok, small_dataset, memit_hparams, tmp_path):
+        """mega_batch_eval prob-pref efficacy must be ≥ argmax efficacy."""
+        model, tok = model_and_tok
+
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
+        from mega_batch_eval import get_mega_batch_eval_source
+        ns = {}
+        exec(get_mega_batch_eval_source(), ns)
+        mbe = ns["_mega_batch_eval"]
+
+        case_ids = [r["case_id"] for r in small_dataset[:10]]
+        template = str(tmp_path / "10_edits-case_{}.json")
+        mbe(model, tok, list(small_dataset[:10]), template, 10, case_ids, 1.0, batch_size=2)
+
+        import json as json_mod
+        prob_pref_sum = 0
+        argmax_sum = 0
+        count = 0
+        for f in tmp_path.glob("*.json"):
+            data = json_mod.load(open(f))
+            post = data.get("post", {})
+            pp = post.get("rewrite_prompts_probs", [])
+            ac = post.get("rewrite_prompts_correct", [])
+            if pp and ac:
+                for entry in pp:
+                    if entry.get("target_new", 999) < entry.get("target_true", 999):
+                        prob_pref_sum += 1
+                argmax_sum += sum(1 for x in ac if x)
+                count += max(len(pp), len(ac))
+
+        if count > 0:
+            assert prob_pref_sum >= argmax_sum - 1, (
+                f"Prob-pref ({prob_pref_sum}/{count}) should be ≥ argmax ({argmax_sum}/{count})"
+            )
