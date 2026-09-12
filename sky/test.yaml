@@ -1,0 +1,54 @@
+# Unified test runner — CPU tests + GPU smoke tests.
+#
+# Usage:
+#   sky launch sky/test.yaml --cluster test -y               # all tests
+#   sky launch sky/test.yaml --cluster test \
+#     --env SMOKE_FILTER="EvoEdit NSE RECT" -y               # baselines only
+#   sky launch sky/test.yaml --cluster test \
+#     --env SMOKE_FILTER="REVIVE" -y                         # REVIVE variants only
+#   sky launch sky/test.yaml --cluster test \
+#     --env SKIP_GPU=1 -y                                    # CPU tests only
+
+resources:
+  accelerators: L40s:1
+  cpus: 4+
+  memory: 16+
+
+workdir: .
+
+file_mounts:
+  ~/sky_workdir/.env: ./.env
+
+setup: |
+  set -euo pipefail
+  cd ~/sky_workdir
+  bash scripts/remote_setup.sh
+
+run: |
+  set -euo pipefail
+  cd ~/sky_workdir
+  set -a && source ~/.env 2>/dev/null || true && set +a
+  export RESULT_ROOT="/s3-data/continual-learning/alphaedit/results/_smoke_test"
+  export CHECKPOINT_ROOT="/s3-data/continual-learning/alphaedit/checkpoints/_smoke_test"
+
+  # Data + patches
+  bash scripts/link_stats.sh
+  bash scripts/link_dsets.sh
+  uv run python scripts/patches/apply_all.py
+
+  # CPU tests (fast — catches code issues before GPU work)
+  echo "=== CPU Tests ==="
+  uv run pytest tests/ --tb=short -q --ignore=tests/test_runner_script.py \
+    --ignore=tests/test_seeded_runner.py --ignore=tests/test_source_patches.py
+
+  # GPU smoke test (unless SKIP_GPU=1)
+  if [[ "${SKIP_GPU:-}" != "1" ]]; then
+    echo ""
+    echo "=== GPU Smoke Test ==="
+    bash tests/test_smoke_all_algorithms.sh --skypilot ${SMOKE_FILTER:-}
+  else
+    echo "=== Skipping GPU tests (SKIP_GPU=1) ==="
+  fi
+
+  echo ""
+  echo "=== All tests complete ==="
