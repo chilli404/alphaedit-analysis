@@ -429,8 +429,7 @@ def main():
     )
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--cuda_device", default="0")
-    parser.add_argument("--model_name", default=os.environ.get(
-        "MODEL_NAME", "meta-llama/Meta-Llama-3-8B-Instruct"))
+    parser.add_argument("--model_name", default=os.environ.get("MODEL_NAME", DEFAULT_MODEL))
     parser.add_argument("--hparams_fname", default="Llama3-8B.json")
     parser.add_argument("--stream_length", type=int, default=5000)
     parser.add_argument("--num_edits", type=int, default=100)
@@ -444,6 +443,7 @@ def main():
     parser.add_argument("--output_dir", type=str, default=None)
     args = parser.parse_args()
 
+    from model_registry import DEFAULT_MODEL
     from model_resolve import resolve_model_path
     from setup_hparams import link_hparams
     from source_patches import patch_evaluate_file, patch_glue_eval_file

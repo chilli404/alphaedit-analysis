@@ -54,6 +54,7 @@ from pathlib import Path
 _SRC_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_SRC_DIR / "util"))
 
+from model_registry import DEFAULT_MODEL
 from model_resolve import resolve_model_path
 from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file, patch_glue_eval_file
@@ -62,7 +63,7 @@ from paths import get_project_root, get_alphaedit_root, get_result_root, get_che
 from mega_batch_eval import get_mega_batch_eval_source
 
 
-_DEFAULT_MODEL = "meta-llama/Meta-Llama-3-8B-Instruct"
+_DEFAULT_MODEL = DEFAULT_MODEL
 
 
 def _model_tag(model_name: str | None) -> str:

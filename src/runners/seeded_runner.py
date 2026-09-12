@@ -36,6 +36,7 @@ from pathlib import Path
 _SRC_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_SRC_DIR / "util"))
 
+from model_registry import DEFAULT_MODEL
 from model_resolve import resolve_model_path
 from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file, patch_glue_eval_file, build_order_shuffle_injection, SHUFFLE_ANCHOR
@@ -413,7 +414,7 @@ def main():
 
     # Experiment parameters (mirror evaluate.py's interface)
     parser.add_argument("--alg_name", required=True, choices=["AlphaEdit", "MEMIT", "ROME"])
-    parser.add_argument("--model_name", default=os.environ.get("MODEL_NAME", "meta-llama/Meta-Llama-3-8B-Instruct"))
+    parser.add_argument("--model_name", default=os.environ.get("MODEL_NAME", DEFAULT_MODEL))
     parser.add_argument("--hparams_fname", default="Llama3-8B.json")
     parser.add_argument("--ds_name", required=True, choices=["mcf", "cf", "zsre", "mquake"])
     parser.add_argument("--dataset_size_limit", type=int, default=2000)

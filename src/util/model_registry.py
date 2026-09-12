@@ -109,6 +109,9 @@ QWEN25_7B = ModelSpec(
     ),
 )
 
+# Default model for all experiments (Llama-3-8B-Instruct)
+DEFAULT_MODEL = LLAMA3_8B.hf_repo  # "meta-llama/Meta-Llama-3-8B-Instruct"
+
 # All registered models
 MODEL_REGISTRY: dict[str, ModelSpec] = {
     spec.short_name: spec

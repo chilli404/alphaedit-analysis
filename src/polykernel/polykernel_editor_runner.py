@@ -57,6 +57,7 @@ from pathlib import Path
 _SRC_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_SRC_DIR / "util"))
 
+from model_registry import DEFAULT_MODEL
 from model_resolve import resolve_model_path
 from setup_hparams import link_hparams
 
@@ -703,7 +704,7 @@ def run(args: argparse.Namespace) -> None:
         variant_name = f"{variant_name}-C0-{args.c0_weight}"
 
     # Model tag: non-default models get a subdirectory (gpt-j-6b, qwen2.5-7b, etc.)
-    _default_model = "meta-llama/Meta-Llama-3-8B-Instruct"
+    _default_model = DEFAULT_MODEL
     _mn = (args.model_name or "").lower()
     if _mn and _mn != _default_model.lower() and not _mn.endswith("meta-llama-3-8b-instruct"):
         if "gpt-j" in _mn:
@@ -889,7 +890,7 @@ def main():
 
     # Model and data
     parser.add_argument("--alg_name", choices=["AlphaEdit", "MEMIT"], default="AlphaEdit")
-    parser.add_argument("--model_name", default=os.environ.get("MODEL_NAME", "meta-llama/Meta-Llama-3-8B-Instruct"))
+    parser.add_argument("--model_name", default=os.environ.get("MODEL_NAME", DEFAULT_MODEL))
     parser.add_argument("--hparams_fname", default="Llama3-8B.json")
     parser.add_argument("--ds_name", default="mcf", choices=["mcf", "cf", "zsre"])
     parser.add_argument("--dataset_size_limit", type=int, default=2000)

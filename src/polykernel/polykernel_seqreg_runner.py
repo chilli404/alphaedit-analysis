@@ -57,6 +57,7 @@ from pathlib import Path
 _SRC_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_SRC_DIR / "util"))
 
+from model_registry import DEFAULT_MODEL
 from model_resolve import resolve_model_path
 from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file
@@ -116,7 +117,7 @@ def resolve_checkpoint_dir(  # DEPRECATED: use ExperimentConfig.checkpoint_dir()
     variant_name = f"{_base_prefix}-{kernel_tag}-lp{lambda_prev}-ld{lambda_delta}-cache{cache_max_str}"
 
     # Model tag for cross-model isolation
-    _default = "meta-llama/Meta-Llama-3-8B-Instruct"
+    _default = DEFAULT_MODEL
     _mn = (model_name or "").lower()
     _model_tag = ""
     if _mn and _mn != _default.lower() and not _mn.endswith("meta-llama-3-8b-instruct"):
@@ -1036,7 +1037,7 @@ def run(args: argparse.Namespace) -> None:
 
     # Output directory — use failure_curve_checkpointed so method_comparison.py discovers it
     # Non-default models get a model-tagged experiment name for isolation
-    _default_model = "meta-llama/Meta-Llama-3-8B-Instruct"
+    _default_model = DEFAULT_MODEL
     _mn = (args.model_name or "").lower()
     if _mn and _mn != _default_model.lower() and not _mn.endswith("meta-llama-3-8b-instruct"):
         if "gpt-j" in _mn:
@@ -1270,7 +1271,7 @@ def main():
     parser.add_argument("--cuda_device", default="0")
 
     # Model and data
-    parser.add_argument("--model_name", default=os.environ.get("MODEL_NAME", "meta-llama/Meta-Llama-3-8B-Instruct"))
+    parser.add_argument("--model_name", default=os.environ.get("MODEL_NAME", DEFAULT_MODEL))
     parser.add_argument("--hparams_fname", default="Llama3-8B.json")
     parser.add_argument("--ds_name", default="mcf", choices=["mcf", "cf", "zsre"])
     parser.add_argument("--dataset_size_limit", type=int, default=2000)
