@@ -56,7 +56,7 @@ run_and_check() {
 
     # Run with timeout — filter to essential progress only
     PYTHONUNBUFFERED=1 timeout "$TIMEOUT" "$@" 2>&1 | grep -E --line-buffered \
-        "\[CHECKPOINT\]|\[MEGA-BATCH|_edit==|error:|ERROR|Traceback|KeyError|TypeError|Variant:|Checkpoint dir:|No existing|Checkpoint run|Finished:|Segment:" \
+        "\[CHECKPOINT\]|\[MEGA-BATCH|_edit==|error:|ERROR|Traceback|KeyError|TypeError|Variant:|Checkpoint dir:|No existing|Checkpoint run|Finished:|Segment:|\[REVIVE\]" \
         || true
     local exit_code=${PIPESTATUS[0]}
     local t1=$(date +%s)
@@ -231,7 +231,7 @@ run_baseline() {
     local t0=$(date +%s)
 
     PYTHONUNBUFFERED=1 timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash $script $SEED" 2>&1 | grep -E --line-buffered \
-        "\[CHECKPOINT\]|\[MEGA-BATCH|_edit==|error:|ERROR|Traceback|KeyError|TypeError|Variant:|Checkpoint dir:|No existing|complete:|Finished:" \
+        "\[CHECKPOINT\]|\[MEGA-BATCH|_edit==|error:|ERROR|Traceback|KeyError|TypeError|Variant:|Checkpoint dir:|No existing|complete:|Finished:|\[REVIVE\]" \
         || true
     local exit_code=${PIPESTATUS[0]}
     local elapsed=$(( $(date +%s) - t0 ))
