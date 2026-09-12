@@ -132,6 +132,10 @@ def load_dataset(ds_name: str, size_limit: int, alphaedit_root: Path = None,
         alphaedit_root = get_alphaedit_root()
 
     sys.path.insert(0, str(alphaedit_root))
+
+    # Pre-populate vendor globals module so it doesn't need globals.yml from CWD
+    _ensure_vendor_globals(alphaedit_root)
+
     if ds_name in ("mcf", "multi_counterfact"):
         from dsets import MultiCounterFactDataset
         ds = MultiCounterFactDataset(str(alphaedit_root / "data"), size=size_limit)
@@ -142,6 +146,27 @@ def load_dataset(ds_name: str, size_limit: int, alphaedit_root: Path = None,
         raise ValueError(f"Unknown dataset: {ds_name}")
 
     return list(ds)
+
+
+def _ensure_vendor_globals(alphaedit_root: Path):
+    """Pre-populate vendor util.globals module so it doesn't need globals.yml from CWD.
+
+    The vendor code does `from util.globals import *` which reads globals.yml
+    relative to CWD. Instead of chdir'ing, we create the module with the right
+    values directly.
+    """
+    if "util.globals" in sys.modules:
+        return
+
+    import types
+    mod = types.ModuleType("util.globals")
+    mod.RESULTS_DIR = alphaedit_root / "results"
+    mod.DATA_DIR = alphaedit_root / "data"
+    mod.STATS_DIR = alphaedit_root / "data" / "stats"
+    mod.HPARAMS_DIR = alphaedit_root / "hparams"
+    mod.KV_DIR = alphaedit_root / "share" / "projects" / "rewriting-knowledge" / "kvs"
+    mod.REMOTE_ROOT_URL = "https://memit.baulab.info"
+    sys.modules["util.globals"] = mod
 
 
 def run_experiment(

@@ -206,6 +206,35 @@ class TestCanonicalModelNames:
         assert "/" not in canonical  # no slashes (vendor does replace("/","_"))
 
 
+class TestLoadDatasetVendorGlobals:
+    """load_dataset must handle vendor globals.yml dependency."""
+
+    def test_ensure_vendor_globals(self):
+        """_ensure_vendor_globals pre-populates the vendor module without needing globals.yml."""
+        from evaluate_harness import _ensure_vendor_globals
+        from pathlib import Path
+        import sys
+
+        # Clear any existing module
+        sys.modules.pop("util.globals", None)
+
+        vendor_root = Path(__file__).parent.parent / "vendor" / "AlphaEdit"
+        _ensure_vendor_globals(vendor_root)
+
+        assert "util.globals" in sys.modules
+        mod = sys.modules["util.globals"]
+        assert hasattr(mod, "DATA_DIR")
+        assert hasattr(mod, "STATS_DIR")
+        assert "data" in str(mod.DATA_DIR)
+
+    def test_does_not_chdir(self):
+        """load_dataset must NOT chdir — use _ensure_vendor_globals instead."""
+        from evaluate_harness import load_dataset
+        import inspect
+        source = inspect.getsource(load_dataset)
+        assert "os.chdir" not in source, "load_dataset should not chdir — use _ensure_vendor_globals"
+
+
 class TestCheckpointIntegration:
     """Checkpoint hooks must be called at the right times."""
 
