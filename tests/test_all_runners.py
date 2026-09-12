@@ -495,6 +495,25 @@ class TestBaselineOrderingStreamAccess:
         assert "STREAM_PATH" not in source or "ORDERING" not in source
 
 
+class TestBaselineMegaBatchEval:
+    """Baseline scripts must use mega_batch_eval for MCF evaluation."""
+
+    @pytest.mark.skipif(not BASELINES_ROOT.exists(), reason="baselines not present")
+    @pytest.mark.parametrize("script", [
+        "run_evoedit_baseline.sh",
+        "run_nse_baseline.sh",
+    ])
+    def test_baseline_injects_mega_batch_eval(self, script):
+        path = PROJECT_ROOT / "scripts" / script
+        if not path.exists():
+            pytest.skip(f"{script} not present")
+        source = path.read_text()
+        assert "mega_batch_eval" in source.lower() or "_mega_batch_eval" in source, (
+            f"{script} must use mega_batch_eval for batched evaluation. "
+            f"Without it, evaluation is ~4-10x slower (per-record vendor loop)."
+        )
+
+
 class TestBaselineNumEditsOverride:
     """Baseline scripts must support NUM_EDITS env var to override hardcoded batch size."""
 

@@ -232,6 +232,76 @@ class TestSourceInjection:
 # 3. experiment_config: centralized path construction (Phase 2 prep)
 # ===========================================================================
 
+class TestMegaBatchEval:
+    """Tests for src/util/mega_batch_eval.py."""
+
+    def test_import(self):
+        from util.mega_batch_eval import get_mega_batch_eval_source
+
+    def test_source_compiles(self):
+        from util.mega_batch_eval import get_mega_batch_eval_source
+        source = get_mega_batch_eval_source()
+        compile(source, "<mega_batch_eval>", "exec")
+
+    def test_source_defines_function(self):
+        from util.mega_batch_eval import get_mega_batch_eval_source
+        source = get_mega_batch_eval_source()
+        assert "def _mega_batch_eval(" in source
+
+    def test_source_has_dual_metrics(self):
+        """Must produce both prob-pref (_probs) and argmax (_correct) fields."""
+        from util.mega_batch_eval import get_mega_batch_eval_source
+        source = get_mega_batch_eval_source()
+        assert "rewrite_prompts_probs" in source
+        assert "rewrite_prompts_correct" in source
+        assert "neighborhood_prompts_probs" in source
+        assert "neighborhood_prompts_correct" in source
+        assert "paraphrase_prompts_probs" in source
+        assert "paraphrase_prompts_correct" in source
+
+    def test_source_frees_gpu_memory(self):
+        """Must call empty_cache() after each batch to prevent OOM."""
+        from util.mega_batch_eval import get_mega_batch_eval_source
+        source = get_mega_batch_eval_source()
+        assert "empty_cache()" in source
+        assert "del tok_out, logits" in source or "del prompt_tok, logits" in source
+
+    def test_source_handles_llama_tokenizer(self):
+        """Must handle Llama tokenizer (strips BOS token from target)."""
+        from util.mega_batch_eval import get_mega_batch_eval_source
+        source = get_mega_batch_eval_source()
+        assert "_is_llama" in source
+        assert "a_tok[1:]" in source or "a_tok = a_tok[1:]" in source
+
+    def test_source_skips_existing_files(self):
+        """Must skip records whose output file already exists (idempotent)."""
+        from util.mega_batch_eval import get_mega_batch_eval_source
+        source = get_mega_batch_eval_source()
+        assert "out_file.exists()" in source
+        assert "_mbe_skipped" in source
+
+    def test_all_runners_have_mega_batch_eval(self):
+        """Every runner that does MCF evaluation should use mega_batch_eval."""
+        runners_with_mbe = []
+        runners_without_mbe = []
+        for runner in [
+            "src/runners/checkpoint_runner.py",
+            "src/polykernel/polykernel_seqreg_runner.py",
+            "src/runners/memit_sequential_runner.py",
+            "src/runners/pathguard_runner.py",
+        ]:
+            path = PROJECT_ROOT / runner
+            if path.exists():
+                source = path.read_text()
+                if "_mega_batch_eval" in source:
+                    runners_with_mbe.append(runner)
+                else:
+                    runners_without_mbe.append(runner)
+        assert not runners_without_mbe, (
+            f"These runners lack mega_batch_eval: {runners_without_mbe}"
+        )
+
+
 class TestExperimentConfig:
     """Tests for src/util/experiment_config.py (Phase 2)."""
 
