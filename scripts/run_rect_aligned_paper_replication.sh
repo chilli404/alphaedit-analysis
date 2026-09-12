@@ -79,6 +79,32 @@ echo "  Resolved model: $MODEL_NAME"
 # Patch checkpoint save for S3 FUSE compatibility
 python3 "$PROJECT_DIR/scripts/patch_lightweight_checkpoint.py" experiments/evaluate.py
 
+# Patch in mega_batch_eval for batched scoring (4-10x faster)
+python3 -c "
+import re, sys
+sys.path.insert(0, '$PROJECT_DIR/src/util')
+from mega_batch_eval import get_mega_batch_eval_source
+
+eval_path = 'experiments/evaluate.py'
+source = open(eval_path).read()
+anchor = '    for record in ds:'
+if '_mega_batch_eval' in source:
+    print('  [PATCH] mega_batch_eval already present')
+elif anchor not in source:
+    print('  [PATCH] WARNING: eval anchor not found for mega-batch injection')
+else:
+    fn_src = get_mega_batch_eval_source()
+    fn_indented = '\n'.join('    ' + line for line in fn_src.strip().split('\n'))
+    call = '''    # === MEGA-BATCH EVAL (injected) ===
+    _mega_batch_eval(edited_model, tok, list(ds), case_result_template, num_edits, case_ids, exec_time, batch_size=4)
+    # === END MEGA-BATCH EVAL ===
+    if False:  # skip vendor per-record loop
+        for record in ds:'''
+    source = source.replace(anchor, fn_indented + '\n' + call, 1)
+    open(eval_path, 'w').write(source)
+    print('  [PATCH] mega_batch_eval injected')
+"
+
 PYTHONPATH=. uv run python experiments/evaluate.py \
     --alg_name MEMIT_seq_rect \
     --model_name "$MODEL_NAME" \

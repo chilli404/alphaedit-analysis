@@ -496,12 +496,13 @@ class TestBaselineOrderingStreamAccess:
 
 
 class TestBaselineMegaBatchEval:
-    """Baseline scripts must use mega_batch_eval for MCF evaluation."""
+    """ALL baseline scripts must use mega_batch_eval for MCF evaluation."""
 
     @pytest.mark.skipif(not BASELINES_ROOT.exists(), reason="baselines not present")
     @pytest.mark.parametrize("script", [
         "run_evoedit_baseline.sh",
         "run_nse_baseline.sh",
+        "run_rect_aligned_paper_replication.sh",
     ])
     def test_baseline_injects_mega_batch_eval(self, script):
         path = PROJECT_ROOT / "scripts" / script
@@ -511,6 +512,22 @@ class TestBaselineMegaBatchEval:
         assert "mega_batch_eval" in source.lower() or "_mega_batch_eval" in source, (
             f"{script} must use mega_batch_eval for batched evaluation. "
             f"Without it, evaluation is ~4-10x slower (per-record vendor loop)."
+        )
+
+    @pytest.mark.skipif(not BASELINES_ROOT.exists(), reason="baselines not present")
+    @pytest.mark.parametrize("script", [
+        "run_evoedit_baseline.sh",
+        "run_nse_baseline.sh",
+        "run_rect_aligned_paper_replication.sh",
+    ])
+    def test_baseline_reads_from_shared_module(self, script):
+        """Baselines must read mega_batch_eval from src/util/mega_batch_eval.py, not inline it."""
+        path = PROJECT_ROOT / "scripts" / script
+        if not path.exists():
+            pytest.skip(f"{script} not present")
+        source = path.read_text()
+        assert "mega_batch_eval.py" in source or "get_mega_batch_eval_source" in source, (
+            f"{script} must import mega_batch_eval from the shared module, not inline it"
         )
 
 

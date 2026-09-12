@@ -280,10 +280,9 @@ class TestMegaBatchEval:
         assert "out_file.exists()" in source
         assert "_mbe_skipped" in source
 
-    def test_all_runners_have_mega_batch_eval(self):
-        """Every runner that does MCF evaluation should use mega_batch_eval."""
-        runners_with_mbe = []
-        runners_without_mbe = []
+    def test_all_vendor_runners_have_mega_batch_eval(self):
+        """Every vendor runner that does MCF evaluation must have mega_batch_eval."""
+        missing = []
         for runner in [
             "src/runners/checkpoint_runner.py",
             "src/polykernel/polykernel_seqreg_runner.py",
@@ -291,15 +290,56 @@ class TestMegaBatchEval:
             "src/runners/pathguard_runner.py",
         ]:
             path = PROJECT_ROOT / runner
-            if path.exists():
-                source = path.read_text()
-                if "_mega_batch_eval" in source:
-                    runners_with_mbe.append(runner)
-                else:
-                    runners_without_mbe.append(runner)
-        assert not runners_without_mbe, (
-            f"These runners lack mega_batch_eval: {runners_without_mbe}"
-        )
+            if path.exists() and "_mega_batch_eval" not in path.read_text():
+                missing.append(runner)
+        assert not missing, f"These runners lack mega_batch_eval: {missing}"
+
+    def test_all_baseline_scripts_have_mega_batch_eval(self):
+        """Every baseline script must inject mega_batch_eval from the shared module."""
+        missing = []
+        for script in [
+            "scripts/run_evoedit_baseline.sh",
+            "scripts/run_nse_baseline.sh",
+            "scripts/run_rect_aligned_paper_replication.sh",
+        ]:
+            path = PROJECT_ROOT / script
+            if path.exists() and "mega_batch_eval" not in path.read_text():
+                missing.append(script)
+        assert not missing, f"These baselines lack mega_batch_eval: {missing}"
+
+    def test_shared_module_matches_inline_output_format(self):
+        """Shared module must produce the same output fields as inline copies."""
+        from util.mega_batch_eval import get_mega_batch_eval_source
+        source = get_mega_batch_eval_source()
+        # Output JSON structure must match what analysis/loaders.py expects
+        required_fields = [
+            "case_id", "grouped_case_ids", "num_edits",
+            "requested_rewrite", "time", "post",
+        ]
+        for field in required_fields:
+            assert f'"{field}"' in source, f"mega_batch_eval output missing field: {field}"
+
+    def test_shared_module_batch_size_parameterized(self):
+        """batch_size must be a parameter (different GPUs need different sizes)."""
+        from util.mega_batch_eval import get_mega_batch_eval_source
+        source = get_mega_batch_eval_source()
+        assert "batch_size=4" in source or "batch_size=" in source
+
+    def test_shared_module_prob_pref_convention(self):
+        """NLL convention: target_new and target_true stored as NLL values.
+        Lower NLL = higher probability. Success comparisons done by caller."""
+        from util.mega_batch_eval import get_mega_batch_eval_source
+        source = get_mega_batch_eval_source()
+        assert '"target_new"' in source
+        assert '"target_true"' in source
+        assert "log_softmax" in source  # computes NLL via log_softmax
+
+    def test_shared_module_progress_logging(self):
+        """Must print [MEGA-BATCH EVAL] progress lines for sky logs monitoring."""
+        from util.mega_batch_eval import get_mega_batch_eval_source
+        source = get_mega_batch_eval_source()
+        assert "[MEGA-BATCH EVAL]" in source
+        assert "Complete:" in source
 
 
 class TestExperimentConfig:

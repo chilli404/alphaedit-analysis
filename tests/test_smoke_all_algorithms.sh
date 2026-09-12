@@ -215,21 +215,33 @@ validate_log() {
                 log "  ❌ EvoEdit algorithm not invoked"
                 FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: EvoEdit not invoked"; return 1
             fi
-            log "  ✓ EvoEdit: algorithm invoked"
+            if ! grep -q "\[MEGA-BATCH EVAL\]" "$logfile"; then
+                log "  ❌ EvoEdit: mega_batch_eval not used (still using slow vendor loop)"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: no mega_batch_eval"; return 1
+            fi
+            log "  ✓ EvoEdit: algorithm invoked + mega_batch_eval"
             ;;
         *NSE*baselines*)
             if ! grep -q "NSE\|nse" "$logfile"; then
                 log "  ❌ NSE algorithm not invoked"
                 FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: NSE not invoked"; return 1
             fi
-            log "  ✓ NSE: algorithm invoked"
+            if ! grep -q "\[MEGA-BATCH EVAL\]" "$logfile"; then
+                log "  ❌ NSE: mega_batch_eval not used"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: no mega_batch_eval"; return 1
+            fi
+            log "  ✓ NSE: algorithm invoked + mega_batch_eval"
             ;;
         *RECT*)
             if ! grep -q "MEMIT_seq_rect\|rect" "$logfile"; then
                 log "  ❌ RECT algorithm not invoked"
                 FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: RECT not invoked"; return 1
             fi
-            log "  ✓ RECT: algorithm invoked"
+            if ! grep -q "\[MEGA-BATCH EVAL\]" "$logfile"; then
+                log "  ❌ RECT: mega_batch_eval not used"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: no mega_batch_eval"; return 1
+            fi
+            log "  ✓ RECT: algorithm invoked + mega_batch_eval"
             ;;
     esac
 
