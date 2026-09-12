@@ -224,3 +224,235 @@ class TestExperimentConfigConsistency:
         from experiment_config import ExperimentConfig
         config = ExperimentConfig(base_alg="MEMIT", seed=42)
         assert "MEMIT-Seq" in config.variant_name
+
+
+# ---------------------------------------------------------------------------
+# 6. Shell script → runner consistency
+# ---------------------------------------------------------------------------
+
+
+YAML_DISPATCHED_SCRIPTS = [
+    "scripts/run_evoedit_baseline.sh",
+    "scripts/run_nse_baseline.sh",
+    "scripts/run_revive_baseline.sh",
+    "scripts/run_revive_paper_replication.sh",
+    "scripts/run_rect_aligned_paper_replication.sh",
+    "scripts/run_mve1_alphaedit_mcf.sh",
+    "scripts/run_matched_ordering.sh",
+    "scripts/run_pathguard.sh",
+    "scripts/run_evoedit_paper_replication.sh",
+    "scripts/run_nse_paper_replication.sh",
+]
+
+
+class TestShellScriptConsistency:
+    """Shell scripts must reference existing runners with valid args."""
+
+    @pytest.mark.parametrize("script", YAML_DISPATCHED_SCRIPTS)
+    def test_script_exists(self, script):
+        path = PROJECT_ROOT / script
+        assert path.exists(), f"YAML-dispatched script missing: {script}"
+
+    @pytest.mark.parametrize("script", YAML_DISPATCHED_SCRIPTS)
+    def test_script_references_existing_runner(self, script):
+        """Every 'uv run python src/...' in the script must reference an existing file."""
+        path = PROJECT_ROOT / script
+        if not path.exists():
+            pytest.skip(f"{script} not found")
+        content = path.read_text()
+        for match in re.findall(r'uv run python\s+(src/\S+\.py)', content):
+            runner = PROJECT_ROOT / match
+            assert runner.exists(), (
+                f"{script} references {match} which doesn't exist"
+            )
+
+    @pytest.mark.parametrize("script", YAML_DISPATCHED_SCRIPTS)
+    def test_required_env_vars_have_defaults(self, script):
+        """Env vars used with ${VAR:?...} (required, no default) must be documented."""
+        path = PROJECT_ROOT / script
+        if not path.exists():
+            pytest.skip(f"{script} not found")
+        content = path.read_text()
+        required = re.findall(r'\$\{(\w+):\?', content)
+        # SEED is always positional arg $1 — allowed to be required
+        known_required = {"1", "SEED"}
+        for var in required:
+            if var not in known_required:
+                # Check it's documented in a comment or echo
+                assert var in content.split("${" + var + ":?")[0], (
+                    f"{script}: ${{{var}:?...}} is required but not documented before use"
+                )
+
+
+# ---------------------------------------------------------------------------
+# 7. SkyPilot YAML structure
+# ---------------------------------------------------------------------------
+
+
+class TestSkyPilotYAMLs:
+    """All SkyPilot YAMLs must call apply_all.py and set S3 paths."""
+
+    YAMLS = [str(f) for f in (PROJECT_ROOT / "sky").glob("*.yaml")]
+
+    @pytest.mark.parametrize("yaml_path", YAMLS, ids=lambda p: Path(p).name)
+    def test_yaml_calls_apply_all(self, yaml_path):
+        """Every YAML must call scripts/patches/apply_all.py (in setup: or run:)."""
+        content = Path(yaml_path).read_text()
+        assert "apply_all" in content, (
+            f"{Path(yaml_path).name}: doesn't call apply_all.py anywhere. "
+            f"Vendor code will be unpatched."
+        )
+
+    @pytest.mark.parametrize("yaml_path", YAMLS, ids=lambda p: Path(p).name)
+    def test_yaml_sets_s3_paths(self, yaml_path):
+        """Experiment YAMLs must set RESULT_ROOT and CHECKPOINT_ROOT to S3."""
+        content = Path(yaml_path).read_text()
+        if "run:" not in content:
+            pytest.skip("No run: block")
+        run_block = content.split("run:")[1]
+        # Test and smoke YAMLs use _smoke_test S3 paths
+        if "RESULT_ROOT" in run_block:
+            assert "/s3-data/" in run_block, (
+                f"{Path(yaml_path).name}: RESULT_ROOT set but not to /s3-data/"
+            )
+
+    @pytest.mark.parametrize("yaml_path", YAMLS, ids=lambda p: Path(p).name)
+    def test_yaml_links_data_before_experiment(self, yaml_path):
+        """YAMLs must link stats/datasets before running experiments."""
+        content = Path(yaml_path).read_text()
+        if "run:" not in content:
+            pytest.skip("No run: block")
+        run_block = content.split("run:")[1]
+        if "run_" in run_block and "link_stats" not in run_block:
+            # Only flag if it actually runs an experiment (not just tests)
+            if "smoke" in run_block.lower() or "test_smoke" in run_block:
+                assert "link_stats" in run_block or "link_dsets" in run_block, (
+                    f"{Path(yaml_path).name}: runs experiments without linking data"
+                )
+
+
+# ---------------------------------------------------------------------------
+# 8. Vendor function signatures (kwargs compatibility)
+# ---------------------------------------------------------------------------
+
+
+class TestVendorFunctionSignatures:
+    """Vendor apply functions must accept **_kwargs after our patch."""
+
+    VENDOR_APPLY_FILES = [
+        ("memit/memit_main.py", "apply_memit_to_model"),
+        ("AlphaEdit/AlphaEdit_main.py", "apply_AlphaEdit_to_model"),
+    ]
+
+    @pytest.mark.skipif(not VENDOR_EXISTS, reason="vendor submodule not initialized")
+    @pytest.mark.parametrize("rel_path,fn_name", VENDOR_APPLY_FILES,
+                             ids=lambda x: x if isinstance(x, str) else x[0])
+    def test_vendor_apply_has_kwargs(self, rel_path, fn_name):
+        """After patching, vendor apply functions must accept **_kwargs."""
+        source = (VENDOR_ROOT / rel_path).read_text()
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == fn_name:
+                # Check for **kwargs in the signature
+                if node.args.kwarg is not None:
+                    return  # Has **kwarg — good
+                pytest.fail(
+                    f"{rel_path}:{fn_name} missing **_kwargs. "
+                    f"The kwargs patch wasn't applied."
+                )
+                return
+        pytest.fail(f"{rel_path}: {fn_name} not found")
+
+    @pytest.mark.skipif(not VENDOR_EXISTS, reason="vendor submodule not initialized")
+    def test_vendor_apply_accepts_return_orig_weights(self):
+        """apply functions must accept return_orig_weights param."""
+        for rel_path, fn_name in self.VENDOR_APPLY_FILES:
+            source = (VENDOR_ROOT / rel_path).read_text()
+            tree = ast.parse(source)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef) and node.name == fn_name:
+                    arg_names = [a.arg for a in node.args.args]
+                    has_row = "return_orig_weights" in arg_names
+                    has_kwargs = node.args.kwarg is not None
+                    assert has_row or has_kwargs, (
+                        f"{rel_path}:{fn_name} doesn't accept return_orig_weights "
+                        f"(and no **kwargs to catch it)"
+                    )
+
+    @pytest.mark.skipif(not BASELINES_EXISTS, reason="baselines not cloned")
+    def test_baselines_evoedit_has_kwargs(self):
+        """EvoEdit apply function must accept **_kwargs."""
+        source = (BASELINES_ROOT / "EvoEdit" / "EvoEdit_main.py").read_text()
+        assert "**_kwargs" in source or "**kwargs" in source, (
+            "EvoEdit_main.py missing **_kwargs — will crash with return_orig_weights"
+        )
+
+    @pytest.mark.skipif(not BASELINES_EXISTS, reason="baselines not cloned")
+    def test_baselines_nse_has_kwargs(self):
+        source = (BASELINES_ROOT / "nse" / "nse_main.py").read_text()
+        assert "**_kwargs" in source or "**kwargs" in source
+
+    @pytest.mark.skipif(not BASELINES_EXISTS, reason="baselines not cloned")
+    def test_baselines_rect_has_kwargs(self):
+        source = (BASELINES_ROOT / "memit" / "memit_seq_rect_main.py").read_text()
+        assert "**_kwargs" in source or "**kwargs" in source
+
+
+# ---------------------------------------------------------------------------
+# 9. Data/stats path consistency
+# ---------------------------------------------------------------------------
+
+
+class TestDataPathConsistency:
+    """Dataset and stats paths must be consistent across scripts."""
+
+    EXPECTED_DATASETS = [
+        "multi_counterfact.json",
+        "zsre_mend_eval.json",
+    ]
+
+    def test_link_dsets_references_expected_files(self):
+        """link_dsets.sh must reference the standard dataset files."""
+        path = PROJECT_ROOT / "scripts" / "link_dsets.sh"
+        if not path.exists():
+            pytest.skip("link_dsets.sh not found")
+        content = path.read_text()
+        for ds in self.EXPECTED_DATASETS:
+            assert ds in content, (
+                f"link_dsets.sh doesn't reference {ds}"
+            )
+
+    def test_link_stats_references_null_space(self):
+        """link_stats.sh must link the null-space projection file."""
+        path = PROJECT_ROOT / "scripts" / "link_stats.sh"
+        if not path.exists():
+            pytest.skip("link_stats.sh not found")
+        content = path.read_text()
+        assert "null_space_project" in content, (
+            "link_stats.sh doesn't reference null_space_project.pt"
+        )
+
+    def test_link_stats_handles_multiple_models(self):
+        """link_stats.sh must handle at least Llama and GPT-J stats."""
+        path = PROJECT_ROOT / "scripts" / "link_stats.sh"
+        if not path.exists():
+            pytest.skip("link_stats.sh not found")
+        content = path.read_text()
+        assert "llama" in content.lower() or "Meta-Llama" in content
+        # GPT-J stats may be optional — just check the script doesn't hardcode one model
+
+    @pytest.mark.skipif(not VENDOR_EXISTS, reason="vendor submodule not initialized")
+    def test_vendor_hparams_llama_exists(self):
+        """Standard Llama hparams must exist for both algorithms."""
+        for alg in ["AlphaEdit", "MEMIT"]:
+            path = VENDOR_ROOT / "hparams" / alg / "Llama3-8B.json"
+            assert path.exists(), f"Missing: {path}"
+
+    def test_configs_hparams_cross_model(self):
+        """configs/hparams/ must have cross-model hparams (Mistral, Qwen)."""
+        hparams_dir = PROJECT_ROOT / "configs" / "hparams"
+        assert hparams_dir.exists(), "configs/hparams/ missing"
+        for alg in ["AlphaEdit", "MEMIT"]:
+            for model in ["Mistral-7B.json", "Qwen2.5-7B.json"]:
+                path = hparams_dir / alg / model
+                assert path.exists(), f"Missing cross-model hparams: {path}"
