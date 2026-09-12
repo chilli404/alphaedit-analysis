@@ -280,19 +280,34 @@ class TestMegaBatchEval:
         assert "out_file.exists()" in source
         assert "_mbe_skipped" in source
 
-    def test_all_vendor_runners_have_mega_batch_eval(self):
-        """Every vendor runner that does MCF evaluation must have mega_batch_eval."""
-        missing = []
+    def test_all_vendor_runners_use_shared_mega_batch(self):
+        """Vendor runners must import from shared module, not have inline copies."""
         for runner in [
             "src/runners/checkpoint_runner.py",
             "src/polykernel/polykernel_seqreg_runner.py",
             "src/runners/memit_sequential_runner.py",
             "src/runners/pathguard_runner.py",
+            "src/polykernel/polykernel_editor_runner.py",
         ]:
             path = PROJECT_ROOT / runner
-            if path.exists() and "_mega_batch_eval" not in path.read_text():
-                missing.append(runner)
-        assert not missing, f"These runners lack mega_batch_eval: {missing}"
+            if not path.exists():
+                continue
+            source = path.read_text()
+            assert "get_mega_batch_eval_source" in source, (
+                f"{runner} must import get_mega_batch_eval_source from shared module"
+            )
+
+    def test_no_inline_mega_batch_copies(self):
+        """Only mega_batch_eval.py should define _mega_batch_eval."""
+        import glob
+        for filepath in glob.glob("src/**/*.py", recursive=True):
+            if "mega_batch_eval.py" in filepath or "__pycache__" in filepath:
+                continue
+            source = open(filepath).read()
+            assert "def _mega_batch_eval(" not in source, (
+                f"{filepath} has an inline _mega_batch_eval copy — "
+                f"use get_mega_batch_eval_source() from src/util/mega_batch_eval.py"
+            )
 
     def test_mega_batch_applied_via_patch_system(self):
         """Baselines get mega_batch_eval via scripts/patches/apply_all.py, not inline."""
