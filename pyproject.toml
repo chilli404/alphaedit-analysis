@@ -40,6 +40,11 @@ markers = [
     "slow: marks tests as slow (requires GPU and model)",
     "gpu: marks tests that require GPU access",
 ]
+filterwarnings = [
+    "ignore::ResourceWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+    "ignore:.*encountered in matmul:RuntimeWarning",
+]
 
 [dependency-groups]
 dev = [
