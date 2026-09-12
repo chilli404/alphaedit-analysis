@@ -156,6 +156,63 @@ class TestPatchS3Checkpoint:
         assert "cache_c" in patch_s3_checkpoint.SAVE_REPLACEMENT
 
 
+class TestSourcePatchesDeprecation:
+    """source_patches.py orchestrators are deprecated; raw functions are shared with new system."""
+
+    def test_new_patches_import_raw_functions(self):
+        """New patch files must import raw functions from source_patches (no divergence)."""
+        expected_imports = {
+            "patch_nan_guard.py": "apply_nan_guard_patch",
+            "patch_p_cache.py": "apply_p_cache_patch",
+            "patch_glue_map.py": "apply_glue_context_patch",
+            "patch_model_compat.py": "apply_model_list_patch",
+        }
+        for patch_file, func_name in expected_imports.items():
+            source = (PATCHES_DIR / patch_file).read_text()
+            assert f"from source_patches import" in source and func_name in source, (
+                f"{patch_file} must import {func_name} from source_patches"
+            )
+
+    def test_orchestrators_marked_deprecated(self):
+        """Orchestrator functions in source_patches.py must have DEPRECATED in docstring."""
+        source = (PROJECT_ROOT / "src" / "util" / "source_patches.py").read_text()
+        orchestrators = [
+            "patch_evaluate_file",
+            "patch_layer_stats_file",
+            "patch_glue_eval_file",
+            "patch_memit_file",
+            "patch_alphaedit_main_file",
+        ]
+        for fn in orchestrators:
+            idx = source.find(f"def {fn}(")
+            assert idx != -1, f"{fn} not found in source_patches.py"
+            docstring_end = source.find('"""', source.find('"""', idx) + 3)
+            docstring = source[idx:docstring_end]
+            assert "DEPRECATED" in docstring, (
+                f"source_patches.{fn} must have DEPRECATED in its docstring"
+            )
+
+    def test_orchestrators_are_idempotent(self):
+        """Calling orchestrators twice on the same files must be a no-op the second time."""
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
+        from source_patches import apply_p_cache_patch, apply_nan_guard_patch, apply_glue_context_patch
+        # Read vendor files
+        eval_src = (VENDOR_ROOT / "experiments" / "evaluate.py").read_text()
+        memit_src = (VENDOR_ROOT / "memit" / "memit_main.py").read_text()
+        glue_src = (VENDOR_ROOT / "glue_eval" / "useful_functions.py").read_text()
+        # Apply once
+        eval_1 = apply_p_cache_patch(eval_src)
+        memit_1 = apply_nan_guard_patch(memit_src)
+        glue_1 = apply_glue_context_patch(glue_src)
+        # Apply twice
+        eval_2 = apply_p_cache_patch(eval_1)
+        memit_2 = apply_nan_guard_patch(memit_1)
+        glue_2 = apply_glue_context_patch(glue_1)
+        assert eval_1 == eval_2, "apply_p_cache_patch not idempotent"
+        assert memit_1 == memit_2, "apply_nan_guard_patch not idempotent"
+        assert glue_1 == glue_2, "apply_glue_context_patch not idempotent"
+
+
 class TestOldPatchSystemRetired:
     """Old scattered patching files must not exist — replaced by scripts/patches/."""
 

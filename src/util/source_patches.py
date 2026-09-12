@@ -163,6 +163,9 @@ def patch_evaluate_file(alphaedit_root: Path) -> None:
     """
     Apply runtime patches to vendor/AlphaEdit/experiments/evaluate.py on disk.
 
+    DEPRECATED for cluster runs: use ``python scripts/patches/apply_all.py`` instead.
+    Still called by runners for local execution (no apply_all.py pre-step).
+
     Idempotent — safe to call multiple times. Applies:
       - P-cache: loads null_space_project.pt if present instead of recomputing SVD
       - Model-list: adds Qwen2.5-7B to the cache_c/P shape initialization list
@@ -193,8 +196,7 @@ def patch_layer_stats_file(alphaedit_root: Path) -> None:
     """
     Fix deprecated Wikipedia dataset config in vendor/AlphaEdit/rome/layer_stats.py.
 
-    HuggingFace removed the '20200501.en' config; the equivalent is '20220301.en'.
-    This affects stats computation (both build_stats.py and on-the-fly in AlphaEdit_main.py).
+    DEPRECATED for cluster runs: use ``scripts/patches/patch_model_compat.py``.
 
     Idempotent — safe to call multiple times.
 
@@ -213,6 +215,8 @@ def patch_layer_stats_file(alphaedit_root: Path) -> None:
 def patch_glue_eval_file(alphaedit_root: Path) -> None:
     """
     Apply runtime patches to vendor/AlphaEdit/glue_eval/useful_functions.py on disk.
+
+    DEPRECATED for cluster runs: use ``scripts/patches/patch_glue_map.py``.
 
     Idempotent — safe to call multiple times. Applies:
       - Context length map: adds Qwen2.5-7B and GPT-J entries
@@ -271,6 +275,9 @@ def patch_memit_file(alphaedit_root: Path) -> None:
     """
     Apply patches to vendor/AlphaEdit/memit/memit_main.py on disk.
 
+    DEPRECATED for cluster runs: use ``scripts/patches/patch_nan_guard.py``
+    and ``scripts/patches/patch_kwargs.py``.
+
     Applies:
       - NaN guard: skips edits where compute_z produces NaN
       - kwargs: adds **_kwargs to accept return_orig_weights_device from evaluate.py
@@ -297,7 +304,7 @@ def patch_alphaedit_main_file(alphaedit_root: Path) -> None:
     """
     Apply **_kwargs patch to vendor/AlphaEdit/AlphaEdit/AlphaEdit_main.py on disk.
 
-    evaluate.py passes return_orig_weights_device kwarg which the function doesn't accept.
+    DEPRECATED for cluster runs: use ``scripts/patches/patch_kwargs.py``.
 
     Idempotent — safe to call multiple times.
 
