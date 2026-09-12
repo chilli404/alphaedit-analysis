@@ -105,21 +105,25 @@ def revive_hooks(
         split_rank = min(split_rank, S.numel())
 
         dev, dt = upd_matrix.device, upd_matrix.dtype
-        U_d = U.to(device=dev, dtype=torch.float64)
-        Vh_d = Vh.to(device=dev, dtype=torch.float64)
         upd_d = upd_matrix.double()
 
-        coeff = U_d.T @ upd_d @ Vh_d.T
-        coeff[:split_rank, :] = 0
-        coeff[:, :split_rank] = 0
-        upd_safe = (U_d @ coeff @ Vh_d).to(dtype=dt)
+        # Use tail-only reconstruction to avoid full-matrix numerical noise
+        # Instead of: U @ (zero top-k of U^T @ ΔW @ V^T) @ V
+        # Use: U_tail @ (U_tail^T @ ΔW @ V_tail^T) @ V_tail
+        U_tail = U[:, split_rank:].to(device=dev, dtype=torch.float64)
+        Vh_tail = Vh[split_rank:, :].to(device=dev, dtype=torch.float64)
+        del U, Vh
+
+        coeff_tail = U_tail.T @ upd_d @ Vh_tail.T
+        upd_safe = (U_tail @ coeff_tail @ Vh_tail).to(dtype=dt)
+        del U_tail, Vh_tail, coeff_tail
 
         svd_time = time.perf_counter() - t0
         removed_frac = 1.0 - torch.linalg.norm(upd_safe).item() / max(torch.linalg.norm(upd_matrix).item(), 1e-10)
         print(f"  [REVIVE] layer={layer_idx} split_rank={split_rank}/{S.numel()} "
               f"removed={removed_frac:.1%} svd={svd_time:.1f}s")
 
-        del U, S, Vh, U_d, Vh_d, coeff
+        del S
         torch.cuda.empty_cache()
         return upd_safe
 
