@@ -1,0 +1,53 @@
+{
+  "issue": "Paper claims 'latest 1K > 90%' but cross-seed analysis reports 'newest 1K = 59.1%'",
+  "resolution": {
+    "the_90_percent_claim": "Comes from failure curve at 5K (latest_1K = 99.0%) or matched ordering at 10K (latest_1K = 92.8%). Both are valid but describe different scales.",
+    "the_59_percent_number": "Is the 3-seed MEAN of failure curve latest_1K at 10K: seeds 42 (71.9%), 2024 (51.6%), 137 (53.8%). The discrepancy is from averaging across seeds with different degradation levels.",
+    "why_matched_ordering_is_higher": "eval_matched_ordering.py uses a DIFFERENT evaluation approach (mega-batch with fp16 model) than the failure curve's vendor evaluate.py. Also uses key_clustered ordering which may interact differently with cache_c. The matched ordering stream has unique-subject records only.",
+    "key_confusion": "The paper likely conflates: (1) latest-1K at 5K edits (~99%), (2) latest-1K at 10K edits (59-72% depending on seed), and (3) latest-100 at 10K (80-83%). These are three different quantities."
+  },
+  "reconciliation_table": {
+    "failure_curve_seed42_5K": {
+      "latest_1k": 0.99,
+      "latest_100": 1.0,
+      "first_1k": 0.7,
+      "overall": "~0.88",
+      "source": "failure_curve_checkpointed/seed42/5000edits, vendor evaluate.py"
+    },
+    "failure_curve_seed42_10K": {
+      "latest_1k": 0.719,
+      "latest_100": 0.826,
+      "first_1k": 0.11,
+      "overall": 0.287,
+      "source": "failure_curve_checkpointed/seed42/10000edits, vendor evaluate.py"
+    },
+    "failure_curve_3seed_mean_10K": {
+      "latest_1k": 0.591,
+      "note": "The '59.1%' number \u2014 average of seeds 42 (71.9%), 2024 (51.6%), 137 (53.8%)",
+      "source": "failure_curve_checkpointed, all 3 seeds"
+    },
+    "matched_ordering_key_clustered_seed42_5K": {
+      "latest_1k": 0.964,
+      "latest_100": 1.0,
+      "first_1k": 0.801,
+      "overall": 0.9216,
+      "source": "eval_matched_ordering.py on key_clustered stream"
+    },
+    "matched_ordering_key_clustered_seed42_10K": {
+      "latest_1k": 0.928,
+      "latest_100": 0.8,
+      "first_1k": 0.551,
+      "overall": 0.8223,
+      "source": "eval_matched_ordering.py on key_clustered stream"
+    }
+  },
+  "recommendation": {
+    "local_plasticity": "Support 'local plasticity' with IMMEDIATE INSTALLATION efficacy, not latest-1K at the final checkpoint. Latest-1K at 10K includes edits that have already experienced up to 999 subsequent edits \u2014 not pure plasticity.",
+    "three_quantities_to_report": {
+      "1_immediate_install": "Efficacy of each batch right after installation (from mechanism logs)",
+      "2_latest_100_at_checkpoint": "Latest-100 at each checkpoint (closest to 'still plastic')",
+      "3_latest_1K_at_checkpoint": "Latest-1K at each checkpoint (broader cohort measure)"
+    },
+    "paper_language": "Do NOT say 'latest 1K remains above 90%' at 10K edits. It does not. SAY: 'At 5K edits, the newest cohort retains >99% efficacy while the oldest drops to 70%. At 10K edits, even the newest 1K cohort degrades to 59% (3-seed mean), but the age gradient remains steep \u2014 the oldest cohort falls to 7%.'"
+  }
+}

@@ -7,12 +7,12 @@ dist/
 build/
 .venv/
 
-# Data
-data
-logs
+# Data (top-level only — paper/data/ is tracked)
+/data
+/logs
 
 # Results (large, tracked separately)
-results
+/results
 
 # Vendor data (downloaded at runtime)
 vendor/AlphaEdit/data/multi_counterfact.json
@@ -41,19 +41,10 @@ vendor/AlphaEdit/null_space_project.pt
 .env
 .env.local
 
-# SkyPilot cloud orchestration
+# SkyPilot (cloud orchestration, not for public release)
 sky/
 
-# Grainger-specific infrastructure (Artifactory, S3 paths)
-src/util/model_download.py
-scripts/remote_setup.sh
-scripts/link_stats.sh
-scripts/link_dsets.sh
-scripts/download_datasets.sh
-scripts/download_mmlu.py
-scripts/download_wikitext.py
-scripts/build_submission.sh
-scheduling/forensics_mechanism.py
+# Grainger-specific infrastructure
 install-agent.sh
 
 # Project-specific docs (not for sharing)
