@@ -62,6 +62,7 @@ from source_patches import patch_evaluate_file, patch_glue_eval_file
 from eval_config import hash_eval_config
 from paths import get_project_root, get_alphaedit_root, get_result_root, get_checkpoint_root
 from mega_batch_eval import get_mega_batch_eval_source
+from experiment_config import ExperimentConfig
 
 
 _DEFAULT_MODEL = "meta-llama/Meta-Llama-3-8B-Instruct"
@@ -79,7 +80,7 @@ def _model_tag(model_name: str | None) -> str:
     return short
 
 
-def resolve_checkpoint_dir(explicit_dir: str | None, seed: int, lambda_prev: float, lambda_delta: float, cache_max: int | None = None, ordering: str | None = None, model_name: str | None = None, mom2_override: float | None = None) -> Path:
+def resolve_checkpoint_dir(explicit_dir: str | None, seed: int, lambda_prev: float, lambda_delta: float, cache_max: int | None = None, ordering: str | None = None, model_name: str | None = None, mom2_override: float | None = None) -> Path:  # DEPRECATED: use ExperimentConfig.checkpoint_dir()
     """Resolve checkpoint directory for MEMIT+SeqReg.
 
     Convention:
@@ -818,9 +819,17 @@ def run(args: argparse.Namespace) -> None:
 
     # Resolve checkpoint directory and auto-detect resume point
     ordering = getattr(args, 'ordering', None)
-    ckpt_dir = resolve_checkpoint_dir(
-        args.checkpoint_dir, args.seed, args.lambda_prev, args.lambda_delta, cache_max, ordering=ordering, model_name=args.model_name, mom2_override=mom2_override
-    )
+    if args.checkpoint_dir:
+        ckpt_dir = Path(args.checkpoint_dir)
+    else:
+        _exp_config = ExperimentConfig(
+            base_alg="MEMIT", seed=args.seed, ordering=ordering,
+            model_name=args.model_name,
+            lambda_prev=args.lambda_prev, lambda_delta=args.lambda_delta,
+            cache_max=cache_max, mom2_override=mom2_override,
+            experiment_type="failure_curve",
+        )
+        ckpt_dir = _exp_config.checkpoint_dir()
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     total_batches = args.dataset_size_limit // args.num_edits

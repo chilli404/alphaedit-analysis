@@ -63,6 +63,7 @@ from source_patches import patch_evaluate_file
 from eval_config import hash_eval_config
 from paths import get_project_root, get_alphaedit_root, get_result_root, get_checkpoint_root
 from mega_batch_eval import get_mega_batch_eval_source
+from experiment_config import ExperimentConfig
 
 
 # --- Source anchors (commit b84624f) ---
@@ -79,7 +80,7 @@ DELTAS_ANCHOR = '            deltas[weight_name] = ('
 WEIGHT_UPDATE_ANCHOR = '        # Update model weights and record desired changes in `delta` variable'
 
 
-def resolve_checkpoint_dir(
+def resolve_checkpoint_dir(  # DEPRECATED: use ExperimentConfig.checkpoint_dir() instead
     explicit_dir: str | None,
     seed: int,
     lambda_prev: float,
@@ -1076,14 +1077,20 @@ def run(args: argparse.Namespace) -> None:
     output_jsonl = variant_dir / f"log_seed{args.seed}_{timestamp}.jsonl"
 
     # Resolve checkpoint directory and auto-detect resume point
-    ckpt_dir = resolve_checkpoint_dir(
-        args.checkpoint_dir, args.seed, args.lambda_prev, args.lambda_delta,
-        cache_max, args.kernel_type, args.kernel_degree, args.kernel_sigma,
-        ordering=ordering, kernel_prev=args.kernel_prev,
-        revive=args.revive, revive_tau=args.revive_tau,
-        model_name=args.model_name,
-        base_alg=args.base_alg,
-    )
+    if args.checkpoint_dir:
+        ckpt_dir = Path(args.checkpoint_dir)
+    else:
+        _exp_config = ExperimentConfig(
+            base_alg=args.base_alg, seed=args.seed, ordering=ordering,
+            model_name=args.model_name,
+            lambda_prev=args.lambda_prev, lambda_delta=args.lambda_delta,
+            cache_max=cache_max, kernel_type=args.kernel_type,
+            kernel_degree=args.kernel_degree, kernel_sigma=args.kernel_sigma,
+            kernel_prev=args.kernel_prev,
+            revive=args.revive, revive_tau=args.revive_tau,
+            experiment_type="polykernel_seqreg",
+        )
+        ckpt_dir = _exp_config.checkpoint_dir()
     # Validate checkpoint path contains the correct base algorithm prefix
     _expected_prefix = "MEMIT-Seq" if args.base_alg == "MEMIT" else args.base_alg
     if _expected_prefix not in str(ckpt_dir):

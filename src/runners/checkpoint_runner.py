@@ -60,6 +60,7 @@ from dataset_fingerprint import build_fingerprint_injection
 from eval_config import hash_eval_config
 from paths import get_project_root, get_alphaedit_root, get_result_root, get_checkpoint_root
 from mega_batch_eval import get_mega_batch_eval_source
+from experiment_config import ExperimentConfig
 
 
 # --- Source anchors from evaluate.py at commit b84624f ---
@@ -103,7 +104,7 @@ def _model_tag(model_name: str | None) -> str:
     return short
 
 
-def resolve_checkpoint_dir(explicit_dir: str | None, alg_name: str, seed: int, order_id: int = 0, model_name: str | None = None) -> Path:
+def resolve_checkpoint_dir(explicit_dir: str | None, alg_name: str, seed: int, order_id: int = 0, model_name: str | None = None) -> Path:  # DEPRECATED: use ExperimentConfig.checkpoint_dir()
     """Resolve the checkpoint directory in priority order.
 
     If explicit_dir is provided, use it as-is (the caller sets the full path).
@@ -900,7 +901,16 @@ def run(args: argparse.Namespace) -> None:
         ckpt_alg_name = f"{args.alg_name}-C0-{args.c0_weight}"
     if args.nullspace_threshold is not None:
         ckpt_alg_name = f"{ckpt_alg_name}-t{args.nullspace_threshold}"
-    ckpt_dir = resolve_checkpoint_dir(args.checkpoint_dir, ckpt_alg_name, args.seed, args.order_id, model_name=args.model_name)
+    if args.checkpoint_dir:
+        ckpt_dir = Path(args.checkpoint_dir)
+    else:
+        _exp_type = "comparison_ordered" if args.order_id > 0 else "failure_curve"
+        _exp_config = ExperimentConfig(
+            base_alg=ckpt_alg_name, seed=args.seed,
+            model_name=args.model_name,
+            experiment_type=_exp_type, order_id=args.order_id,
+        )
+        ckpt_dir = _exp_config.checkpoint_dir()
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     # Resolve results directory (where evaluate.py writes per-case JSONs)
