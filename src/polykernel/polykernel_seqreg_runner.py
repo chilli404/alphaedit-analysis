@@ -345,7 +345,7 @@ def run(args: argparse.Namespace) -> None:
         if not _kvs_dir.exists():
             _kvs_dir = get_project_root() / "baselines" / "EvoEdit" / "share" / "projects" / "rewriting-knowledge" / "kvs"
         _nse_cache_template = str(
-            _kvs_dir / f"{model.config._name_or_path.replace('/', '_')}_NSE"
+            _kvs_dir / f"{args.model_name.replace('/', '_')}_NSE"
             / f"{args.ds_name}_layer_{{}}_clamp_{{}}_case_{{}}.npz"
         )
         print(f"  [NSE] Cache template: {_nse_cache_template}")

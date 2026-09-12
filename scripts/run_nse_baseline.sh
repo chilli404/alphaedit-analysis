@@ -68,6 +68,12 @@ if [ -d "$_NSE_CACHE_S3" ]; then
         echo "  Upload caches with: bash scripts/build_nse_cache.sh --upload"
         exit 1
     fi
+    # Symlink model name variants (tars use NousResearch_, canonical is meta-llama_)
+    for _nse_dir in "$_NSE_CACHE_LOCAL"/NousResearch_*_NSE; do
+        [ -d "$_nse_dir" ] || continue
+        _canonical="${_nse_dir/NousResearch_/meta-llama_}"
+        [ -e "$_canonical" ] || ln -sf "$(basename "$_nse_dir")" "$_canonical"
+    done
     _kv_count=$(find "$_NSE_CACHE_LOCAL" -name '*.npz' 2>/dev/null | wc -l)
     echo "  KV cache loaded: $_kv_count files"
     if [ "$_kv_count" -lt 100 ]; then

@@ -1043,6 +1043,20 @@ class TestVendorFunctionRequirements:
             "EvoEdit must NOT load NSE KV cache — it computes v_star from current W_t"
         )
 
+    def test_nse_cache_symlinks_model_name_variants(self):
+        """NSE cache tars use NousResearch_ prefix but canonical model name is meta-llama_.
+        After extraction, run_nse_baseline.sh must symlink the canonical name
+        to the tar's directory name so evaluate.py finds the cache."""
+        source = (PROJECT_ROOT / "scripts" / "run_nse_baseline.sh").read_text()
+        # Must explicitly handle the NousResearch → meta-llama rename
+        has_rename = ("NousResearch" in source and "meta-llama" in source) or \
+                     "model name variant" in source.lower()
+        assert has_rename, (
+            "run_nse_baseline.sh must symlink meta-llama_ → NousResearch_ in kvs/. "
+            "The S3 tars extract to NousResearch_Meta-Llama-3-8B-Instruct_NSE/ "
+            "but evaluate.py looks for meta-llama_Meta-Llama-3-8B-Instruct_NSE/."
+        )
+
     def test_nse_baseline_script_loads_kv_cache(self):
         """run_nse_baseline.sh must load KV caches from S3 — not the YAML.
         Without precomputed caches, compute_z runs 25 gradient steps per edit."""

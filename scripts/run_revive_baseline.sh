@@ -50,6 +50,12 @@ if [[ "$BASE_ALG" == "NSE" ]]; then
             echo "  Extracting NSE kv cache from $(basename $_tar)..."
             tar xf "$_tar" -C "$_NSE_CACHE_LOCAL/"
         done
+        # Symlink model name variants (tars use NousResearch_, canonical is meta-llama_)
+        for _nse_dir in "$_NSE_CACHE_LOCAL"/NousResearch_*_NSE; do
+            [ -d "$_nse_dir" ] || continue
+            _canonical="${_nse_dir/NousResearch_/meta-llama_}"
+            [ -e "$_canonical" ] || ln -sf "$(basename "$_nse_dir")" "$_canonical"
+        done
         _kv_count=$(find "$_NSE_CACHE_LOCAL" -name '*.npz' 2>/dev/null | wc -l)
         echo "  KV cache loaded: $_kv_count files"
         [[ "$_kv_count" -lt 100 ]] && { echo "ERROR: KV cache too small ($_kv_count files)"; exit 1; }
