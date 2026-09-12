@@ -416,7 +416,9 @@ run_baseline() {
         log "  ✓ KV cache: $kv_count files"
     fi
 
-    PYTHONUNBUFFERED=1 timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS RESULT_ROOT=$real_result_root CHECKPOINT_ROOT=$CHECKPOINT_ROOT bash $script $SEED" > "$logfile" 2>&1
+    # Skip mega_batch_eval — the editing smoke test validates edits + checkpoints, not eval.
+    # Eval is tested by the eval cluster (test_eval_and_measure.yaml).
+    PYTHONUNBUFFERED=1 timeout "$TIMEOUT" bash -c "SKIP_MEGA_BATCH_EVAL=1 TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS RESULT_ROOT=$real_result_root CHECKPOINT_ROOT=$CHECKPOINT_ROOT bash $script $SEED" > "$logfile" 2>&1
     local exit_code=$?
     if [ "$exit_code" -ne 0 ]; then
         log "  Last 20 lines of output:"

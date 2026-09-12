@@ -40,7 +40,10 @@ def apply(baselines_root: Path = None):
     fn_src = get_mega_batch_eval_source()
     fn_indented = "\n".join("    " + line for line in fn_src.strip().split("\n"))
     call = '''    # === MEGA-BATCH EVAL (injected by patch_mega_batch_eval.py) ===
-    _mega_batch_eval(edited_model, tok, list(ds), case_result_template, num_edits, case_ids, exec_time, batch_size=4)
+    if not os.environ.get("SKIP_MEGA_BATCH_EVAL"):
+        _mega_batch_eval(edited_model, tok, list(ds), case_result_template, num_edits, case_ids, exec_time, batch_size=4)
+    else:
+        print("  [MEGA-BATCH EVAL] Skipped (SKIP_MEGA_BATCH_EVAL=1)")
     # === END MEGA-BATCH EVAL ===
     if False:  # skip vendor per-record loop
         for record in ds:'''
