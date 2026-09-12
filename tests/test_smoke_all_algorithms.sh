@@ -135,8 +135,110 @@ run_and_check() {
         fi
     fi
 
+    # Algorithm-specific log validation
+    validate_log "$label" "$logfile" || return
+
     PASS=$((PASS+1))
     log "✓ $label PASSED (${elapsed}s)"
+}
+
+validate_log() {
+    local label="$1"
+    local logfile="$2"
+
+    case "$label" in
+        *REVIVE*)
+            # REVIVE must compute SVD and report split_rank per layer
+            if ! grep -q "\[REVIVE\] layer=" "$logfile"; then
+                log "  ❌ REVIVE SVD not computed — filter not running"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: REVIVE SVD missing"; return 1
+            fi
+            if ! grep -q "full_matrices=True" "$logfile"; then
+                log "  ❌ REVIVE not using full_matrices=True"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: wrong SVD mode"; return 1
+            fi
+            if ! grep -q "svd_device=cuda" "$logfile"; then
+                log "  ❌ REVIVE SVD not on GPU (should be cuda)"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: SVD on CPU"; return 1
+            fi
+            if ! grep -q "Dynamic SVD" "$logfile"; then
+                log "  ❌ REVIVE not using dynamic SVD (current weight)"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: static SVD"; return 1
+            fi
+            local svd_count=$(grep -c "\[REVIVE\] layer=" "$logfile")
+            log "  ✓ REVIVE: SVD computed ${svd_count}x, full_matrices=True, device=cuda, dynamic"
+            ;;
+        *AlphaEdit*checkpoint*)
+            # AlphaEdit checkpoint_runner must resolve model name correctly
+            if ! grep -q "llama3-8b-instruct\|Llama3-8B" "$logfile"; then
+                log "  ❌ Model name not canonical"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: bad model name"; return 1
+            fi
+            # Must save cache_c
+            if ! grep -q "cache_c" "$logfile"; then
+                log "  ❌ No cache_c in checkpoint"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: missing cache_c"; return 1
+            fi
+            log "  ✓ AlphaEdit: canonical model name, cache_c saved"
+            ;;
+        *MEMIT*checkpoint*)
+            # MEMIT must load covariance stats from correct path
+            if ! grep -q "Loading cached data/stats/llama3-8b-instruct" "$logfile"; then
+                log "  ❌ MEMIT not loading stats from canonical path"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: wrong stats path"; return 1
+            fi
+            log "  ✓ MEMIT: stats loaded from canonical path"
+            ;;
+        *PathGuard*)
+            if ! grep -q "PathGuard\|pathguard" "$logfile"; then
+                log "  ❌ PathGuard mechanism not active"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: PathGuard inactive"; return 1
+            fi
+            log "  ✓ PathGuard: mechanism active"
+            ;;
+        *MEMIT-Seq*)
+            if ! grep -q "\[SeqReg+Kernel\]" "$logfile"; then
+                log "  ❌ SeqReg+Kernel patch not applied"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: kernel patch missing"; return 1
+            fi
+            log "  ✓ MEMIT-Seq: kernel patch applied"
+            ;;
+        *EvoEdit*)
+            if ! grep -q "EvoEdit" "$logfile"; then
+                log "  ❌ EvoEdit algorithm not invoked"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: EvoEdit not invoked"; return 1
+            fi
+            log "  ✓ EvoEdit: algorithm invoked"
+            ;;
+        *NSE*baselines*)
+            if ! grep -q "NSE\|nse" "$logfile"; then
+                log "  ❌ NSE algorithm not invoked"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: NSE not invoked"; return 1
+            fi
+            log "  ✓ NSE: algorithm invoked"
+            ;;
+        *RECT*)
+            if ! grep -q "MEMIT_seq_rect\|rect" "$logfile"; then
+                log "  ❌ RECT algorithm not invoked"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: RECT not invoked"; return 1
+            fi
+            log "  ✓ RECT: algorithm invoked"
+            ;;
+    esac
+
+    # Universal checks — all algorithms must show these
+    if ! grep -q "LAYER [4-8]" "$logfile"; then
+        log "  ❌ No LAYER editing output"
+        FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: no editing"; return 1
+    fi
+    if ! grep -q "Deltas successfully computed\|New weights successfully inserted" "$logfile"; then
+        log "  ❌ Editing did not complete"
+        FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: incomplete"; return 1
+    fi
+    local batch_count=$(grep -c "_edit==" "$logfile" 2>/dev/null || echo 0)
+    log "  ✓ $batch_count batch(es) completed with layer editing"
+
+    return 0
 }
 
 # Clean up previous smoke test data so runners don't resume from stale checkpoints
@@ -284,8 +386,10 @@ run_baseline() {
         FAIL=$((FAIL+1))
         ERRORS="$ERRORS\n  $label: errors in output"
     elif [ "$exit_code" -eq 0 ]; then
-        PASS=$((PASS+1))
-        log "✓ $label PASSED (${elapsed}s)"
+        validate_log "$label" "$logfile" && {
+            PASS=$((PASS+1))
+            log "✓ $label PASSED (${elapsed}s)"
+        }
     elif [ "$exit_code" -eq 124 ]; then
         FAIL=$((FAIL+1))
         ERRORS="$ERRORS\n  $label: TIMEOUT (${TIMEOUT}s)"
