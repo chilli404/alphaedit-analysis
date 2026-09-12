@@ -316,10 +316,11 @@ def run(args: argparse.Namespace) -> None:
             print(f"  [AlphaEdit] WARNING: P matrix not found at {p_path}")
 
     elif args.base_alg == "NSE":
-        # NSE needs cache_c but NOT P. Get d from model weight dimensions.
+        # NSE needs cache_c but NOT P. NSE indexes cache_c with neuron indices
+        # which correspond to the INPUT dimension of down_proj (shape[1]), not output (shape[0])
         sample_layer = hparams.layers[0]
         weight_name = f"{hparams.rewrite_module_tmp.format(sample_layer)}.weight"
-        d = dict(model.named_parameters())[weight_name].shape[0]
+        d = dict(model.named_parameters())[weight_name].shape[1]  # INPUT dim for NSE
         cache_c = torch.zeros(n_layers, d, d)
         print(f"  [NSE] Initialized cache_c: ({n_layers}, {d}, {d})")
 
