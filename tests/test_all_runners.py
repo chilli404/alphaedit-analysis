@@ -496,6 +496,49 @@ class TestBaselineOrderingStreamAccess:
         assert "STREAM_PATH" not in source or "ORDERING" not in source
 
 
+class TestBaselineDataSetup:
+    """Baseline scripts must delegate data setup to link_dsets.sh + link_stats.sh."""
+
+    @pytest.mark.parametrize("script", [
+        "run_evoedit_baseline.sh",
+        "run_nse_baseline.sh",
+    ])
+    def test_no_inline_stats_linking(self, script):
+        """Baselines must NOT have inline stats linking — delegate to link_stats.sh."""
+        path = PROJECT_ROOT / "scripts" / script
+        if not path.exists():
+            pytest.skip(f"{script} not present")
+        source = path.read_text()
+        assert source.count("ln -sf") < 3, (
+            f"{script} has too many ln -sf calls — data setup should be delegated "
+            f"to link_dsets.sh + link_stats.sh, not done inline."
+        )
+
+    @pytest.mark.parametrize("script", [
+        "run_evoedit_baseline.sh",
+        "run_nse_baseline.sh",
+    ])
+    def test_delegates_to_link_scripts(self, script):
+        """Baselines must call link_dsets.sh/link_stats.sh for local fallback."""
+        path = PROJECT_ROOT / "scripts" / script
+        if not path.exists():
+            pytest.skip(f"{script} not present")
+        source = path.read_text()
+        assert "link_dsets.sh" in source or "apply_all" in source, (
+            f"{script} must delegate data setup to link_dsets.sh or apply_all.py"
+        )
+
+
+class TestBaselinePathGuardCheckpointPath:
+    """PathGuard checkpoint path must match what the runner actually produces."""
+
+    def test_pathguard_default_is_eds_not_ed(self):
+        """Default PathGuard (with margin shield) uses EDS, not ED."""
+        source = (PROJECT_ROOT / "src" / "runners" / "pathguard_runner.py").read_text()
+        # Default: pathguard_no_margin_shield = False → uses EDS
+        assert 'pg_variant = "PathGuard-EDS"' in source
+
+
 class TestBaselineMegaBatchEval:
     """Mega-batch eval is applied via scripts/patches/apply_all.py, not inline in baseline scripts."""
 

@@ -118,6 +118,24 @@ class TestPatchCanonicalName:
         import patch_canonical_name
         assert "qwen2.5-7b-instruct" in patch_canonical_name.PATCH
 
+    def test_patches_both_vendor_and_baselines(self):
+        """canonical_name must patch BOTH vendor and baselines evaluate.py."""
+        import patch_canonical_name
+        import inspect
+        sig = inspect.signature(patch_canonical_name.apply)
+        params = list(sig.parameters.keys())
+        assert "baselines_root" in params, (
+            "canonical_name.apply() must accept baselines_root to patch baselines/EvoEdit/evaluate.py too. "
+            "Without it, RECT-Aligned crashes with trust_remote_code because stats path is wrong."
+        )
+
+    def test_apply_all_passes_baselines_to_canonical_name(self):
+        source = (PATCHES_DIR / "apply_all.py").read_text()
+        assert "patch_canonical_name.apply(vendor_root, baselines_root)" in source or \
+               "patch_canonical_name.apply(vendor_root=vendor_root, baselines_root=baselines_root)" in source, (
+            "apply_all.py must pass baselines_root to patch_canonical_name.apply()"
+        )
+
 
 class TestPatchMegaBatchEval:
     """Mega-batch eval patch must inject the shared module function."""

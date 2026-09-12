@@ -59,61 +59,15 @@ echo "  Model:     $MODEL_NAME"
 echo "  Target:    $TARGET_EDITS edits"
 echo "═══════════════════════════════════════════════════════════════"
 
-# --- Data setup: link datasets and stats INTO EvoEdit's data/ dir ---
+# --- Data setup ---
+# Datasets and stats are linked by link_dsets.sh + link_stats.sh (called from YAML or apply_all.py).
+# Verify they're present; if not, link them (for local runs).
 cd "$EVOEDIT_DIR"
-mkdir -p data/stats
-
-# Link datasets (MCF, zsRE, etc.) from project data/dsets or S3
-S3_DSETS="/s3-data/continual-learning/alphaedit/dsets"
-LOCAL_DSETS="$PROJECT_DIR/data/dsets"
-DSET_SRC="$LOCAL_DSETS"
-[[ -d "$S3_DSETS" ]] && DSET_SRC="$S3_DSETS"
-
-for f in multi_counterfact.json counterfact.json zsre_mend_eval.json \
-         attribute_snippets.json tfidf_vocab.json idf.npy \
-         known_1000.json mmlu_subset.json wikitext_103_test.json; do
-    if [[ -f "$DSET_SRC/$f" ]] && [[ ! -f "data/$f" ]]; then
-        ln -sf "$DSET_SRC/$f" "data/$f"
-    fi
-done
-echo "  Datasets linked from: $DSET_SRC"
-
-# Link covariance stats (model-aware)
-case "$MODEL_NAME" in
-    *gpt-j*|*EleutherAI*) _STATS_SUBDIR="gpt-j-6b"; _STATS_HPARAMS="EleutherAI_gpt-j-6B" ;;
-    *Qwen*|*qwen*)        _STATS_SUBDIR="qwen2.5-7b-instruct"; _STATS_HPARAMS="Qwen2.5-7B" ;;
-    *)                    _STATS_SUBDIR="llama3-8b-instruct"; _STATS_HPARAMS="Llama3-8B" ;;
-esac
-S3_STATS="/s3-data/continual-learning/alphaedit/stats/$_STATS_SUBDIR"
-LOCAL_STATS="$PROJECT_DIR/data/stats/$_STATS_SUBDIR/wikipedia_stats"
-VENDOR_STATS="$PROJECT_DIR/vendor/AlphaEdit/data/stats/$_STATS_HPARAMS/wikipedia_stats"
-STATS_SRC=""
-for candidate in "$S3_STATS" "$VENDOR_STATS" "$LOCAL_STATS"; do
-    if [[ -d "$candidate" ]] && ls "$candidate"/*.npz >/dev/null 2>&1; then
-        STATS_SRC="$candidate"
-        break
-    fi
-done
-
-if [[ -n "$STATS_SRC" ]]; then
-    mkdir -p "data/stats/$_STATS_HPARAMS/wikipedia_stats"
-    for f in "$STATS_SRC"/*.npz; do
-        [[ -f "$f" ]] && ln -sf "$f" "data/stats/$_STATS_HPARAMS/wikipedia_stats/$(basename "$f")"
-    done
-    # Link null_space_project.pt if available
-    for p in "$STATS_SRC/null_space_project.pt" "$PROJECT_DIR/vendor/AlphaEdit/null_space_project.pt"; do
-        if [[ -f "$p" ]]; then
-            ln -sf "$p" "null_space_project.pt"
-            break
-        fi
-    done
-    echo "  Stats linked from: $STATS_SRC"
-else
-    echo "  WARNING: No covariance stats found"
+if [[ ! -f "data/multi_counterfact.json" ]]; then
+    echo "  Linking data (not yet done by apply_all.py)..."
+    bash "$PROJECT_DIR/scripts/link_dsets.sh"
+    bash "$PROJECT_DIR/scripts/link_stats.sh"
 fi
-
-# Symlink canonical stats name (canonical name patch sets _name_or_path to "llama3-8b-instruct")
-ln -sf llama3-8b-instruct "data/stats/llama3-8b-instruct" 2>/dev/null || true
 
 # Patch EvoEdit to accept extra kwargs (return_orig_weights_device passed by evaluate.py)
 # Idempotent: skip if already patched

@@ -40,7 +40,7 @@ def apply_all(vendor: bool = True, baselines: bool = True):
     if vendor_root:
         print("\nVendor patches (vendor/AlphaEdit/):")
         total += patch_kwargs.apply(vendor_root=vendor_root)
-        total += patch_canonical_name.apply(vendor_root)
+        total += patch_canonical_name.apply(vendor_root, baselines_root)
         total += patch_nan_guard.apply(vendor_root)
         total += patch_p_cache.apply(vendor_root)
         total += patch_glue_map.apply(vendor_root)

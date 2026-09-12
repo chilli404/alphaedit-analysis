@@ -27,20 +27,33 @@ PATCH = '''        tok.pad_token = tok.eos_token
     else:'''
 
 
-def apply(vendor_root: Path):
-    filepath = vendor_root / "experiments" / "evaluate.py"
+def _patch_file(filepath: Path, label: str) -> int:
+    if not filepath.exists():
+        return 0
     source = filepath.read_text()
     if 'model.config._name_or_path = "llama3-8b-instruct"' in source:
-        print("  [canonical-name] Already patched")
+        print(f"  [canonical-name] Already patched: {label}")
         return 0
     if ANCHOR not in source:
-        print("  [canonical-name] WARNING: anchor not found")
+        print(f"  [canonical-name] WARNING: anchor not found in {label}")
         return 0
     filepath.write_text(source.replace(ANCHOR, PATCH, 1))
-    print("  [canonical-name] Patched evaluate.py")
+    print(f"  [canonical-name] Patched {label}")
     return 1
+
+
+def apply(vendor_root: Path = None, baselines_root: Path = None):
+    patched = 0
+    if vendor_root:
+        patched += _patch_file(vendor_root / "experiments" / "evaluate.py", "vendor evaluate.py")
+    if baselines_root:
+        patched += _patch_file(baselines_root / "experiments" / "evaluate.py", "baselines evaluate.py")
+    return patched
 
 
 if __name__ == "__main__":
     project = Path(__file__).resolve().parent.parent.parent
-    apply(project / "vendor" / "AlphaEdit")
+    apply(
+        vendor_root=project / "vendor" / "AlphaEdit",
+        baselines_root=project / "baselines" / "EvoEdit",
+    )

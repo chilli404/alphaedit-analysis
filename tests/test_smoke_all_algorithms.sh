@@ -376,7 +376,8 @@ run_and_check "REVIVE+RECT" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT_rect-poly1
 # GROUP 3: pathguard_runner
 # -----------------------------------------------------------------------
 
-run_and_check "PathGuard-poly2-hybrid" "$CHECKPOINT_ROOT/pathguard/PathGuard-ED-poly2-hybrid-M200-e0.1/seed$SEED/batch_0/model_weights.pt" "" \
+# PathGuard default is EDS (with margin shield), not ED
+run_and_check "PathGuard-poly2-hybrid" "$CHECKPOINT_ROOT/pathguard/PathGuard-EDS-poly2-hybrid-M200-e0.1/seed$SEED/batch_0/model_weights.pt" "" \
     uv run python src/runners/pathguard_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
