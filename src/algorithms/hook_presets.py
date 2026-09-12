@@ -34,8 +34,11 @@ def seqreg_hooks(
         }
 
     def build_lhs(layer_idx, layer_ks, cov, hparams, state):
-        alpha = hparams.mom2_update_weight
-        lhs_base = alpha * cov.double() + layer_ks @ layer_ks.T
+        alpha = getattr(hparams, 'mom2_update_weight', 1.0)
+        if cov is not None:
+            lhs_base = alpha * cov.double() + layer_ks @ layer_ks.T
+        else:
+            lhs_base = layer_ks @ layer_ks.T
 
         if lambda_prev > 0 and layer_idx in state["prev_cache"] and state["prev_cache"][layer_idx]:
             K_prev = torch.cat(state["prev_cache"][layer_idx], dim=1).to(layer_ks.device).double()

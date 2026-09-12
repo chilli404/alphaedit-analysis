@@ -800,3 +800,63 @@ class TestBaselinesPatchCompilation:
                 assert source.count(anchor) == 1
         # The actual compilation test
         compile(source, str(eval_path), "exec")
+
+
+class TestRECTImportPath:
+    """MEMIT_rect apply function is in baselines, not vendor/AlphaEdit/memit/."""
+
+    def test_rect_not_in_vendor_memit(self):
+        """vendor/AlphaEdit/memit/ does NOT have memit_seq_rect_main.py."""
+        rect_in_vendor = (PROJECT_ROOT / "vendor" / "AlphaEdit" / "memit" / "memit_seq_rect_main.py").exists()
+        assert not rect_in_vendor, "memit_seq_rect_main.py is in baselines, not vendor"
+
+    def test_rect_in_baselines(self):
+        """baselines/EvoEdit/memit/ has memit_seq_rect_main.py."""
+        rect_in_baselines = (PROJECT_ROOT / "baselines" / "EvoEdit" / "memit" / "memit_seq_rect_main.py").exists()
+        if not rect_in_baselines:
+            pytest.skip("baselines not available")
+        assert rect_in_baselines
+
+    def test_polykernel_seqreg_rect_import_uses_baselines(self):
+        """polykernel_seqreg_runner must add baselines to sys.path before importing RECT."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        # The import "from memit.memit_seq_rect_main import" is fine IF baselines is on sys.path first
+        if "memit_seq_rect_main" in source:
+            assert "baselines" in source, (
+                "RECT import needs baselines on sys.path (memit_seq_rect_main is in baselines, not vendor)"
+            )
+
+
+class TestAlphaEditHooksHandleNoneCov:
+    """AlphaEdit doesn't use mom2 covariance — hooks must handle cov=None."""
+
+    def test_seqreg_build_lhs_handles_none_cov(self):
+        """seqreg_hooks.build_lhs must not crash when cov=None (AlphaEdit path)."""
+        import torch
+        from algorithms.hook_presets import seqreg_hooks
+        hooks = seqreg_hooks(lambda_prev=0.0, lambda_delta=0.0)
+        state = hooks.get_state()
+        layer_ks = torch.randn(64, 10, dtype=torch.float64)
+        # AlphaEdit passes cov=None
+        try:
+            lhs = hooks.build_lhs(0, layer_ks, None, type('H', (), {'mom2_update_weight': 1.0})(), state)
+            # Should not crash
+        except (TypeError, AttributeError) as e:
+            if "NoneType" in str(e):
+                pytest.fail(f"build_lhs crashed on cov=None: {e}")
+            raise
+
+    def test_compose_hooks_build_lhs_handles_none_cov(self):
+        """compose_hooks with seqreg must handle cov=None."""
+        import torch
+        from algorithms.hook_presets import seqreg_hooks, revive_hooks
+        from algorithms.hooks import compose_hooks
+        hooks = compose_hooks(seqreg_hooks(lambda_prev=0.0), revive_hooks(revive_tau=0.1))
+        state = hooks.get_state()
+        layer_ks = torch.randn(64, 10, dtype=torch.float64)
+        try:
+            lhs = hooks.build_lhs(0, layer_ks, None, type('H', (), {'mom2_update_weight': 1.0})(), state)
+        except (TypeError, AttributeError) as e:
+            if "NoneType" in str(e):
+                pytest.fail(f"compose_hooks build_lhs crashed on cov=None: {e}")
+            raise

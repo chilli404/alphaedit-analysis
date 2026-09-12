@@ -81,8 +81,11 @@ def compose_hooks(*hook_sets: AlgorithmHooks) -> AlgorithmHooks:
     For init_state: merges all state dicts.
     """
     def _chain_build_lhs(layer_idx, layer_ks, cov, hparams, state):
-        import torch
-        lhs = hparams.mom2_update_weight * cov.double() + layer_ks @ layer_ks.T
+        alpha = getattr(hparams, 'mom2_update_weight', 1.0)
+        if cov is not None:
+            lhs = alpha * cov.double() + layer_ks @ layer_ks.T
+        else:
+            lhs = layer_ks @ layer_ks.T
         for hs in hook_sets:
             if hs.build_lhs is not None:
                 lhs = hs.build_lhs(layer_idx, layer_ks, cov, hparams, state)

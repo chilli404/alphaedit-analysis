@@ -282,6 +282,8 @@ def run(args: argparse.Namespace) -> None:
         from nse.nse_main import apply_nse_to_model
         base_apply = apply_nse_to_model
     elif args.base_alg == "MEMIT_rect":
+        baselines_root = get_project_root() / "baselines" / "EvoEdit"
+        sys.path.insert(0, str(baselines_root))
         from memit.memit_seq_rect_main import apply_memit_seq_rect_to_model
         base_apply = apply_memit_seq_rect_to_model
     else:
