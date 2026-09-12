@@ -1,17 +1,16 @@
 resources:
-  accelerators: L40S:1
+  accelerators: L40s:1
   cpus: 4+
-  memory: 32+
-  cloud: aws
+  memory: 28+
 
 workdir: .
 
 file_mounts:
-  /home/sky/.env:
-    source: .env
-    mode: COPY
+  ~/sky_workdir/.env: ./.env
 
 setup: |
+  set -euo pipefail
+  cd ~/sky_workdir
   bash scripts/remote_setup.sh
 
 run: |
@@ -19,7 +18,7 @@ run: |
   cd ~/sky_workdir
 
   # Source env
-  set -a && source /home/sky/.env && set +a
+  set -a && source ~/.env 2>/dev/null || source ~/sky_workdir/.env && set +a
   export RESULT_ROOT="/s3-data/continual-learning/alphaedit/results/_smoke_test"
   export CHECKPOINT_ROOT="/s3-data/continual-learning/alphaedit/checkpoints/_smoke_test"
 
@@ -48,10 +47,10 @@ run: |
       tests/test_all_runners.py tests/test_shared_infrastructure.py \
       tests/test_evaluate_harness.py -v --tb=short
 
-  # Run GPU smoke test
+  # Run GPU smoke test (SMOKE_FILTER env var selects specific algorithms)
   echo ""
   echo "=== Running GPU smoke test ==="
-  bash tests/test_smoke_all_algorithms.sh --skypilot
+  bash tests/test_smoke_all_algorithms.sh --skypilot ${SMOKE_FILTER:-}
 
   echo ""
   echo "=== All tests passed ==="
