@@ -103,6 +103,56 @@ class TestLauncher:
         assert "--down" in source
 
 
+class TestExperimentYamls:
+    """Experiment YAMLs must use apply_all.py and not have inline patches."""
+
+    EXPERIMENT_YAMLS = [
+        "alphaedit_gpu.yaml",
+        "suffix_switch.yaml",
+        "reedit_from_ckpt.yaml",
+        "eval_evoedit_anchor.yaml",
+        "eval_evoedit.yaml",
+        "eval_generic.yaml",
+        "eval_probpref.yaml",
+        "logit_damage_memit.yaml",
+        "same_fact_stage2.yaml",
+        "suffix_eval.yaml",
+    ]
+
+    @pytest.mark.parametrize("filename", EXPERIMENT_YAMLS)
+    def test_no_sed_patches(self, filename):
+        path = SKY_DIR / filename
+        if not path.exists():
+            pytest.skip(f"{filename} not present")
+        source = path.read_text()
+        assert source.count("sed -i") == 0, (
+            f"{filename} has inline sed patches — use scripts/patches/apply_all.py"
+        )
+
+    @pytest.mark.parametrize("filename", EXPERIMENT_YAMLS)
+    def test_uses_apply_all_if_links_data(self, filename):
+        """Any YAML that calls link_stats/link_dsets must also call apply_all."""
+        path = SKY_DIR / filename
+        if not path.exists():
+            pytest.skip(f"{filename} not present")
+        source = path.read_text()
+        has_link = "link_stats" in source or "link_dsets" in source
+        has_apply = "apply_all" in source
+        if has_link:
+            assert has_apply, (
+                f"{filename} calls link_stats/link_dsets but not apply_all.py — "
+                f"vendor code won't be patched"
+            )
+
+    def test_no_nousresearch_in_yamls(self):
+        """No YAML should reference NousResearch — use meta-llama."""
+        for f in SKY_DIR.glob("*.yaml"):
+            source = f.read_text()
+            assert "NousResearch" not in source, (
+                f"{f.name} references NousResearch — use meta-llama/Meta-Llama-3-8B-Instruct"
+            )
+
+
 class TestNoInlinePatches:
     """No YAML should have inline sed patches — all patching via apply_all.py."""
 

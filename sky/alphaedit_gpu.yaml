@@ -32,7 +32,7 @@ run: |
   case "${EXPERIMENT_NAME}" in
     *qwen*)  MODEL_NAME="Qwen/Qwen2.5-7B-Instruct" ; HPARAMS_FNAME="Qwen2.5-7B.json" ;;
     *gptj*)  MODEL_NAME="EleutherAI/gpt-j-6b" ; HPARAMS_FNAME="EleutherAI_gpt-j-6B.json" ;;
-    *)       MODEL_NAME="${MODEL_NAME:-NousResearch/Meta-Llama-3-8B-Instruct}" ;;
+    *)       MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}" ;;
   esac
   # Resolve HPARAMS_FNAME from MODEL_NAME if not already set
   if [[ -z "${HPARAMS_FNAME:-}" ]]; then

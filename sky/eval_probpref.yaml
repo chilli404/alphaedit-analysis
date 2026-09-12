@@ -1,0 +1,216 @@
+# Re-evaluate matched ordering checkpoints with dual metrics (prob-pref + argmax).
+#
+# Env vars (passed via --env):
+#   SEED          - Random seed (42, 137, 2024)
+#   ALG_NAME      - Algorithm name (AlphaEdit, MEMIT-Seq-lp1.0-ld0.0-cache0, etc.)
+#   ORDERING      - Ordering type (fb_high_exposure, fb_low_exposure, fb_random0, etc.)
+#   CHECKPOINTS   - Space-separated batch indices (default: auto-detect)
+#   EVAL_MODE     - "fast" for mega-batch first-token eval, omit for full multi-token NLL
+#
+# Usage:
+#   sky launch sky/eval_probpref.yaml --cluster ae-ppeval-alphaedit-fbhi-s42 \
+#     --env SEED=42 --env ALG_NAME=AlphaEdit --env ORDERING=fb_high_exposure -y --detach-run
+#
+#   sky exec ae-ppeval-alphaedit-fbhi-s42 sky/eval_probpref.yaml \
+#     --env SEED=137 --env ALG_NAME=AlphaEdit --env ORDERING=fb_high_exposure --detach-run
+
+resources:
+  accelerators: L40S:1
+  cpus: 2+
+  memory: 16+
+
+workdir: .
+
+file_mounts:
+  ~/sky_workdir/.env: ./.env
+  ~/sky_workdir/scripts/remote_setup.sh: ./scripts/remote_setup.sh
+  ~/sky_workdir/scripts/link_stats.sh: ./scripts/link_stats.sh
+  ~/sky_workdir/scripts/link_dsets.sh: ./scripts/link_dsets.sh
+  ~/sky_workdir/scripts/download_datasets.sh: ./scripts/download_datasets.sh
+  ~/sky_workdir/src/util/model_download.py: ./src/util/model_download.py
+
+setup: |
+  set -euo pipefail
+  cd ~/sky_workdir
+  bash scripts/remote_setup.sh
+
+run: |
+  set -e
+  export PATH="$HOME/.local/bin:$PATH"
+  cd ~/sky_workdir
+
+  export MODEL_NAME="${MODEL_NAME:?ERROR: MODEL_NAME must be set (e.g. meta-llama/Meta-Llama-3-8B-Instruct or EleutherAI/gpt-j-6b)}"
+
+  S3_CKPT="/s3-data/continual-learning/alphaedit/checkpoints"
+  S3_RES="/s3-data/continual-learning/alphaedit/results"
+  export RESULT_ROOT="$S3_RES"
+
+  bash scripts/link_stats.sh
+  bash scripts/link_dsets.sh
+  uv run python scripts/patches/apply_all.py
+
+  # Stats symlinks for model name variants
+  STATS_BASE="vendor/AlphaEdit/data/stats"
+  _STATS_CANONICAL=""
+  for _try in Llama3-8B Meta-Llama-3-8B-Instruct meta-llama-Meta-Llama-3-8B-Instruct; do
+    if ls "${STATS_BASE}/${_try}/wikipedia_stats/"*.npz >/dev/null 2>&1; then
+      _STATS_CANONICAL="$_try"; break
+    fi
+  done
+  if [[ -n "$_STATS_CANONICAL" ]]; then
+    for v in Meta-Llama-3-8B Meta-Llama-3-8B-Instruct Llama3-8B \
+             _s3-data_continual-learning_models_Meta-Llama-3-8B \
+             meta-llama_Meta-Llama-3-8B-Instruct; do
+      [[ "$v" == "$_STATS_CANONICAL" ]] && continue
+      ln -sf "$_STATS_CANONICAL" "${STATS_BASE}/${v}" 2>/dev/null || true
+    done
+  fi
+
+  echo "Downloading NLTK data..."
+  uv run python -c "import nltk; [nltk.download(pkg, quiet=True) for pkg in ('punkt', 'punkt_tab')]"
+
+  SEED="${SEED:-42}"
+  ALG_NAME="${ALG_NAME:-AlphaEdit}"
+  ORDERING="${ORDERING:-fb_high_exposure}"
+
+  # Resolve checkpoint directory (try multiple paths)
+  CKPT_DIR="${CHECKPOINT_DIR:-}"
+  if [[ -z "$CKPT_DIR" ]]; then
+    CKPT_DIR_TAGGED="${S3_CKPT}/matched_ordering/meta-llama-3-8b-instruct/${ALG_NAME}/${ORDERING}/seed${SEED}"
+    CKPT_DIR_PLAIN="${S3_CKPT}/matched_ordering/${ALG_NAME}/${ORDERING}/seed${SEED}"
+    # EvoEdit stores checkpoints under results/evoedit/{ordering}/seed{N}/10000edits/EvoEdit/run_NNN/checkpoints/
+    # The run number varies per seed — find the one with edits_010000 (the complete run)
+    CKPT_DIR_EVOEDIT=""
+    if [[ "$ALG_NAME" == "EvoEdit" ]]; then
+      # First pass: find a run with edits_010000 (complete)
+      for _run in run_000 run_001 run_002 run_003; do
+        _try="${S3_RES}/evoedit/${ORDERING}/seed${SEED}/10000edits/EvoEdit/${_run}/checkpoints"
+        if [[ -d "$_try/edits_010000" ]]; then
+          CKPT_DIR_EVOEDIT="$_try"
+          echo "  Found complete EvoEdit run: ${_run}"
+          break
+        fi
+      done
+      # Fallback: if no complete run, take the one with the most checkpoints
+      if [[ -z "$CKPT_DIR_EVOEDIT" ]]; then
+        _best_count=0
+        for _run in run_000 run_001 run_002 run_003; do
+          _try="${S3_RES}/evoedit/${ORDERING}/seed${SEED}/10000edits/EvoEdit/${_run}/checkpoints"
+          if [[ -d "$_try" ]]; then
+            _count=$(ls -d "$_try"/edits_* 2>/dev/null | wc -l)
+            if [[ "$_count" -gt "$_best_count" ]]; then
+              _best_count=$_count
+              CKPT_DIR_EVOEDIT="$_try"
+            fi
+          fi
+        done
+        [[ -n "$CKPT_DIR_EVOEDIT" ]] && echo "  Using best EvoEdit run with $_best_count checkpoints"
+      fi
+    fi
+    if [[ -d "$CKPT_DIR_TAGGED" ]]; then
+      CKPT_DIR="$CKPT_DIR_TAGGED"
+    elif [[ -d "$CKPT_DIR_PLAIN" ]]; then
+      CKPT_DIR="$CKPT_DIR_PLAIN"
+    elif [[ -n "$CKPT_DIR_EVOEDIT" ]] && [[ -d "$CKPT_DIR_EVOEDIT" ]]; then
+      CKPT_DIR="$CKPT_DIR_EVOEDIT"
+    else
+      echo "ERROR: No checkpoint directory found"
+      echo "  Tried: $CKPT_DIR_TAGGED"
+      echo "  Tried: $CKPT_DIR_PLAIN"
+      [[ "$ALG_NAME" == "EvoEdit" ]] && echo "  Tried: $CKPT_DIR_EVOEDIT"
+      exit 1
+    fi
+  fi
+
+  # Use model-specific orderings (GPT-J has its own key-clustered batches)
+  if [[ "$MODEL_NAME" == *gpt-j* ]] || [[ "$MODEL_NAME" == *EleutherAI* ]]; then
+    DATASET="${S3_RES}/matched_ordering_gptj/orderings/${ORDERING}_seed${SEED}.json"
+  else
+    DATASET="${S3_RES}/matched_ordering/orderings/${ORDERING}_seed${SEED}.json"
+  fi
+
+  echo "=== Prob-Pref Re-evaluation (v2 dual metric) ==="
+  echo "  Algorithm:  ${ALG_NAME}"
+  echo "  Ordering:   ${ORDERING}"
+  echo "  Seed:       ${SEED}"
+  echo "  Checkpoint: ${CKPT_DIR}"
+  echo "  Dataset:    ${DATASET}"
+
+  # Resolve checkpoints: filter requested list to only those that exist,
+  # or auto-detect all available if none specified.
+  CKPT_FORMAT="batch"
+  REQUESTED="${CHECKPOINTS:-}"
+  CHECKPOINTS=""
+
+  # Build list of available checkpoints (batch_N format)
+  AVAILABLE=""
+  for b in 9 19 29 39 49 59 69 79 89 99; do
+    if [[ -d "${CKPT_DIR}/batch_${b}" ]] && [[ -f "${CKPT_DIR}/batch_${b}/model_weights.pt" ]]; then
+      AVAILABLE="${AVAILABLE} ${b}"
+    fi
+  done
+
+  # Try edits_NNNNNN format (EvoEdit) if no batch_N found
+  if [[ -z "$AVAILABLE" ]]; then
+    for e in 001000 002000 003000 004000 005000 006000 007000 008000 009000 010000; do
+      if [[ -d "${CKPT_DIR}/edits_${e}" ]] && [[ -f "${CKPT_DIR}/edits_${e}/model_weights.pt" ]]; then
+        n_edits=$((10#$e))
+        batch_idx=$(( n_edits / 100 - 1 ))
+        AVAILABLE="${AVAILABLE} ${batch_idx}"
+        CKPT_FORMAT="evoedit"
+      fi
+    done
+  fi
+  AVAILABLE=$(echo $AVAILABLE | xargs)
+
+  if [[ -z "$AVAILABLE" ]]; then
+    echo "ERROR: No checkpoints found in ${CKPT_DIR}"
+    ls "${CKPT_DIR}/" 2>/dev/null || echo "  Directory does not exist"
+    exit 1
+  fi
+
+  if [[ -n "$REQUESTED" ]]; then
+    # Filter requested checkpoints to only those available
+    for b in $REQUESTED; do
+      if echo " $AVAILABLE " | grep -q " $b "; then
+        CHECKPOINTS="${CHECKPOINTS} ${b}"
+      else
+        echo "  [SKIP] batch_${b} not available (requested but missing)"
+      fi
+    done
+    CHECKPOINTS=$(echo $CHECKPOINTS | xargs)
+    if [[ -z "$CHECKPOINTS" ]]; then
+      echo "  [WARN] None of the requested checkpoints ($REQUESTED) exist. Using all available."
+      CHECKPOINTS="$AVAILABLE"
+    fi
+  else
+    CHECKPOINTS="$AVAILABLE"
+  fi
+
+  echo "  Available:   ${AVAILABLE}"
+  echo "  Evaluating:  ${CHECKPOINTS}"
+  echo "  Format:      ${CKPT_FORMAT}"
+
+  # Eval mode flag
+  EVAL_FLAGS=""
+  if [[ "${EVAL_MODE:-full}" == "fast" ]]; then
+    EVAL_FLAGS="--fast"
+    echo "  Mode: fast (mega-batch first-token)"
+  else
+    echo "  Mode: full (multi-token NLL, vendor-compatible)"
+  fi
+
+  uv run python scripts/eval_matched_ordering.py \
+    --seed "${SEED}" \
+    --alg_name "${ALG_NAME}" \
+    --ordering "${ORDERING}" \
+    --model_name "${MODEL_NAME}" \
+    --checkpoints ${CHECKPOINTS} \
+    --num_edits 100 \
+    --checkpoint_dir "${CKPT_DIR}" \
+    --dataset_path "${DATASET}" \
+    ${EVAL_FLAGS}
+
+  echo ""
+  echo "=== Re-evaluation complete ==="
+  echo "  Results: ${RESULT_ROOT}/matched_ordering/${ALG_NAME}/${ORDERING}/seed${SEED}/"

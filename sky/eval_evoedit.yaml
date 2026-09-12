@@ -1,0 +1,27 @@
+resources:
+  accelerators: L40S:1
+  cpus: 2+
+  memory: 16+
+
+workdir: .
+
+run: |
+  cd ~/sky_workdir
+
+  export RESULT_ROOT="/s3-data/continual-learning/alphaedit/results"
+  export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
+
+  bash scripts/link_dsets.sh || true
+  uv run python scripts/patches/apply_all.py
+  bash scripts/link_stats.sh || true
+
+  STATS_BASE="vendor/AlphaEdit/data/stats"
+  for v in Meta-Llama-3-8B Meta-Llama-3-8B-Instruct \
+           _s3-data_continual-learning_models_Meta-Llama-3-8B \
+           meta-llama_Meta-Llama-3-8B-Instruct; do
+    ln -sf Llama3-8B "${STATS_BASE}/${v}" 2>/dev/null || true
+  done
+
+  uv run python scripts/eval_evoedit_checkpoints.py \
+    --seed "${SEED:-42}" \
+    --ordering "${ORDERING:-fb_high_exposure}"

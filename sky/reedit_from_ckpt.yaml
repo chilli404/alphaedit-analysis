@@ -1,0 +1,31 @@
+resources:
+  accelerators: L40S:1
+  cpus: 2+
+  memory: 16+
+
+workdir: .
+
+run: |
+  cd ~/sky_workdir
+
+  S3_CKPT="/s3-data/continual-learning/alphaedit/checkpoints"
+  S3_RES="/s3-data/continual-learning/alphaedit/results"
+
+  # Data + patches
+  bash scripts/link_stats.sh || true
+  bash scripts/link_dsets.sh || true
+  uv run python scripts/patches/apply_all.py
+
+  echo "Re-editing ${ORDERING} seed ${SEED} from batch ${START_BATCH}"
+
+  uv run python src/runners/alphaedit_stream_runner.py \
+    --seed "${SEED}" \
+    --cuda_device 0 \
+    --stream_length 10000 \
+    --num_edits 100 \
+    --save_interval 10 \
+    --stream custom \
+    --stream_name "${ORDERING}" \
+    --stream_path "${S3_RES}/matched_ordering/orderings/${ORDERING}_seed${SEED}.json" \
+    --checkpoint_base "${S3_CKPT}/matched_ordering/AlphaEdit/${ORDERING}/seed${SEED}" \
+    --start_from_batch "${START_BATCH}"
