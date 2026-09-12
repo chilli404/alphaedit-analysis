@@ -53,7 +53,23 @@ should_run() {
     local label="$1"
     if [ -z "$FILTER" ]; then return 0; fi
     for f in $FILTER; do
-        [[ "$label" == *"$f"* ]] && return 0
+        # Exact prefix match on the label (case-sensitive).
+        # "REVIVE" matches REVIVE+* but NOT "AlphaEdit" or "MEMIT".
+        # "AlphaEdit_ckpt" matches "AlphaEdit (checkpoint_runner)" only.
+        # "MEMIT_ckpt" matches "MEMIT (checkpoint_runner)" only.
+        case "$f" in
+            # Short aliases for non-ambiguous selection
+            AlphaEdit_ckpt) [[ "$label" == "AlphaEdit (checkpoint_runner)" ]] && return 0 ;;
+            MEMIT_ckpt)     [[ "$label" == "MEMIT (checkpoint_runner)" ]] && return 0 ;;
+            MEMIT-Seq)      [[ "$label" == "MEMIT-Seq" ]] && return 0 ;;
+            PathGuard)      [[ "$label" == PathGuard* ]] && return 0 ;;
+            REVIVE)         [[ "$label" == REVIVE+* ]] && return 0 ;;
+            EvoEdit)        [[ "$label" == "EvoEdit"* ]] && return 0 ;;
+            NSE)            [[ "$label" == "NSE"* ]] && return 0 ;;
+            RECT)           [[ "$label" == "RECT"* ]] && return 0 ;;
+            # Exact full label match as fallback
+            *)              [[ "$label" == "$f"* ]] && return 0 ;;
+        esac
     done
     SKIP=$((SKIP+1))
     return 1

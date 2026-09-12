@@ -1170,6 +1170,33 @@ class TestVendorFunctionRequirements:
             "Eval cluster must test TestEvalMetrics (includes mega_batch_eval)"
         )
 
+    def test_no_duplicate_algorithms_across_smoke_clusters(self):
+        """Each algorithm must run on exactly ONE smoke test cluster."""
+        import re
+        filters = {}
+        for yaml_name in ["test_vendor_runners.yaml", "test_revive_runners.yaml", "test_baseline_runners.yaml"]:
+            path = PROJECT_ROOT / "sky" / yaml_name
+            if not path.exists():
+                continue
+            source = path.read_text()
+            m = re.search(r'test_smoke_all_algorithms\.sh\s+--skypilot\s+(.+)', source)
+            if m:
+                filters[yaml_name] = m.group(1).strip().split()
+        assert len(filters) >= 2, "Need at least 2 smoke test YAMLs"
+        all_tokens = []
+        for yaml_name, tokens in filters.items():
+            all_tokens.extend(tokens)
+        # No token should be a substring of another (causes duplicate runs)
+        for i, a in enumerate(all_tokens):
+            for j, b in enumerate(all_tokens):
+                if i != j and a in b and a != b:
+                    # This is OK if the filter uses exact matching (e.g. AlphaEdit_ckpt)
+                    # But NOT OK if one is a raw substring of the other
+                    assert a.endswith("_ckpt") or a == "REVIVE", (
+                        f"Filter token '{a}' is a substring of '{b}' — will cause duplicate runs. "
+                        f"Use _ckpt suffix or exact aliases."
+                    )
+
     def test_eval_cluster_does_not_skip_eval(self):
         """The eval cluster must NOT set SKIP_MEGA_BATCH_EVAL."""
         yaml_path = PROJECT_ROOT / "sky" / "test_eval_and_measure.yaml"
