@@ -40,7 +40,7 @@ fi
 SEED=42
 EDITS=10
 DATASET_LIMIT=20  # 2 batches of 10 — tests editing, checkpoint save, and eval
-TIMEOUT=600  # 10 minutes per algorithm (editing only, no eval)
+TIMEOUT=300  # 5 minutes per algorithm
 PASS=0
 FAIL=0
 SKIP=0
