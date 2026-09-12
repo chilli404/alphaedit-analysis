@@ -282,17 +282,20 @@ def run(args: argparse.Namespace) -> None:
         from nse.nse_main import apply_nse_to_model
         base_apply = apply_nse_to_model
     elif args.base_alg == "MEMIT_rect":
-        baselines_root = get_project_root() / "baselines" / "EvoEdit"
-        sys.path.insert(0, str(baselines_root))
-        from memit.memit_seq_rect_main import apply_memit_seq_rect_to_model
-        base_apply = apply_memit_seq_rect_to_model
+        import importlib.util
+        rect_path = get_project_root() / "baselines" / "EvoEdit" / "memit" / "memit_seq_rect_main.py"
+        spec = importlib.util.spec_from_file_location("memit_seq_rect_main", str(rect_path))
+        rect_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rect_mod)
+        base_apply = rect_mod.apply_memit_seq_rect_to_model
     else:
         raise ValueError(f"Unknown base_alg: {args.base_alg}")
 
-    # For AlphaEdit: load P matrix and initialize cache_c
+    # For AlphaEdit and NSE: load P matrix and initialize cache_c
+    # Both vendor functions require cache_c (accumulated key covariance)
     cache_c = None
     P = None
-    if args.base_alg == "AlphaEdit":
+    if args.base_alg in ("AlphaEdit", "NSE"):
         from AlphaEdit.AlphaEdit_main import get_cov
         n_layers = len(hparams.layers)
         d_in = hparams.mom2_n_samples if hasattr(hparams, 'mom2_n_samples') else 4096
@@ -316,8 +319,9 @@ def run(args: argparse.Namespace) -> None:
     # Wrap apply_fn to pass hooks, state, and AlphaEdit extras
     def apply_fn(model, tok, requests, hparams, **kwargs):
         extra = {}
-        if args.base_alg == "AlphaEdit" and cache_c is not None and P is not None:
+        if cache_c is not None:
             extra["cache_c"] = cache_c
+        if P is not None:
             extra["P"] = P
         # Pass current weights to state for REVIVE
         if args.revive:
