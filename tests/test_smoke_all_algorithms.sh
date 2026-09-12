@@ -17,7 +17,14 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
 SKYPILOT=0
-[[ "${1:-}" == "--skypilot" ]] && SKYPILOT=1
+FILTER=""
+for arg in "$@"; do
+    case "$arg" in
+        --skypilot) SKYPILOT=1 ;;
+        *) FILTER="$FILTER $arg" ;;
+    esac
+done
+FILTER="${FILTER# }"  # trim leading space
 
 if [ "$SKYPILOT" -eq 1 ]; then
     export RESULT_ROOT="/s3-data/continual-learning/alphaedit/results/_smoke_test"
@@ -42,14 +49,26 @@ START_ALL=$(date +%s)
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 
+should_run() {
+    local label="$1"
+    if [ -z "$FILTER" ]; then return 0; fi
+    for f in $FILTER; do
+        [[ "$label" == *"$f"* ]] && return 0
+    done
+    SKIP=$((SKIP+1))
+    return 1
+}
+
 run_and_check() {
     local label="$1"
     local expected_ckpt_path="$2"  # exact path to model_weights.pt (empty = skip check)
     local _unused="$3"  # kept for call-site compat
     shift 3
 
+    should_run "$label" || return
+
     log "───────────────────────────────────────────"
-    log "START [$((PASS + FAIL + 1))/11]: $label"
+    log "START [$((PASS + FAIL + SKIP + 1))/11]: $label"
     log "  Config: $*" | head -c 200
     echo ""
     local t0=$(date +%s)
@@ -237,10 +256,12 @@ run_and_check "PathGuard-poly2-hybrid" "$CHECKPOINT_ROOT/pathguard/PathGuard-ED-
 run_baseline() {
     local label="$1"
     local script="$2"
-    local logfile=$(mktemp)
 
+    should_run "$label" || return
+
+    local logfile=$(mktemp)
     log "───────────────────────────────────────────"
-    log "START [$((PASS + FAIL + 1))/11]: $label"
+    log "START [$((PASS + FAIL + SKIP + 1))/11]: $label"
     log "  Script: $script, TARGET_EDITS=$DATASET_LIMIT, NUM_EDITS=$EDITS, SEED=$SEED"
     local t0=$(date +%s)
 
@@ -288,7 +309,7 @@ TOTAL_TIME=$((END_ALL - START_ALL))
 
 log ""
 log "============================================"
-log "  RESULTS: $PASS passed, $FAIL failed (of 11 algorithms)"
+log "  RESULTS: $PASS passed, $FAIL failed, $SKIP skipped (of 11 algorithms)"
 log "  Total time: ${TOTAL_TIME}s ($((TOTAL_TIME / 60))m)"
 log "============================================"
 if [ "$FAIL" -gt 0 ]; then

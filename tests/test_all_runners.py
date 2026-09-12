@@ -445,6 +445,56 @@ class TestBaselineScripts:
             assert func in source, f"patch_baselines.sh must patch {func}"
 
 
+class TestPathGuardArgs:
+    """PathGuard runner must accept the correct arguments."""
+
+    def test_pathguard_has_kernel_degree_arg(self):
+        """PathGuard uses --pathguard_kernel_degree, NOT --kernel_degree."""
+        source = (PROJECT_ROOT / "src" / "runners" / "pathguard_runner.py").read_text()
+        assert "--pathguard_kernel_degree" in source
+        # Must NOT have bare --kernel_degree (that's polykernel_seqreg_runner's arg)
+        import re
+        bare_kernel = re.findall(r'add_argument\("--kernel_degree"', source)
+        assert not bare_kernel, (
+            "pathguard_runner should use --pathguard_kernel_degree, not --kernel_degree"
+        )
+
+    def test_pathguard_has_pathguard_M(self):
+        source = (PROJECT_ROOT / "src" / "runners" / "pathguard_runner.py").read_text()
+        assert "--pathguard_M" in source
+
+    def test_pathguard_has_pathguard_adaptive(self):
+        source = (PROJECT_ROOT / "src" / "runners" / "pathguard_runner.py").read_text()
+        assert "--pathguard_adaptive" in source
+
+
+class TestBaselineOrderingStreamAccess:
+    """Baseline scripts must find ordering streams at the expected paths."""
+
+    @pytest.mark.parametrize("script", [
+        "run_evoedit_baseline.sh",
+        "run_nse_baseline.sh",
+    ])
+    def test_baseline_uses_result_root_for_streams(self, script):
+        """Baselines must read ordering streams from RESULT_ROOT, not a hardcoded path."""
+        path = PROJECT_ROOT / "scripts" / script
+        if not path.exists():
+            pytest.skip(f"{script} not present")
+        source = path.read_text()
+        assert "RESULT_ROOT" in source or "STREAM_PATH" in source, (
+            f"{script} must use RESULT_ROOT or STREAM_PATH for ordering streams"
+        )
+
+    def test_rect_does_not_need_ordering_stream(self):
+        """RECT paper replication uses default MCF order, no ordering stream needed."""
+        path = PROJECT_ROOT / "scripts" / "run_rect_aligned_paper_replication.sh"
+        if not path.exists():
+            pytest.skip("script not present")
+        source = path.read_text()
+        # RECT uses default order — should NOT require STREAM_PATH
+        assert "STREAM_PATH" not in source or "ORDERING" not in source
+
+
 class TestBaselineNumEditsOverride:
     """Baseline scripts must support NUM_EDITS env var to override hardcoded batch size."""
 
