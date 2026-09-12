@@ -68,10 +68,16 @@ else STATS_SUBDIR="${MODEL_NAME##*/}"; fi
 P_SRC="$STATS_SRC/$STATS_SUBDIR/null_space_project.pt"
 if [[ -f "$P_SRC" ]]; then
     # Copy P matrix locally (not symlink — S3 FUSE doesn't support ln into it).
-    # Vendor evaluate.py loads from CWD; harness runners check alphaedit_root/.
-    cp -f "$P_SRC" "$PROJECT_DIR/vendor/AlphaEdit/null_space_project.pt"
-    [[ -d "$PROJECT_DIR/baselines/EvoEdit" ]] && \
-        cp -f "$P_SRC" "$PROJECT_DIR/baselines/EvoEdit/null_space_project.pt"
+    # Remove first: old runs may have left a symlink to S3, and cp fails with
+    # "are the same file" when source resolves through that symlink.
+    _P_DST="$PROJECT_DIR/vendor/AlphaEdit/null_space_project.pt"
+    rm -f "$_P_DST"
+    cp "$P_SRC" "$_P_DST"
+    if [[ -d "$PROJECT_DIR/baselines/EvoEdit" ]]; then
+        _P_DST_BL="$PROJECT_DIR/baselines/EvoEdit/null_space_project.pt"
+        rm -f "$_P_DST_BL"
+        cp "$P_SRC" "$_P_DST_BL"
+    fi
     echo "  Linked cached null-space projection: $STATS_SUBDIR"
 fi
 
