@@ -394,9 +394,13 @@ class TestOrderingExperiment:
     def test_ordering_stream_loads(self, model_and_tok):
         """Ordering stream files load and have correct record format."""
         import json
-        stream = PROJECT_ROOT / "results" / "matched_ordering" / "orderings" / "fb_high_exposure_seed42.json"
-        if not stream.exists():
-            pytest.skip("Ordering stream not available")
+        candidates = [
+            PROJECT_ROOT / "results" / "matched_ordering" / "orderings" / "fb_high_exposure_seed42.json",
+            Path("/s3-data/continual-learning/alphaedit/results/matched_ordering/orderings/fb_high_exposure_seed42.json"),
+        ]
+        stream = next((p for p in candidates if p.exists()), None)
+        if stream is None:
+            pytest.skip("Ordering stream not available (check results/ or S3 mount)")
         data = json.load(open(stream))
         assert len(data) >= 100
         assert "case_id" in data[0]

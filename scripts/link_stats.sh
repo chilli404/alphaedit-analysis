@@ -67,11 +67,17 @@ else STATS_SUBDIR="${MODEL_NAME##*/}"; fi
 
 P_SRC="$STATS_SRC/$STATS_SUBDIR/null_space_project.pt"
 if [[ -f "$P_SRC" ]]; then
+    # Vendor CWD path (vendor evaluate.py loads from CWD)
     ln -sf "$P_SRC" "$PROJECT_DIR/vendor/AlphaEdit/null_space_project.pt"
     ln -sf "$P_SRC" "$PROJECT_DIR/vendor/AlphaEdit/null_space_project_${STATS_SUBDIR}.pt"
+    # Inside wikipedia_stats/ (harness runners check data/stats/{model}/wikipedia_stats/)
+    WIKISTATS="$PROJECT_DIR/vendor/AlphaEdit/data/stats/$STATS_SUBDIR/wikipedia_stats"
+    [[ -d "$WIKISTATS" ]] && ln -sf "$P_SRC" "$WIKISTATS/null_space_project.pt"
     [[ -d "$PROJECT_DIR/baselines/EvoEdit" ]] && {
         ln -sf "$P_SRC" "$PROJECT_DIR/baselines/EvoEdit/null_space_project.pt"
         ln -sf "$P_SRC" "$PROJECT_DIR/baselines/EvoEdit/null_space_project_${STATS_SUBDIR}.pt"
+        BL_WIKISTATS="$PROJECT_DIR/baselines/EvoEdit/data/stats/$STATS_SUBDIR/wikipedia_stats"
+        [[ -d "$BL_WIKISTATS" ]] && ln -sf "$P_SRC" "$BL_WIKISTATS/null_space_project.pt"
     }
     echo "  Linked null-space projection: $STATS_SUBDIR"
 fi

@@ -1018,6 +1018,25 @@ class TestVendorFunctionRequirements:
         nse_cache_section = source[source.find("elif args.base_alg == \"NSE\"", source.find("cache_c = None")):]
         assert "cache_c" in nse_cache_section[:600], "NSE cache_c section must exist"
 
+    def test_link_stats_puts_p_matrix_in_wikipedia_stats(self):
+        """link_stats.sh must symlink the P matrix INTO wikipedia_stats/ so that
+        the runner's fallback path (stats/{model}/wikipedia_stats/null_space_project.pt)
+        finds it. On S3, P lives at stats/{model}/null_space_project.pt — link_stats
+        must bridge this gap by linking it into wikipedia_stats/."""
+        link_stats = (PROJECT_ROOT / "scripts" / "link_stats.sh").read_text()
+        # Must define a WIKISTATS variable pointing to wikipedia_stats AND
+        # use it to link null_space_project.pt
+        has_wikistats_var = "wikipedia_stats" in link_stats and "WIKISTATS" in link_stats
+        has_p_link = "WIKISTATS" in link_stats and "null_space_project" in link_stats
+        assert has_wikistats_var and has_p_link, (
+            "link_stats.sh must link null_space_project.pt into the wikipedia_stats/ "
+            "directory. The runner checks:\n"
+            "  data/stats/{model}/wikipedia_stats/null_space_project.pt\n"
+            "but S3 has it at:\n"
+            "  data/stats/{model}/null_space_project.pt\n"
+            "link_stats.sh must bridge this gap."
+        )
+
     def test_alphaedit_lhs_uses_double_precision(self):
         """AlphaEdit through hooks must use float64 for the LHS solve, not float16."""
         source = (PROJECT_ROOT / "src" / "algorithms" / "hook_presets.py").read_text()
