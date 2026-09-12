@@ -496,39 +496,14 @@ class TestBaselineOrderingStreamAccess:
 
 
 class TestBaselineMegaBatchEval:
-    """ALL baseline scripts must use mega_batch_eval for MCF evaluation."""
+    """Mega-batch eval is applied via scripts/patches/apply_all.py, not inline in baseline scripts."""
 
-    @pytest.mark.skipif(not BASELINES_ROOT.exists(), reason="baselines not present")
-    @pytest.mark.parametrize("script", [
-        "run_evoedit_baseline.sh",
-        "run_nse_baseline.sh",
-        "run_rect_aligned_paper_replication.sh",
-    ])
-    def test_baseline_injects_mega_batch_eval(self, script):
-        path = PROJECT_ROOT / "scripts" / script
-        if not path.exists():
-            pytest.skip(f"{script} not present")
-        source = path.read_text()
-        assert "mega_batch_eval" in source.lower() or "_mega_batch_eval" in source, (
-            f"{script} must use mega_batch_eval for batched evaluation. "
-            f"Without it, evaluation is ~4-10x slower (per-record vendor loop)."
-        )
+    def test_patch_mega_batch_eval_exists(self):
+        assert (PROJECT_ROOT / "scripts" / "patches" / "patch_mega_batch_eval.py").exists()
 
-    @pytest.mark.skipif(not BASELINES_ROOT.exists(), reason="baselines not present")
-    @pytest.mark.parametrize("script", [
-        "run_evoedit_baseline.sh",
-        "run_nse_baseline.sh",
-        "run_rect_aligned_paper_replication.sh",
-    ])
-    def test_baseline_reads_from_shared_module(self, script):
-        """Baselines must read mega_batch_eval from src/util/mega_batch_eval.py, not inline it."""
-        path = PROJECT_ROOT / "scripts" / script
-        if not path.exists():
-            pytest.skip(f"{script} not present")
-        source = path.read_text()
-        assert "mega_batch_eval.py" in source or "get_mega_batch_eval_source" in source, (
-            f"{script} must import mega_batch_eval from the shared module, not inline it"
-        )
+    def test_apply_all_includes_mega_batch(self):
+        source = (PROJECT_ROOT / "scripts" / "patches" / "apply_all.py").read_text()
+        assert "patch_mega_batch_eval" in source
 
 
 class TestBaselineNumEditsOverride:

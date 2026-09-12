@@ -27,19 +27,8 @@ run: |
   bash scripts/link_dsets.sh
   bash scripts/patch_baselines.sh "$(pwd)"
 
-  # Patch vendor code
-  uv run python -c "
-  import sys; sys.path.insert(0, 'src/util')
-  from source_patches import patch_evaluate_file, patch_memit_file, patch_alphaedit_main_file, patch_layer_stats_file, patch_glue_eval_file
-  from paths import get_alphaedit_root
-  r = get_alphaedit_root()
-  patch_evaluate_file(r)
-  patch_memit_file(r)
-  patch_alphaedit_main_file(r)
-  patch_layer_stats_file(r)
-  patch_glue_eval_file(r)
-  print('All vendor patches applied.')
-  "
+  # Apply all patches (vendor + baselines)
+  uv run python scripts/patches/apply_all.py
 
   # Run CPU tests first (fast, catches code issues immediately)
   echo "=== Running CPU tests ==="

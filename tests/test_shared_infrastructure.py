@@ -294,18 +294,11 @@ class TestMegaBatchEval:
                 missing.append(runner)
         assert not missing, f"These runners lack mega_batch_eval: {missing}"
 
-    def test_all_baseline_scripts_have_mega_batch_eval(self):
-        """Every baseline script must inject mega_batch_eval from the shared module."""
-        missing = []
-        for script in [
-            "scripts/run_evoedit_baseline.sh",
-            "scripts/run_nse_baseline.sh",
-            "scripts/run_rect_aligned_paper_replication.sh",
-        ]:
-            path = PROJECT_ROOT / script
-            if path.exists() and "mega_batch_eval" not in path.read_text():
-                missing.append(script)
-        assert not missing, f"These baselines lack mega_batch_eval: {missing}"
+    def test_mega_batch_applied_via_patch_system(self):
+        """Baselines get mega_batch_eval via scripts/patches/apply_all.py, not inline."""
+        assert (PROJECT_ROOT / "scripts" / "patches" / "patch_mega_batch_eval.py").exists()
+        source = (PROJECT_ROOT / "scripts" / "patches" / "apply_all.py").read_text()
+        assert "patch_mega_batch_eval" in source
 
     def test_shared_module_matches_inline_output_format(self):
         """Shared module must produce the same output fields as inline copies."""

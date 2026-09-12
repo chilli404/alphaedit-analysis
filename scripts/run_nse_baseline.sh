@@ -278,28 +278,7 @@ if _cnt_anchor in source:
 else:
     print('  [PATCH] WARNING: cnt anchor not found for edit print')
 
-# --- Patch 7: Inject mega_batch_eval for batched scoring (4-10x faster) ---
-_eval_anchor = '    for record in ds:'
-_mega_batch_src = open('$PROJECT_DIR/src/util/mega_batch_eval.py').read()
-import re as _re
-_fn_match = _re.search(r\"def _mega_batch_eval\(.*?(?=\\ndef |\\Z)\", _mega_batch_src, _re.DOTALL)
-if _fn_match:
-    _mega_fn = _fn_match.group()
-    _mega_fn_indented = '\\n'.join('    ' + line for line in _mega_fn.split('\\n'))
-    _mega_call = '''    # === MEGA-BATCH EVAL (injected) ===
-    _mega_batch_eval(edited_model, tok, list(ds), case_result_template, num_edits, case_ids, exec_time, batch_size=4)
-    # === END MEGA-BATCH EVAL ===
-    if False:  # skip vendor per-record loop
-        for record in ds:'''
-    if _eval_anchor in source:
-        source = source.replace(_eval_anchor, _mega_fn_indented + '\\n' + _mega_call, 1)
-        print('  [PATCH] Mega-batch eval injected (replaces per-record loop)')
-    else:
-        print('  [PATCH] WARNING: eval anchor not found for mega-batch injection')
-else:
-    print('  [PATCH] WARNING: mega_batch_eval function not found in module')
-
-print('[NSE] evaluate.py patched: model resolve, results dir, dataset override, checkpoints, mega-batch eval')
+print('[NSE] evaluate.py patched: model resolve, results dir, dataset override, checkpoints')
 
 exec(compile(source, 'experiments/evaluate.py', 'exec'),
      {'__name__': '__main__', '__file__': 'experiments/evaluate.py'})
