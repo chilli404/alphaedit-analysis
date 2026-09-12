@@ -2,906 +2,142 @@
 """
 Checkpoint-Based Failure Curve Runner for AlphaEdit / MEMIT.
 
-Enables long-running failure curve experiments (2000→10000 edits) to survive
-8-hour SkyPilot cluster limits by saving model state at milestones and
-resuming from checkpoints in subsequent cluster runs.
+Uses evaluate_harness.run_experiment() instead of exec(compile(evaluate.py)).
+Checkpoint save/load/resume via shared checkpoint_io module.
 
-Implementation approach:
-  Source-injection pattern — injects checkpoint save/load/skip logic into
-  evaluate.py at known anchor points (pinned commit b84624f).
-
-Injection points:
-  1. BEFORE the main edit loop: load checkpoint (restore model weights + cache_c)
-  2. BEFORE the per-batch edit call: skip guard (skip already-processed batches)
-  3. AFTER the per-batch edit call: save checkpoint at interval boundaries
-
-Checkpoint contents:
-  checkpoints/{alg_name}/seed{seed}/batch_{N}/
-      metadata.json          — batch index, total edits, timestamp
-      model_weights.pt       — state dict for edited layers only (~560MB)
-      cache_c.pt             — covariance cache (AlphaEdit only, ~320MB)
-
-Checkpoint dir resolution:
-  1. --checkpoint_dir if provided
-  2. $CHECKPOINT_ROOT env var if set
-  3. ~/.cache/alphaedit_checkpoints/
+Still uses exec(compile()) for:
+  - AlphaEdit C₀ injection (--inject_c0): patches AlphaEdit_main.py internals
 
 Usage:
-    python src/checkpoint_runner.py \\
-        --seed 42 \\
-        --alg_name AlphaEdit \\
-        --ds_name mcf \\
-        --dataset_size_limit 5000 \\
-        --num_edits 100 \\
-        --start_from_batch 0 \\
-        --save_interval 10 \\
-        --downstream_eval_steps 10 \\
-        --conserve_memory
+    python src/runners/checkpoint_runner.py \
+        --seed 42 --alg_name AlphaEdit --ds_name mcf \
+        --dataset_size_limit 5000 --num_edits 100 \
+        --save_interval 10 --conserve_memory
 """
 
 import argparse
 import json
 import os
 import platform
+import random
 import subprocess
 import sys
-import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Add src/util to path for shared utilities
+import numpy as np
+import torch
+
 _SRC_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_SRC_DIR / "util"))
+sys.path.insert(0, str(_SRC_DIR))
 
 from model_registry import DEFAULT_MODEL
 from model_resolve import resolve_model_path
 from setup_hparams import link_hparams
-from source_patches import patch_evaluate_file, patch_glue_eval_file, build_order_shuffle_injection, SHUFFLE_ANCHOR
-from dataset_fingerprint import build_fingerprint_injection
 from eval_config import hash_eval_config
 from paths import get_project_root, get_alphaedit_root, get_result_root, get_checkpoint_root
+from evaluate_harness import (
+    run_experiment, load_model_and_tok, load_dataset,
+    ExperimentHooks,
+)
+from checkpoint_io import (
+    save_checkpoint, load_checkpoint, find_latest_checkpoint,
+    should_save, should_skip,
+)
 from mega_batch_eval import get_mega_batch_eval_source
 from experiment_config import ExperimentConfig
 
 
-# --- Source anchors from evaluate.py at commit b84624f ---
-
-# Anchor for the main edit loop (inject checkpoint load BEFORE this)
-LOOP_ANCHOR = '    for record_chunks in chunks(ds, num_edits):'
-
-# Anchor for per-batch edit timing (inject skip guard BEFORE this)
-PRE_EDIT_ANCHOR = '        start = time()\n        if any(alg in alg_name for alg in ["AlphaEdit", "MEMIT_seq", "NSE"]):'
-
-# Anchor for after the entire if/elif/else edit chain (inject checkpoint save BEFORE this)
-POST_EDIT_ANCHOR = '        exec_time = time() - start'
-
-# CUDA patch target
-CUDA_PATCH_TARGET = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
-
-# AlphaEdit import in evaluate.py (for dual injection replacement)
-ALPHAEDIT_IMPORT_ANCHOR = 'from AlphaEdit.AlphaEdit_main import apply_AlphaEdit_to_model, get_cov'
-
-# --- Source anchor from AlphaEdit_main.py at commit b84624f ---
-
-ALPHAEDIT_SOLVE_ANCHOR = (
-    '        upd_matrix = torch.linalg.solve(\n'
-    '                P[i,:,:].cuda() @ (layer_ks @ layer_ks.T + cache_c[i,:,:].cuda()) + hparams.L2*torch.eye(layer_ks.shape[0], dtype=torch.float,device="cuda"), P[i,:,:].cuda() @ layer_ks @ resid.T\n'
-    '        )'
-)
+def _seed_everything(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True, warn_only=True)
 
 
-_DEFAULT_MODEL = DEFAULT_MODEL
-
-
-def _model_tag(model_name: str | None) -> str:
-    """Return a short model tag for checkpoint subdirectory, empty for default model."""
-    if not model_name or model_name == _DEFAULT_MODEL:
-        return ""
-    short = model_name.rsplit("/", 1)[-1].lower()
-    if "qwen2.5-7b" in short:
-        return "qwen2.5-7b"
-    if "gpt-j" in short:
-        return "gpt-j-6b"
-    return short
-
-
-def resolve_checkpoint_dir(explicit_dir: str | None, alg_name: str, seed: int, order_id: int = 0, model_name: str | None = None) -> Path:  # DEPRECATED: use ExperimentConfig.checkpoint_dir()
-    """Resolve the checkpoint directory in priority order.
-
-    If explicit_dir is provided, use it as-is (the caller sets the full path).
-    Otherwise, auto-resolve using CHECKPOINT_ROOT env var:
-        Ordering runs (order_id > 0):  {CHECKPOINT_ROOT}/comparison_ordered/{alg}/seed{N}/order{M}/
-        Standard failure curve:        {CHECKPOINT_ROOT}/failure_curve/{model_tag}/{alg}/seed{N}/
-    Non-default models get a model_tag subdirectory; Llama (default) has none for backwards compat.
-    """
-    if explicit_dir:
-        return Path(explicit_dir)
-
-    base = get_checkpoint_root()
-    tag = _model_tag(model_name)
-
-    if order_id > 0:
-        if tag:
-            return base / "comparison_ordered" / tag / alg_name / f"seed{seed}" / f"order{order_id}"
-        return base / "comparison_ordered" / alg_name / f"seed{seed}" / f"order{order_id}"
-    else:
-        if tag:
-            return base / "failure_curve" / tag / alg_name / f"seed{seed}"
-        return base / "failure_curve" / alg_name / f"seed{seed}"
-
-
-def find_latest_checkpoint(ckpt_dir: Path) -> tuple[int, Path] | None:
-    """Find the latest checkpoint batch in the directory.
-
-    Returns (batch_idx, batch_dir) or None if no checkpoints exist.
-    """
-    if not ckpt_dir.exists():
-        return None
-
-    batch_dirs = sorted(
-        [d for d in ckpt_dir.glob("batch_*") if d.is_dir()],
-        key=lambda d: int(d.name.split("_")[1]) if d.name.split("_")[1].isdigit() else -1,
-    )
-    if not batch_dirs:
-        return None
-
-    # Find the highest batch number with a valid metadata.json
-    for batch_dir in reversed(batch_dirs):
-        metadata_file = batch_dir / "metadata.json"
-        if metadata_file.exists():
-            try:
-                batch_idx = int(batch_dir.name.split("_")[1])
-                return (batch_idx, batch_dir)
-            except (ValueError, IndexError):
-                continue
-
-    return None
-
-
-def _resolve_results_dir(args: argparse.Namespace) -> Path | None:
-    """Build the results directory path for evaluate.py output.
-
-    Structure: {project_root}/results/{experiment}/seed{seed}/{edits}edits[/order{N}]
-
-    evaluate.py appends {AlgName}/run_000/ to RESULTS_DIR, so final path is:
-        results/{experiment}/seed{seed}/{edits}edits[/order{N}]/{AlgName}/run_000/
-    """
-    if args.results_dir:
-        return Path(args.results_dir)
-
-    # Auto-construct from experiment name env var + args
-    experiment = os.environ.get("EXPERIMENT_NAME", "")
-    if not experiment:
-        return None  # Fall back to vendor/AlphaEdit/results/ (legacy behavior)
-
+def _resolve_results_dir(args: argparse.Namespace) -> Path:
+    experiment = os.environ.get("EXPERIMENT_NAME", "failure_curve_checkpointed")
     results_base = get_result_root() / experiment / f"seed{args.seed}"
     results_base = results_base / f"{args.dataset_size_limit}edits"
-
-    # Include order subdirectory for ordering experiments
-    if "ordered" in experiment or "order" in experiment:
+    if args.order_id > 0:
         results_base = results_base / f"order{args.order_id}"
-
     return results_base
 
 
-def build_checkpoint_script(
-    seed: int,
-    cuda_device: str,
-    alg_name: str,
-    model_name: str,
-    hparams_fname: str,
-    ds_name: str,
-    dataset_size_limit: int,
-    num_edits: int,
-    downstream_eval_steps: int,
-    conserve_memory: bool,
-    start_from_batch: int,
-    save_interval: int,
-    checkpoint_dir: str,
-    fast_checkpoint: bool = False,
-    eval_at_checkpoints_only: bool = False,
-    order_id: int = 0,
-    results_dir: str | None = None,
-    result_root: str | None = None,
-    dir_name: str | None = None,
-    inject_c0: bool = False,
-    c0_weight: float = 15000.0,
-    continue_from_run: str | None = None,
-    nullspace_threshold: float | None = None,
-    dataset_override: str | None = None,
-) -> str:
+def _make_eval_fn(fast_mode: bool = False):
+    """Create mega_batch_eval function from the shared module."""
+    ns = {}
+    exec(get_mega_batch_eval_source(), ns)
+    mbe_fn = ns["_mega_batch_eval"]
+
+    if fast_mode:
+        def fast_eval(model, tok, records, template, num_edits, case_ids, exec_time):
+            batch_records = [r for r in records if r["case_id"] in case_ids[-num_edits:]]
+            mbe_fn(model, tok, batch_records, template, num_edits, case_ids, exec_time, batch_size=2)
+        return fast_eval
+    return mbe_fn
+
+
+def _load_c0_patched_apply(alphaedit_root: Path, c0_weight: float):
+    """Load AlphaEdit with C₀ injection via exec(compile(AlphaEdit_main.py)).
+
+    This patches the solve line to include α·C₀ in the LHS.
+    Returns the patched (apply_fn, get_cov_fn).
     """
-    Build an inline Python script that:
-    1. Seeds all RNGs
-    2. Injects checkpoint save/load/skip into evaluate.py
-    3. Executes the patched evaluate.py as __main__
+    ae_path = alphaedit_root / "AlphaEdit" / "AlphaEdit_main.py"
+    ae_source = ae_path.read_text()
 
-    Evaluation modes:
-      - Normal: Evaluate all facts after every batch (slow, complete)
-      - fast_checkpoint: Evaluate only edited batch after every batch (fast, partial)
-      - eval_at_checkpoints_only: Evaluate all facts only at checkpoint boundaries (balanced)
-    """
-    argv_parts = [
-        "experiments.evaluate",
-        f"--alg_name={alg_name}",
-        f"--model_name={model_name}",
-        f"--hparams_fname={hparams_fname}",
-        f"--ds_name={ds_name}",
-        f"--dataset_size_limit={dataset_size_limit}",
-        f"--num_edits={num_edits}",
-        f"--downstream_eval_steps={downstream_eval_steps}",
-        "--generation_test_interval=1",
-        "--skip_generation_tests",
-    ]
-    if conserve_memory:
-        argv_parts.append("--conserve_memory")
-    if continue_from_run:
-        argv_parts.append(f"--continue_from_run={continue_from_run}")
+    ae_source = ae_source.replace("from .compute_ks", "from AlphaEdit.compute_ks")
+    ae_source = ae_source.replace("from .compute_z", "from AlphaEdit.compute_z")
+    ae_source = ae_source.replace("from .AlphaEdit_hparams", "from AlphaEdit.AlphaEdit_hparams")
 
-    argv_str = repr(argv_parts)
+    solve_anchor = (
+        '        upd_matrix = torch.linalg.solve(\n'
+        '                P[i,:,:].cuda() @ (layer_ks @ layer_ks.T + cache_c[i,:,:].cuda()) + hparams.L2*torch.eye(layer_ks.shape[0], dtype=torch.float,device="cuda"), P[i,:,:].cuda() @ layer_ks @ resid.T\n'
+        '        )'
+    )
+    assert solve_anchor in ae_source, "AlphaEdit solve anchor not found"
 
-    # Build optional RESULTS_DIR override injection
-    if results_dir:
-        results_dir_injection = (
-            f'\n_globals_import = \'from util.globals import *\'\n'
-            f'assert _globals_import in source, "globals import not found in evaluate.py"\n'
-            f'source = source.replace(\n'
-            f'    _globals_import,\n'
-            f'    _globals_import + \'\\nRESULTS_DIR = Path("{results_dir}")\\n\',\n'
-            f'    1,\n'
-            f')\n'
-            f'print(f"  [RESULTS_DIR] Overridden to: {results_dir}")\n'
-        )
-    else:
-        results_dir_injection = ""
-
-    # Build optional dir_name override (for MEMIT-Seq: passes MEMIT to ALG_DICT but uses variant as dir_name)
-    if dir_name:
-        results_dir_injection += (
-            f'\nsource = source.replace(\n'
-            f'    \'dir_name=args.alg_name,\',\n'
-            f'    \'dir_name="{dir_name}",\',\n'
-            f'    1,\n'
-            f')\n'
-            f'print(f"  [DIR_NAME] Overridden to: {dir_name}")\n'
-        )
-
-    # Build optional AlphaEdit+C₀ dual injection (patches AlphaEdit_main.py to add covariance to LHS)
-    if inject_c0:
-        c0_injection = f'''
-# === AlphaEdit+C₀: dual source injection (injected) ===
-_alphaedit_c0_weight = {c0_weight}
-
-# Read and patch AlphaEdit_main.py
-with open("AlphaEdit/AlphaEdit_main.py", "r") as _ae_f:
-    _ae_source = _ae_f.read()
-
-# Fix relative imports for standalone exec
-_ae_source = _ae_source.replace("from .compute_ks", "from AlphaEdit.compute_ks")
-_ae_source = _ae_source.replace("from .compute_z", "from AlphaEdit.compute_z")
-_ae_source = _ae_source.replace("from .AlphaEdit_hparams", "from AlphaEdit.AlphaEdit_hparams")
-
-# Replace solve line to include C₀ in LHS
-_ae_solve_anchor = (
-    '        upd_matrix = torch.linalg.solve(\\n'
-    '                P[i,:,:].cuda() @ (layer_ks @ layer_ks.T + cache_c[i,:,:].cuda()) + hparams.L2*torch.eye(layer_ks.shape[0], dtype=torch.float,device="cuda"), P[i,:,:].cuda() @ layer_ks @ resid.T\\n'
-    '        )'
-)
-assert _ae_solve_anchor in _ae_source, (
-    "AlphaEdit solve anchor not found in AlphaEdit_main.py. "
-    "Upstream code has changed from pinned commit b84624f."
-)
-
-_ae_solve_replacement = """        # === AlphaEdit+C₀: augmented solve with covariance (injected) ===
+    solve_replacement = f"""        # === AlphaEdit+C₀: augmented solve with covariance ===
         _cov_for_layer = get_cov(model, tok, hparams.rewrite_module_tmp.format(layer), hparams.mom2_dataset, hparams.mom2_n_samples, hparams.mom2_dtype)
         upd_matrix = torch.linalg.solve(
-                P[i,:,:].cuda() @ (_alphaedit_c0_weight * _cov_for_layer.float() + layer_ks @ layer_ks.T + cache_c[i,:,:].cuda()) + hparams.L2*torch.eye(layer_ks.shape[0], dtype=torch.float,device="cuda"), P[i,:,:].cuda() @ layer_ks @ resid.T
-        )
-        # === END AlphaEdit+C₀ ==="""
+                P[i,:,:].cuda() @ ({c0_weight} * _cov_for_layer.float() + layer_ks @ layer_ks.T + cache_c[i,:,:].cuda()) + hparams.L2*torch.eye(layer_ks.shape[0], dtype=torch.float,device="cuda"), P[i,:,:].cuda() @ layer_ks @ resid.T
+        )"""
 
-_ae_source = _ae_source.replace(_ae_solve_anchor, _ae_solve_replacement, 1)
-assert "AlphaEdit+C\\u2080" in _ae_source or "AlphaEdit+C0" in _ae_source or "_alphaedit_c0_weight" in _ae_source, "C0 injection into AlphaEdit_main.py failed"
+    ae_source = ae_source.replace(solve_anchor, solve_replacement, 1)
 
-# Compile and exec patched AlphaEdit_main.py
-_ae_ns = {{
-    "__name__": "AlphaEdit.AlphaEdit_main",
-    "__file__": "AlphaEdit/AlphaEdit_main.py",
-    "_alphaedit_c0_weight": _alphaedit_c0_weight,
-}}
-exec(compile(_ae_source, "AlphaEdit/AlphaEdit_main.py", "exec"), _ae_ns)
-_patched_apply_AlphaEdit = _ae_ns["apply_AlphaEdit_to_model"]
-_patched_get_cov = _ae_ns["get_cov"]
-
-print(f"[AlphaEdit+C0] AlphaEdit_main.py patched: c0_weight={{_alphaedit_c0_weight}}")
-
-# Replace AlphaEdit import in evaluate.py
-_ae_import_anchor = "from AlphaEdit.AlphaEdit_main import apply_AlphaEdit_to_model, get_cov"
-assert _ae_import_anchor in source, (
-    "AlphaEdit import anchor not found in evaluate.py. "
-    "Upstream code has changed from pinned commit b84624f."
-)
-source = source.replace(
-    _ae_import_anchor,
-    "# apply_AlphaEdit_to_model patched by checkpoint_runner (AlphaEdit+C0)",
-)
-# === END AlphaEdit+C₀ dual injection ===
-'''
-        c0_exec_ns_injection = (
-            '_exec_ns["apply_AlphaEdit_to_model"] = _patched_apply_AlphaEdit\n'
-            '_exec_ns["get_cov"] = _patched_get_cov\n'
-        )
-    else:
-        c0_injection = ""
-        c0_exec_ns_injection = ""
-
-    # Nullspace threshold override injection
-    if nullspace_threshold is not None:
-        # Determine correct S3 stats path for this model
-        # model_name can be HF ID or S3 path - normalize to stats subdir
-        _mn_lower = model_name.lower() if model_name else ""
-        if "gpt-j" in _mn_lower:
-            _stats_subdir = "gpt-j-6b"
-        elif "qwen2.5" in _mn_lower:
-            _stats_subdir = "qwen2.5-7b-instruct"
-        elif "llama" in _mn_lower or "meta-llama" in _mn_lower:
-            _stats_subdir = "llama3-8b-instruct"
-        else:
-            _stats_subdir = "llama3-8b-instruct"
-        nullspace_threshold_injection = (
-            f'# Override nullspace_threshold for projection capacity sweep\n'
-            f'_ns_threshold_anchor = \'threshold = hparams.nullspace_threshold\'\n'
-            f'assert _ns_threshold_anchor in source, "nullspace_threshold anchor not found"\n'
-            f'source = source.replace(\n'
-            f'    _ns_threshold_anchor,\n'
-            f'    \'threshold = {nullspace_threshold}  # overridden by checkpoint_runner (was hparams.nullspace_threshold)\',\n'
-            f'    1,\n'
-            f')\n'
-            f'# Replace ALL occurrences of the P cache filename with per-threshold version\n'
-            f'source = source.replace("null_space_project.pt", "null_space_project_t{nullspace_threshold}.pt")\n'
-            f'# Fix P cache path to use correct model stats dir\n'
-            f'import os as _os\n'
-            f'_stats_root = _os.environ.get("STATS_ROOT", "data/stats")\n'
-            f'source = source.replace(\n'
-            f'    _stats_root + "/llama3-8b-instruct/null_space_project_t{nullspace_threshold}.pt",\n'
-            f'    _stats_root + "/{_stats_subdir}/null_space_project_t{nullspace_threshold}.pt",\n'
-            f')\n'
-            f'# Replace get_project() with SVD-cached version (avoids 45-min recomputation per threshold)\n'
-            f'_get_project_anchor = "def get_project(model, tok, layer, hparams):"\n'
-            f'_get_project_replacement = """def get_project(model, tok, layer, hparams):\n'
-            f'    from pathlib import Path as _P\n'
-            f'    import numpy as _np\n'
-            f'    # Check for cached SVD decomposition (U, S) — shared across all thresholds\n'
-            f'    _layer_name = hparams.rewrite_module_tmp.format(layer)\n'
-            f'    import os as _os2\n'
-            f'    _svd_cache = _P(_os2.environ.get("STATS_ROOT", "data/stats")) / "{_stats_subdir}" / f"svd_{{_layer_name.replace(chr(46), chr(95))}}.pt"\n'
-            f'    if _svd_cache.exists():\n'
-            f'        _cached = torch.load(str(_svd_cache), map_location="cpu")\n'
-            f'        U, S = _cached["U"], _cached["S"]\n'
-            f'        print(f"  Loaded cached SVD for {{_layer_name}} ({{len(S)}} dims)")\n'
-            f'    else:\n'
-            f'        force_recompute = False\n'
-            f'        cov = get_cov(model, tok, _layer_name, hparams.mom2_dataset,\n'
-            f'                      hparams.mom2_n_samples if not force_recompute else hparams.mom2_n_samples // 10,\n'
-            f'                      hparams.mom2_dtype, force_recompute=force_recompute).cpu()\n'
-            f'        U, S, _ = torch.linalg.svd(cov, full_matrices=False)\n'
-            f'        # Cache SVD to S3 for future threshold runs\n'
-            f'        if _svd_cache.parent.exists():\n'
-            f'            torch.save({{"U": U, "S": S}}, str(_svd_cache))\n'
-            f'            print(f"  Computed and cached SVD for {{_layer_name}} -> {{_svd_cache}}")\n'
-            f'        else:\n'
-            f'            print(f"  Computed SVD for {{_layer_name}} (no S3 cache available)")\n'
-            f'    threshold = {nullspace_threshold}\n'
-            f'    small_singular_indices = (S < threshold).nonzero(as_tuple=True)[0]\n'
-            f'    print(f"  rank(P) for {{_layer_name}}: {{len(small_singular_indices)}}/{{len(S)}} dims below threshold={{threshold}}")\n'
-            f'    return U[:, small_singular_indices] @ U[:, small_singular_indices].T"""\n'
-            f'assert _get_project_anchor in source, "get_project anchor not found"\n'
-            f'# Replace entire get_project function (up to next def)\n'
-            f'_gp_start = source.index(_get_project_anchor)\n'
-            f'_gp_end = source.index("\\ndef ", _gp_start + 1)\n'
-            f'source = source[:_gp_start] + _get_project_replacement + "\\n" + source[_gp_end:]\n'
-            f'print(f"  [THRESHOLD] nullspace_threshold overridden to {nullspace_threshold}")\n'
-            f'print(f"  [THRESHOLD] P cache file: null_space_project_t{nullspace_threshold}.pt")\n'
-            f'print(f"  [THRESHOLD] SVD cache: $STATS_ROOT/{_stats_subdir}/svd_*.pt")\n'
-        )
-    else:
-        nullspace_threshold_injection = ""
-
-    # Mega-batch eval injection (outside f-string to avoid Python 3.10 nested-quote issues)
-    # Mega-batch eval injection (from shared module src/util/mega_batch_eval.py)
-    _mbe_fn_source = get_mega_batch_eval_source()
-    _mbe_fn_indented = '\n'.join('    ' + line for line in _mbe_fn_source.strip().split('\n'))
-    mega_batch_eval_injection = _mbe_fn_indented + '''
-    # --- Call mega-batch eval or fall through to original loop ---
-    _use_mega_batch = (ds_name != "zsre")
-    if _do_final_eval and _use_mega_batch:
-        _records_to_eval = list(ds)
-        # === CHECKPOINT: fast mode - filter to batch records only (injected) ===
-        if _ckpt_fast_mode:
-            _records_to_eval = [r for r in ds if r["case_id"] in case_ids]
-        _mega_batch_eval(edited_model, tok, _records_to_eval, case_result_template, num_edits, case_ids, exec_time, batch_size=2)
-    # === END mega-batch eval ===
-    _eval_skipped = 0
-    for record in ds:
-        if _use_mega_batch:
-            break  # Mega-batch handles all eval above; skip vendor fallback loop
-        # === CHECKPOINT: skip entire evaluation if _do_final_eval is False (injected) ===
-        if not _do_final_eval:
-            break
-        # === CHECKPOINT: skip cases already evaluated (resume-safe) ===
-        out_file = Path(case_result_template.format(num_edits, record["case_id"]))
-        if out_file.exists():
-            _eval_skipped += 1
-            continue
-        if _eval_skipped > 0:
-            print(f"  [CHECKPOINT] Skipped {_eval_skipped} already-evaluated cases, resuming from case {record['case_id']}")
-            _eval_skipped = 0
-        # === END eval resume guard ==='''
-
-    script = textwrap.dedent(f"""\
-import os, sys, random, json
-import numpy as np
-import torch
-
-# 1. Seed all sources of randomness
-seed = {seed}
-random.seed(seed)
-np.random.seed(seed)
-torch.manual_seed(seed)
-torch.cuda.manual_seed_all(seed)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-torch.use_deterministic_algorithms(True, warn_only=True)
-
-# 2. Set sys.argv
-sys.argv = {argv_str}
-
-# 3. Checkpoint parameters
-_ckpt_start_batch = {start_from_batch}
-_ckpt_save_interval = {save_interval}
-_ckpt_dir = "{checkpoint_dir}"
-_ckpt_alg_name = "{alg_name}"
-_ckpt_seed = {seed}
-_ckpt_num_edits = {num_edits}
-_ckpt_fast_mode = {fast_checkpoint}
-_ckpt_eval_at_checkpoints_only = {eval_at_checkpoints_only}
-_ckpt_dataset_size_limit = {dataset_size_limit}
-
-def _ckpt_save(cnt, model, cache_c, hparams, alg_name):
-    \"\"\"Save model weights and cache_c at checkpoint boundary.\"\"\"
-    import json, shutil
-    from pathlib import Path
-    from datetime import datetime, timezone
-
-    batch_dir = Path(_ckpt_dir) / f"batch_{{cnt}}"
-    batch_dir.mkdir(parents=True, exist_ok=True)
-
-    # Save only the edited layer weights (much smaller than full model)
-    # Use rewrite_module_tmp to find the correct parameter names for any architecture
-    layer_weights = {{}}
-    _all_params = dict(model.named_parameters())
-    for layer_idx in hparams.layers:
-        # The rewrite target module (e.g. transformer.h.N.mlp.fc_out or model.layers.N.mlp.down_proj)
-        _rewrite_mod = hparams.rewrite_module_tmp.format(layer_idx)
-        _rewrite_key = _rewrite_mod + ".weight"
-        if _rewrite_key in _all_params:
-            layer_weights[_rewrite_key] = _all_params[_rewrite_key].data.cpu()
-
-    if not layer_weights:
-        print(f"  [CHECKPOINT] WARNING: No matching parameters found for rewrite_module_tmp='{{hparams.rewrite_module_tmp}}'")
-    torch.save(layer_weights, str(batch_dir / "model_weights.pt"))
-
-    # Save cache_c (AlphaEdit only)
-    if alg_name == "AlphaEdit" and cache_c is not None:
-        torch.save(cache_c.cpu(), str(batch_dir / "cache_c.pt"))
-
-    # Save metadata
-    metadata = {{
-        "batch_idx": cnt,
-        "total_edits": (cnt + 1) * _ckpt_num_edits,
-        "alg_name": alg_name,
-        "seed": _ckpt_seed,
-        "num_edits_per_batch": _ckpt_num_edits,
-        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-    }}
-    with open(str(batch_dir / "metadata.json"), "w") as f:
-        json.dump(metadata, f, indent=2)
-
-    print(f"  [CHECKPOINT] Saved batch {{cnt}} ({{(cnt+1) * _ckpt_num_edits}} total edits) -> {{batch_dir}}")
-
-def _ckpt_load(model, hparams, alg_name):
-    \"\"\"Load model weights (and cache_c for AlphaEdit) from the start_from_batch checkpoint.\"\"\"
-    from pathlib import Path
-
-    if _ckpt_start_batch <= 0:
-        return None  # No checkpoint to load
-
-    batch_dir = Path(_ckpt_dir) / f"batch_{{_ckpt_start_batch - 1}}"
-    if not batch_dir.exists():
-        print(f"  [CHECKPOINT] WARNING: Expected checkpoint at {{batch_dir}} not found. Starting from scratch.")
-        return None
-
-    # Load model weights
-    weights_file = batch_dir / "model_weights.pt"
-    if weights_file.exists():
-        layer_weights = torch.load(str(weights_file), map_location="cuda")
-        param_dict = dict(model.named_parameters())
-        loaded_count = 0
-        for param_name, param_data in layer_weights.items():
-            if param_name in param_dict:
-                param_dict[param_name].data.copy_(param_data)
-                loaded_count += 1
-        if loaded_count == 0:
-            print(f"  [CHECKPOINT] CRITICAL WARNING: Loaded 0 parameter tensors from {{weights_file}}!")
-            print(f"  [CHECKPOINT] This likely means the checkpoint was saved with wrong parameter names.")
-            print(f"  [CHECKPOINT] Model is UNEDITED — results will reflect the base model, not the edited model.")
-        else:
-            print(f"  [CHECKPOINT] Loaded {{loaded_count}} parameter tensors from {{weights_file}}")
-    else:
-        print(f"  [CHECKPOINT] WARNING: No model_weights.pt in {{batch_dir}}")
-
-    # Load cache_c (AlphaEdit only)
-    cache_c_loaded = None
-    if alg_name == "AlphaEdit":
-        cache_file = batch_dir / "cache_c.pt"
-        if cache_file.exists():
-            cache_c_loaded = torch.load(str(cache_file), map_location="cpu")
-            print(f"  [CHECKPOINT] Loaded cache_c from {{cache_file}} (shape: {{cache_c_loaded.shape}})")
-        else:
-            print(f"  [CHECKPOINT] WARNING: No cache_c.pt in {{batch_dir}} (AlphaEdit will start with zero cache)")
-
-    print(f"  [CHECKPOINT] Resuming from batch {{_ckpt_start_batch}} ({{_ckpt_start_batch * _ckpt_num_edits}} edits already applied)")
-    return cache_c_loaded
-
-def _ckpt_should_skip(cnt):
-    \"\"\"Return True if this batch was already processed (before start_from_batch).\"\"\"
-    return cnt < _ckpt_start_batch
-
-def _ckpt_should_save(cnt):
-    \"\"\"Return True if we should save a checkpoint at this batch.\"\"\"
-    return (cnt + 1) % _ckpt_save_interval == 0
-
-# 4. Read evaluate.py source
-with open("experiments/evaluate.py", "r") as f:
-    source = f.read()
-
-# 4b. AlphaEdit+C₀ dual injection (if enabled)
-{c0_injection}
-# 4c. Nullspace threshold override (projection capacity sweep)
-{nullspace_threshold_injection}
-# 5. Patch CUDA_VISIBLE_DEVICES
-cuda_patch_target = 'os.environ["CUDA_VISIBLE_DEVICES"] = "1"'
-assert cuda_patch_target in source, (
-    "CUDA_VISIBLE_DEVICES patch target not found in evaluate.py. "
-    "Upstream code has changed from pinned commit b84624f."
-)
-source = source.replace(
-    cuda_patch_target,
-    '# CUDA_VISIBLE_DEVICES managed by checkpoint_runner',
-)
-
-# 5a. Override RESULTS_DIR to write to project results/ directory
-{results_dir_injection}
-# 5b. Patch P/cache_c initialization to not depend on hardcoded model name whitelist.
-# The upstream code only initializes P for model names in a fixed list. If hparams.model_name
-# doesn't match, P and cache_c are never created and the edit call crashes with
-# TypeError: 'NoneType' object is not subscriptable.
-# Fix: add an else branch that infers dimensions from W_out generically.
-_p_init_anchor = '''        elif hparams.model_name in ["EleutherAI_gpt-j-6B","Llama3-8B","phi-1.5","Qwen2.5-7B"]:
-            cache_c = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
-            if alg_name == "AlphaEdit":
-                P = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
-        del W_out'''
-if _p_init_anchor not in source:
-    # Fallback: try the pre-patch version (without Qwen2.5-7B)
-    _p_init_anchor_old = _p_init_anchor.replace(',"Qwen2.5-7B"', '')
-    assert _p_init_anchor_old in source, (
-        "P initialization anchor not found in evaluate.py source. "
-        "Upstream code has changed from pinned commit b84624f."
-    )
-    _p_init_anchor = _p_init_anchor_old
-_p_init_patched = _p_init_anchor.replace(
-    '        del W_out',
-    '''        else:
-            # Fallback: infer dimensions from W_out (handles any model not in whitelist)
-            cache_c = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
-            if alg_name == "AlphaEdit":
-                P = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
-            print(f"  [CHECKPOINT] WARNING: model_name '{{hparams.model_name}}' not in upstream whitelist, using fallback P init (dim={{W_out.shape[1]}})")
-        del W_out'''
-)
-source = source.replace(_p_init_anchor, _p_init_patched, 1)
-
-# 5c. Inject eval results pre-sync: copy partial results from S3/previous run into the new run_dir
-# so that (a) the already_finished check in the edit loop skips fully-evaluated batches and
-# (b) the eval resume guard at the bottom skips individual cases.
-_presync_anchor = '    print(f"Results will be stored at {{run_dir}}")'
-assert _presync_anchor in source, (
-    "Pre-sync anchor (run_dir print) not found in evaluate.py source. "
-    "Upstream code has changed from pinned commit b84624f."
-)
-_presync_injection = '''    print(f"Results will be stored at {{run_dir}}")
-    # === CHECKPOINT: count existing eval results for resume (injected) ===
-    _existing_count = len(list(run_dir.glob("*_edits-case_*.json"))) if run_dir.exists() else 0
-    if _existing_count > 0:
-        print(f"  [CHECKPOINT] Continuing in {{run_dir.name}}: {{_existing_count}} cases already evaluated, will skip them")
-    # Ensure params.json exists when continuing from a run that lacks it
-    if not (run_dir / "params.json").exists():
-        _hparams_fallback = HPARAMS_DIR / ("MEMIT" if "MEMIT" in alg_name else alg_name) / hparams_fname
-        if _hparams_fallback.exists():
-            import shutil as _shutil_mod
-            _shutil_mod.copyfile(str(_hparams_fallback), str(run_dir / "params.json"))
-            print(f"  [CHECKPOINT] Copied params.json from {{_hparams_fallback}}")
-    # === END pre-sync ==='''
-source = source.replace(_presync_anchor, _presync_injection, 1)
-
-# 5d. Inject order shuffle + dataset fingerprint before loop
-loop_anchor = '    for record_chunks in chunks(ds, num_edits):'
-assert loop_anchor in source, (
-    "Loop anchor not found in evaluate.py source. "
-    "Upstream code has changed from pinned commit b84624f."
-)
-
-_order_id = {order_id}
-if _order_id > 0:
-    _shuffle_code = (
-        f'    # === ORDER SHUFFLE: shuffle dataset with order_id={{_order_id}} (injected) ===\\n'
-        f'    import random as _order_rng_module\\n'
-        f'    _order_rng = _order_rng_module.Random({{_order_id}})\\n'
-        f'    _shuffled_indices = list(range(len(ds)))\\n'
-        f'    _order_rng.shuffle(_shuffled_indices)\\n'
-        f'    ds.data = [ds.data[i] for i in _shuffled_indices]\\n'
-        f'    print("ORDER SHUFFLE: shuffled " + str(len(ds)) + " records with order_id={{_order_id}}")\\n'
-        f'    # === END order shuffle ===\\n'
-    )
-    source = source.replace(loop_anchor, _shuffle_code + loop_anchor, 1)
-
-# Inject dataset override (for ordering streams — replaces/reorders dataset with external JSON)
-_ds_override_path = {repr(dataset_override) if dataset_override else 'None'}
-if _ds_override_path:
-    _ds_override_code = '''    # === DATASET OVERRIDE: reorder or replace dataset with external file (injected) ===
-    import json as _dsov_json
-    with open(''' + repr(_ds_override_path) + ''', "r") as _dsov_f:
-        _dsov_stream = _dsov_json.load(_dsov_f)
-    # Determine storage attribute: MCF uses ds.data, ZsRE uses ds._data
-    _dsov_attr = "_data" if hasattr(ds, "_data") else "data"
-    _dsov_existing = getattr(ds, _dsov_attr)
-    # Build index of existing records by case_id (for reordering with full fields)
-    _dsov_id_map = {{r["case_id"]: r for r in _dsov_existing}}
-    _dsov_stream_ids = [r["case_id"] for r in _dsov_stream]
-    # If stream case_ids match existing records, REORDER (preserves neighborhood_prompts etc)
-    # Otherwise fall back to direct REPLACEMENT
-    _dsov_matched = [_dsov_id_map[cid] for cid in _dsov_stream_ids if cid in _dsov_id_map]
-    if len(_dsov_matched) >= len(_dsov_stream_ids) * 0.95:
-        setattr(ds, _dsov_attr, _dsov_matched)
-        print(f"  [OVERRIDE] Reordered {{{{len(_dsov_matched)}}}} records from ''' + _ds_override_path + '''")
-    else:
-        setattr(ds, _dsov_attr, _dsov_stream)
-        print(f"  [OVERRIDE] Replaced with {{{{len(_dsov_stream)}}}} records from ''' + _ds_override_path + '''")
-    # === END dataset override ===
-'''
-    source = source.replace(loop_anchor, _ds_override_code + loop_anchor, 1)
-
-# Inject fingerprint
-_fp_code = \'\'\'    # === FINGERPRINT: compute dataset fingerprint (injected) ===
-    import hashlib as _fp_hashlib
-    import json as _fp_json
-    _fp_case_ids = [r["case_id"] for r in ds]
-    _fp_id_bytes = _fp_json.dumps(_fp_case_ids, separators=(",", ":")).encode("utf-8")
-    _fp_sha256 = _fp_hashlib.sha256(_fp_id_bytes).hexdigest()
-    print(f"  [FINGERPRINT] Dataset: {{len(ds)}} records, SHA-256: {{_fp_sha256[:16]}}...")
-    print(f"  [FINGERPRINT] Order ID: ''' + str(_order_id) + ''', first 5 IDs: {{_fp_case_ids[:5]}}")
-    _fp_ordering_path = run_dir / "edit_ordering.json"
-    _fp_ordering = {{
-        "case_ids_ordered": _fp_case_ids,
-        "n_records": len(ds),
-        "order_id": ''' + str(_order_id) + ''',
-        "fingerprint": {{
-            "sha256": _fp_sha256,
-            "n_records": len(ds),
-            "first_5_ids": _fp_case_ids[:5],
-            "last_5_ids": _fp_case_ids[-5:] if len(_fp_case_ids) >= 5 else _fp_case_ids,
-        }},
-    }}
-    with open(str(_fp_ordering_path), "w") as _fp_f:
-        _fp_json.dump(_fp_ordering, _fp_f, indent=2)
-    # === END fingerprint ===
-'''
-source = source.replace(loop_anchor, _fp_code + loop_anchor, 1)
-
-# 6. Inject checkpoint LOAD before the main edit loop
-load_injection = '''    # === CHECKPOINT: load state from previous run (injected) ===
-    exec_time = 0
-    edited_model = model
-    case_result_template = str(run_dir / "{{}}_edits-case_{{}}.json")
-    case_ids = [r["case_id"] for r in ds]
-    _ckpt_cache_c_loaded = None
-    if _ckpt_start_batch > 0 and '_ckpt_load' in globals():
-        _ckpt_cache_c_loaded = _ckpt_load(model, hparams, alg_name)
-        if _ckpt_cache_c_loaded is not None and alg_name == "AlphaEdit":
-            cache_c = _ckpt_cache_c_loaded
-    # === END checkpoint load ===
-'''
-source = source.replace(
-    loop_anchor,
-    load_injection + loop_anchor,
-    1,
-)
-
-# 7. Inject SKIP guard at the TOP of the edit loop (before header print and already_finished check)
-skip_anchor = '        case_result_template = str(run_dir / "{{}}_edits-case_{{}}.json")'
-assert skip_anchor in source, (
-    "Skip anchor (case_result_template) not found in evaluate.py source. "
-    "Upstream code has changed from pinned commit b84624f."
-)
-
-skip_injection = '''        # === CHECKPOINT: skip already-processed batches (injected) ===
-        if '_ckpt_should_skip' in globals() and _ckpt_should_skip(cnt):
-            cnt += 1
-            continue
-        # === END checkpoint skip ===
-        case_result_template = str(run_dir / "{{}}_edits-case_{{}}.json")'''
-source = source.replace(
-    skip_anchor,
-    skip_injection,
-    1,
-)
-
-# 8. Inject checkpoint SAVE after the entire if/elif/else edit chain
-post_anchor = '        exec_time = time() - start'
-assert post_anchor in source, (
-    "Post-edit anchor not found in evaluate.py source. "
-    "Upstream code has changed from pinned commit b84624f."
-)
-
-save_injection = '''        # === CHECKPOINT: save at interval boundaries (injected) ===
-        if '_ckpt_should_save' in globals() and _ckpt_should_save(cnt):
-            _ckpt_save(cnt, model, cache_c if alg_name == "AlphaEdit" else None, hparams, alg_name)
-        # === END checkpoint save ===
-'''
-source = source.replace(
-    post_anchor,
-    save_injection + post_anchor,
-    1,
-)
-
-# 9. Inject CHECKPOINT-ONLY EVAL guard (skip entire evaluation for non-checkpoint batches)
-# The evaluation section in evaluate.py is OUTSIDE the edit loop (runs once after all edits).
-# We inject a flag check that prevents evaluation when the final batch is not a checkpoint boundary.
-eval_start_anchor = '    # torch.save(hs, "post_edit_hs_memit.pt")\\n    start = time()'
-assert eval_start_anchor in source, (
-    "Evaluation start anchor not found in evaluate.py source. "
-    "Upstream code has changed from pinned commit b84624f."
-)
-
-checkpoint_eval_skip = '''    # torch.save(hs, "post_edit_hs_memit.pt")
-    # === CHECKPOINT: skip evaluation if last batch is not a checkpoint boundary (injected) ===
-    _do_final_eval = True
-    if _ckpt_eval_at_checkpoints_only and not _ckpt_should_save(cnt - 1):
-        _do_final_eval = False
-        print(f"  [CHECKPOINT] Skipping final evaluation (batch {{cnt-1}} not at checkpoint boundary)")
-        print(f"  [CHECKPOINT] Evaluation will run when resumed and a checkpoint boundary is reached.")
-    # === END checkpoint eval skip ===
-    # === CHECKPOINT: free editing-only tensors before eval (injected) ===
-    import gc as _gc
-    if "cache_c" in dir() and cache_c is not None:
-        del cache_c
-    if "P" in dir() and P is not None:
-        del P
-    if "_ckpt_cache_c_loaded" in dir() and _ckpt_cache_c_loaded is not None:
-        del _ckpt_cache_c_loaded
-    _gc.collect()
-    torch.cuda.empty_cache()
-    _mem_free = torch.cuda.mem_get_info()[0] / 1024**3
-    print(f"  [CHECKPOINT] Freed editing tensors before eval ({{_mem_free:.1f}} GiB free)")
-    # === END memory cleanup ===
-    start = time()'''
-source = source.replace(
-    eval_start_anchor,
-    checkpoint_eval_skip,
-    1,
-)
-
-# 10. Inject MEGA-BATCH evaluation to replace per-record eval loop.
-# Replicates exact multi-token scoring from test_batch_prediction but batches
-# multiple records per forward pass for ~10-30x speedup.
-eval_anchor = '    for record in ds:\\n        out_file = Path(case_result_template.format(num_edits, record["case_id"]))'
-assert eval_anchor in source, (
-    "Evaluation loop anchor not found in evaluate.py source. "
-    "Upstream code has changed from pinned commit b84624f."
-)
-
-mega_batch_eval_injection = {repr(mega_batch_eval_injection)}
-source = source.replace(
-    eval_anchor,
-    mega_batch_eval_injection,
-    1,
-)
-
-# 11. Verify all injections succeeded
-assert "CHECKPOINT: load state" in source, "Load injection failed"
-assert "CHECKPOINT: skip already-processed" in source, "Skip injection failed"
-assert "CHECKPOINT: save at interval" in source, "Save injection failed"
-assert "CHECKPOINT: skip evaluation if last batch is not" in source, "Checkpoint-only eval injection failed"
-assert "CHECKPOINT: skip entire evaluation if _do_final_eval" in source, "Final eval guard injection failed"
-assert "CHECKPOINT: fast mode" in source, "Fast eval injection failed"
-assert "CHECKPOINT: skip cases already evaluated" in source, "Eval resume injection failed"
-
-# 12. Execute
-_exec_ns = {{
-    "__name__": "__main__",
-    "__file__": "experiments/evaluate.py",
-    "_ckpt_start_batch": _ckpt_start_batch,
-    "_ckpt_save_interval": _ckpt_save_interval,
-    "_ckpt_dir": _ckpt_dir,
-    "_ckpt_alg_name": _ckpt_alg_name,
-    "_ckpt_seed": _ckpt_seed,
-    "_ckpt_num_edits": _ckpt_num_edits,
-    "_ckpt_fast_mode": _ckpt_fast_mode,
-    "_ckpt_eval_at_checkpoints_only": _ckpt_eval_at_checkpoints_only,
-    "_ckpt_dataset_size_limit": _ckpt_dataset_size_limit,
-    "_ckpt_save": _ckpt_save,
-    "_ckpt_load": _ckpt_load,
-    "_ckpt_should_skip": _ckpt_should_skip,
-    "_ckpt_should_save": _ckpt_should_save,
-}}
-{c0_exec_ns_injection}exec(compile(source, "experiments/evaluate.py", "exec"), _exec_ns)
-
-# 13. Final summary
-print(f"\\n=== Checkpoint runner complete ===")
-print(f"  Algorithm: {{_ckpt_alg_name}}")
-print(f"  Resumed from batch: {{_ckpt_start_batch}}")
-print(f"  Save interval: every {{_ckpt_save_interval}} batches")
-print(f"  Fast checkpoint: {{_ckpt_fast_mode}}")
-print(f"  Eval at checkpoints only: {{_ckpt_eval_at_checkpoints_only}}")
-print(f"  Checkpoint dir: {{_ckpt_dir}}")
-""")
-    return script
+    ae_ns = {
+        "__name__": "AlphaEdit.AlphaEdit_main",
+        "__file__": str(ae_path),
+    }
+    exec(compile(ae_source, str(ae_path), "exec"), ae_ns)
+    print(f"[AlphaEdit+C0] Patched: c0_weight={c0_weight}")
+    return ae_ns["apply_AlphaEdit_to_model"], ae_ns["get_cov"]
 
 
 def run(args: argparse.Namespace) -> None:
-    """Launch the checkpointed experiment."""
     alphaedit_root = get_alphaedit_root()
-
     if not alphaedit_root.exists():
         print(f"ERROR: AlphaEdit not found at {alphaedit_root}")
-        print("Run: git submodule update --init --recursive")
         sys.exit(1)
 
     link_hparams()
-    patch_evaluate_file(alphaedit_root)
-    patch_glue_eval_file(alphaedit_root)
+    _seed_everything(args.seed)
 
-    # Resolve model path
-    model_name = resolve_model_path(args.model_name)
-
-    # Validate anchors exist in the source before launching
-    eval_source = (alphaedit_root / "experiments" / "evaluate.py").read_text()
-    anchors_to_check = [
-        ("LOOP_ANCHOR", LOOP_ANCHOR),
-        ("PRE_EDIT_ANCHOR", PRE_EDIT_ANCHOR),
-        ("POST_EDIT_ANCHOR", POST_EDIT_ANCHOR),
-        ("CUDA_PATCH_TARGET", CUDA_PATCH_TARGET),
-    ]
-    if args.inject_c0:
-        anchors_to_check.append(("ALPHAEDIT_IMPORT_ANCHOR", ALPHAEDIT_IMPORT_ANCHOR))
-        ae_source = (alphaedit_root / "AlphaEdit" / "AlphaEdit_main.py").read_text()
-        if ALPHAEDIT_SOLVE_ANCHOR not in ae_source:
-            print("ERROR: ALPHAEDIT_SOLVE_ANCHOR not found in AlphaEdit_main.py.")
-            print("  The upstream code has diverged from pinned commit b84624f.")
-            sys.exit(1)
-    for anchor_name, anchor_str in anchors_to_check:
-        if anchor_str not in eval_source:
-            print(f"ERROR: {anchor_name} not found in evaluate.py.")
-            print("  The upstream code has diverged from pinned commit b84624f.")
-            sys.exit(1)
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_device
+    os.environ["PYTHONHASHSEED"] = str(args.seed)
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
     # Resolve checkpoint directory
-    # When inject_c0 or nullspace_threshold is active, use a variant name for directory isolation
     ckpt_alg_name = args.alg_name
     if args.inject_c0:
         ckpt_alg_name = f"{args.alg_name}-C0-{args.c0_weight}"
-    if args.nullspace_threshold is not None:
-        ckpt_alg_name = f"{ckpt_alg_name}-t{args.nullspace_threshold}"
+
     if args.checkpoint_dir:
         ckpt_dir = Path(args.checkpoint_dir)
     else:
@@ -914,194 +150,189 @@ def run(args: argparse.Namespace) -> None:
         ckpt_dir = _exp_config.checkpoint_dir()
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
-    # Resolve results directory (where evaluate.py writes per-case JSONs)
-    results_dir_override = _resolve_results_dir(args)
+    # Resolve results directory
+    results_dir = _resolve_results_dir(args)
+    results_dir.mkdir(parents=True, exist_ok=True)
 
-    # Determine start_from_batch
+    # Determine start batch (auto-detect from checkpoint)
     total_batches = args.dataset_size_limit // args.num_edits
     start_from_batch = args.start_from_batch
     if start_from_batch < 0:
-        # Auto-detect from latest checkpoint
         latest = find_latest_checkpoint(ckpt_dir)
         if latest:
             start_from_batch = latest[0] + 1
-            # Cap at total_batches (checkpoint dir may have checkpoints from longer runs)
-            if start_from_batch > total_batches:
+            if start_from_batch >= total_batches:
                 start_from_batch = total_batches
-                print(f"  Auto-detected: checkpoint at batch {latest[0]} exceeds target ({total_batches} batches). Will run eval only.")
+                print(f"  Auto-detected: checkpoint at batch {latest[0]} covers all {total_batches} batches. Will run eval only.")
             else:
                 print(f"  Auto-detected: resume from batch {start_from_batch} (checkpoint at batch {latest[0]})")
         else:
             start_from_batch = 0
             print("  No existing checkpoints found. Starting from batch 0.")
 
-    # For MEMIT-Seq variants, pass MEMIT as the algorithm (for ALG_DICT lookup)
-    # but keep the full variant name for dir_name (results directory naming)
-    eval_alg_name = args.alg_name
-    dir_name_override = None
-    if args.alg_name.startswith("MEMIT-Seq"):
-        eval_alg_name = "MEMIT"
-        dir_name_override = args.alg_name
-    elif args.inject_c0 or args.nullspace_threshold is not None:
-        # AlphaEdit+C₀ or threshold sweep: keep AlphaEdit as eval algorithm (for ALG_DICT), use variant for dir_name
-        dir_name_override = ckpt_alg_name
-
-    # Continue from an existing run directory (avoids creating new run_NNN)
-    continue_from_run = os.environ.get("CONTINUE_FROM_RUN", "").strip() or None
-    if continue_from_run:
-        print(f"  CONTINUE_FROM_RUN={continue_from_run}")
-
-    script = build_checkpoint_script(
-        seed=args.seed,
-        cuda_device=args.cuda_device,
-        alg_name=eval_alg_name,
-        model_name=model_name,
-        hparams_fname=args.hparams_fname,
-        ds_name=args.ds_name,
-        dataset_size_limit=args.dataset_size_limit,
-        num_edits=args.num_edits,
-        downstream_eval_steps=args.downstream_eval_steps,
-        conserve_memory=args.conserve_memory,
-        start_from_batch=start_from_batch,
-        save_interval=args.save_interval,
-        checkpoint_dir=str(ckpt_dir),
-        fast_checkpoint=args.fast_checkpoint,
-        eval_at_checkpoints_only=args.eval_at_checkpoints_only,
-        order_id=args.order_id,
-        results_dir=str(results_dir_override) if results_dir_override else None,
-        result_root=str(get_result_root()),
-        dir_name=dir_name_override,
-        inject_c0=args.inject_c0,
-        c0_weight=args.c0_weight,
-        continue_from_run=continue_from_run,
-        nullspace_threshold=args.nullspace_threshold,
-        dataset_override=args.dataset_override,
-    )
-
-    # Environment
-    env = os.environ.copy()
-    env["PYTHONHASHSEED"] = str(args.seed)
-    env["CUDA_VISIBLE_DEVICES"] = args.cuda_device
-    env["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
-    env["TOKENIZERS_PARALLELISM"] = "false"
-
-    # Determine evaluation mode description
-    if args.eval_at_checkpoints_only:
-        eval_mode = f"Milestone only (every {args.save_interval} batches)"
-    elif args.fast_checkpoint:
-        eval_mode = "Fast (edited batch only)"
-    else:
-        eval_mode = "Full (all facts every batch)"
-
+    # Print config
+    eval_mode = "Milestone" if args.eval_at_checkpoints_only else ("Fast" if args.fast_checkpoint else "Full")
     print(f"{'=' * 70}")
-    print("Checkpoint-Based Failure Curve Runner")
+    print("Checkpoint-Based Failure Curve Runner (harness-based)")
     print(f"  Algorithm:       {args.alg_name}")
     if args.inject_c0:
         print(f"  C₀ injection:    ENABLED (α={args.c0_weight})")
-        print(f"  Variant name:    {ckpt_alg_name}")
-    print(f"  Dataset:         {args.ds_name} (limit={args.dataset_size_limit})")
     print(f"  Num edits/batch: {args.num_edits}")
     print(f"  Total batches:   {total_batches}")
     print(f"  Resume from:     batch {start_from_batch} ({start_from_batch * args.num_edits} edits)")
     print(f"  Save interval:   every {args.save_interval} batches")
     print(f"  Evaluation:      {eval_mode}")
-    print(f"  Seed:            {args.seed}")
-    print(f"  CUDA:            device {args.cuda_device}")
-    print(f"  Model:           {args.model_name}")
     print(f"  Checkpoint dir:  {ckpt_dir}")
-    if results_dir_override:
-        print(f"  Results dir:     {results_dir_override}")
-    else:
-        print(f"  Results dir:     {alphaedit_root / 'results'} (legacy)")
     print(f"  Started:         {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print(f"{'=' * 70}")
 
-    cmd = [sys.executable, "-c", script]
-    result = subprocess.run(cmd, cwd=str(alphaedit_root), env=env)
+    # Load model + tokenizer
+    model, tok = load_model_and_tok(args.model_name)
 
-    if result.returncode != 0:
-        print(f"\nERROR: Checkpoint run failed with return code {result.returncode}")
-        sys.exit(result.returncode)
+    # Load dataset
+    dataset = load_dataset(
+        args.ds_name, args.dataset_size_limit, alphaedit_root,
+        dataset_override=args.dataset_override,
+    )
 
-    # Detect run_dir and run_id created by evaluate.py
-    from seeded_runner import find_latest_run_dir
-    project_root = get_project_root()
-    run_dir_rel, run_id = find_latest_run_dir(args.alg_name)
+    # Shuffle if order_id > 0
+    if args.order_id > 0:
+        _r = random.Random(args.order_id)
+        _r.shuffle(dataset)
+        print(f"  Dataset shuffled with order_id={args.order_id}")
 
-    # Find latest checkpoint to determine where this segment ended
-    latest_ckpt = find_latest_checkpoint(ckpt_dir)
-    ended_at_batch = latest_ckpt[0] if latest_ckpt else total_batches - 1
+    # Import algorithm
+    sys.path.insert(0, str(alphaedit_root))
+    if args.inject_c0:
+        apply_fn, _ = _load_c0_patched_apply(alphaedit_root, args.c0_weight)
+        from AlphaEdit import AlphaEditHyperParams as HParams
+    elif args.alg_name == "AlphaEdit" or args.alg_name.startswith("AlphaEdit"):
+        from AlphaEdit.AlphaEdit_main import apply_AlphaEdit_to_model as apply_fn
+        from AlphaEdit import AlphaEditHyperParams as HParams
+    else:
+        from memit.memit_main import apply_memit_to_model as apply_fn
+        from memit import MEMITHyperParams as HParams
 
-    # Record metadata as JSONL (append mode — one line per segment/resume)
-    # This way multiple resumes don't overwrite each other.
+    # Load hparams
+    alg_for_hparams = "AlphaEdit" if "AlphaEdit" in args.alg_name else "MEMIT"
+    hparams_path = alphaedit_root / "hparams" / alg_for_hparams / args.hparams_fname
+    hparams = HParams.from_json(hparams_path)
+
+    # Load checkpoint if resuming
+    cache_c = None
+    if start_from_batch > 0:
+        ckpt_result = load_checkpoint(
+            model, hparams, str(ckpt_dir), start_from_batch - 1,
+            extra_state_keys=["cache_c.pt"] if "AlphaEdit" in args.alg_name else None,
+        )
+        if ckpt_result.get("cache_c.pt") is not None:
+            cache_c = ckpt_result["cache_c.pt"]
+            print(f"  [CHECKPOINT] Loaded cache_c (shape: {cache_c.shape})")
+
+    # Build eval function
+    mbe_fn = _make_eval_fn(fast_mode=args.fast_checkpoint)
+
+    # Build hooks
+    def before_edit(batch_idx, model, records, hparams):
+        if should_skip(batch_idx, start_from_batch):
+            return  # harness will still call apply_fn, we need a different mechanism
+
+    def after_edit(batch_idx, model, records, hparams, edit_extra, exec_time):
+        nonlocal cache_c
+        # AlphaEdit returns cache_c as edit_extra
+        if edit_extra is not None and "AlphaEdit" in args.alg_name:
+            cache_c = edit_extra
+        if should_save(batch_idx, args.save_interval):
+            extra_state = {}
+            if cache_c is not None and "AlphaEdit" in args.alg_name:
+                extra_state["cache_c.pt"] = cache_c.cpu()
+            save_checkpoint(
+                batch_idx, model, hparams, str(ckpt_dir), args.num_edits,
+                extra_state=extra_state,
+                metadata={"alg_name": args.alg_name, "seed": args.seed},
+            )
+        print(f"Execution took {exec_time}", flush=True)
+
+    def should_eval_fn(batch_idx):
+        if args.eval_at_checkpoints_only:
+            return should_save(batch_idx, args.save_interval)
+        return True
+
+    def extra_kwargs(batch_idx):
+        if "AlphaEdit" in args.alg_name and cache_c is not None:
+            return {"cache_c": cache_c}
+        return {}
+
+    hooks = ExperimentHooks(
+        after_edit=after_edit,
+        should_eval=should_eval_fn,
+        eval_fn=mbe_fn,
+        extra_apply_kwargs=extra_kwargs,
+    )
+
+    # Determine dir_name for results
+    dir_name = args.alg_name
+    if args.inject_c0:
+        dir_name = ckpt_alg_name
+
+    alg_results_dir = results_dir / dir_name
+
+    # Run
+    summary = run_experiment(
+        model=model,
+        tok=tok,
+        hparams=hparams,
+        dataset=dataset,
+        apply_fn=apply_fn,
+        alg_name=args.alg_name,
+        num_edits=args.num_edits,
+        results_dir=alg_results_dir,
+        ds_name=args.ds_name,
+        conserve_memory=args.conserve_memory,
+        hooks=hooks,
+    )
+
+    # Free editing tensors before final eval summary
+    import gc
+    if cache_c is not None:
+        del cache_c
+    gc.collect()
+    torch.cuda.empty_cache()
+    _mem_free = torch.cuda.mem_get_info()[0] / 1024**3 if torch.cuda.is_available() else 0
+    print(f"  [CHECKPOINT] Freed editing tensors before eval ({_mem_free:.1f} GiB free)")
+
+    # Metadata
+    results_meta_dir = get_result_root() / "metadata"
+    results_meta_dir.mkdir(parents=True, exist_ok=True)
+    _ts = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
     metadata = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-        "seed": args.seed,
-        "order_id": args.order_id,
-        "python_version": platform.python_version(),
-        "hostname": platform.node(),
-        "alphaedit_commit": "b84624f",
-        "eval_config_hash": hash_eval_config(),
-        "cuda_device": args.cuda_device,
-        "experiment": "failure_curve_ckpt",
-        "algorithm": args.alg_name,
-        "dataset": args.ds_name,
+        "seed": args.seed, "algorithm": args.alg_name,
         "dataset_size_limit": args.dataset_size_limit,
-        "num_edits": args.num_edits,
-        "run_dir": run_dir_rel,
-        "run_id": run_id,
         "checkpoint_dir": str(ckpt_dir),
-        "resumed_from_batch": start_from_batch if start_from_batch > 0 else None,
-        "ended_at_batch": ended_at_batch,
-        "params": {
-            "model_name": args.model_name,
-            "hparams_fname": args.hparams_fname,
-            "save_interval": args.save_interval,
-            "fast_checkpoint": args.fast_checkpoint,
-            "eval_at_checkpoints_only": args.eval_at_checkpoints_only,
-            "downstream_eval_steps": args.downstream_eval_steps,
-            "inject_c0": args.inject_c0,
-            "c0_weight": args.c0_weight if args.inject_c0 else None,
-        },
+        "runner": "checkpoint_runner (harness-based)",
     }
-
-    results_dir = get_result_root()
-    metadata_dir = results_dir / "metadata"
-    metadata_dir.mkdir(parents=True, exist_ok=True)
-    # JSONL: write each segment as a uniquely-named file (S3 FUSE doesn't support append)
-    _ts = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
-    metadata_file = metadata_dir / f"run_seed{args.seed}_{args.alg_name}_ckpt_{args.dataset_size_limit}_{_ts}.json"
-    import tempfile, shutil
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as _tmp:
-        _tmp.write(json.dumps(metadata) + "\n")
-        _tmp_path = Path(_tmp.name)
-    shutil.copyfile(str(_tmp_path), str(metadata_file))
-    _tmp_path.unlink()
-    print(f"Metadata written to: {metadata_file}")
+    meta_path = results_meta_dir / f"run_seed{args.seed}_{args.alg_name}_ckpt_{args.dataset_size_limit}_{_ts}.json"
+    with open(meta_path, "w") as f:
+        json.dump(metadata, f, indent=2)
+    print(f"Metadata written to: {meta_path}")
 
     print(f"\n{'=' * 70}")
     print("Checkpoint run completed.")
     print(f"  Finished:    {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    print(f"  Results:     {alphaedit_root / 'results' / args.alg_name}")
-    if run_id:
-        print(f"  Run ID:      {run_id}")
+    print(f"  Batches:     {summary['batches_run']}")
+    print(f"  Edits:       {summary['total_edits']}")
     print(f"  Checkpoints: {ckpt_dir}")
-    print(f"  Segment:     batch {start_from_batch} → {ended_at_batch}")
     print(f"{'=' * 70}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Checkpoint-based failure curve runner for AlphaEdit/MEMIT"
+        description="Checkpoint-based failure curve runner (harness-based)"
     )
-
-    # Seed and hardware
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--cuda_device", default="0")
-
-    # Experiment parameters
-    parser.add_argument("--alg_name", required=True,
-                        help="Algorithm name: AlphaEdit, MEMIT, or MEMIT-Seq-lp{X}-ld{Y}-cache{Z}")
+    parser.add_argument("--alg_name", required=True)
     parser.add_argument("--model_name", default=os.environ.get("MODEL_NAME", DEFAULT_MODEL))
     parser.add_argument("--hparams_fname", default="Llama3-8B.json")
     parser.add_argument("--ds_name", default="mcf", choices=["mcf", "cf", "zsre"])
@@ -1109,53 +340,19 @@ def main():
     parser.add_argument("--num_edits", type=int, default=100)
     parser.add_argument("--downstream_eval_steps", type=int, default=10)
     parser.add_argument("--conserve_memory", action="store_true", default=True)
-
-    # Checkpoint parameters
-    parser.add_argument("--start_from_batch", type=int, default=-1,
-                        help="Batch to resume from (-1 = auto-detect from latest checkpoint)")
-    parser.add_argument("--save_interval", type=int, default=10,
-                        help="Save checkpoint every N batches (default: 10 = every 1000 edits)")
-    parser.add_argument("--checkpoint_dir", default=None,
-                        help="Override checkpoint directory (default: S3 mount or ~/.cache)")
-
-    # Evaluation mode (mutually exclusive)
+    parser.add_argument("--start_from_batch", type=int, default=-1)
+    parser.add_argument("--save_interval", type=int, default=10)
+    parser.add_argument("--checkpoint_dir", default=None)
     eval_group = parser.add_mutually_exclusive_group()
-    eval_group.add_argument("--fast_checkpoint", action="store_true",
-                        help="Fast mode: only evaluate edited batch after each edit (partial preservation measurement)")
-    eval_group.add_argument("--eval_at_checkpoints_only", action="store_true",
-                        help="Milestone mode: evaluate full dataset only at checkpoint boundaries (RECOMMENDED for conferences)")
-
-    # Order sensitivity
-    parser.add_argument("--order_id", type=int, default=0,
-                        help="Edit ordering ID (0=canonical, >0=shuffle with Random(order_id))")
-
-    # Output directory
-    parser.add_argument("--results_dir", default=None,
-                        help="Override RESULTS_DIR so evaluate.py writes directly to project results/ "
-                             "(default: auto-construct from experiment name, seed, edits, order)")
-
-    # C₀ injection (AlphaEdit+C₀ attribution experiment)
-    parser.add_argument("--inject_c0", action="store_true",
-                        help="Inject covariance regularizer (α·C₀) into AlphaEdit's LHS. "
-                             "For the 2×2 attribution experiment: tests P's effect in C₀'s presence.")
-    parser.add_argument("--c0_weight", type=float, default=15000.0,
-                        help="Weight for injected C₀ term (α in α·C₀). Default 15000 matches MEMIT's mom2_update_weight.")
-
-    # Projection capacity sweep
-    parser.add_argument("--nullspace_threshold", type=float, default=None,
-                        help="Override nullspace_threshold in hparams. Controls effective rank of P. "
-                             "Lower = more restrictive P (fewer null-space directions). "
-                             "Higher = more permissive P (more directions available for edits).")
-
-    # Dataset override (for ordering experiments with checkpoint_runner)
-    parser.add_argument("--dataset_override", type=str, default=None,
-                        help="Path to JSON file that replaces ds.data (for ordering streams). "
-                             "Records are loaded in the file's order, overriding canonical MCF order.")
-
-    # Retention probes (for mechanism figure)
-    parser.add_argument("--retention_probe_batches", type=str, default=None,
-                        help="Comma-separated list of historical batch indices to re-evaluate at each checkpoint "
-                             "(e.g., '0,5,10,15,20'). Enables retention-by-age metric for mechanism figure.")
+    eval_group.add_argument("--fast_checkpoint", action="store_true")
+    eval_group.add_argument("--eval_at_checkpoints_only", action="store_true")
+    parser.add_argument("--order_id", type=int, default=0)
+    parser.add_argument("--results_dir", default=None)
+    parser.add_argument("--inject_c0", action="store_true")
+    parser.add_argument("--c0_weight", type=float, default=15000.0)
+    parser.add_argument("--nullspace_threshold", type=float, default=None)
+    parser.add_argument("--dataset_override", type=str, default=None)
+    parser.add_argument("--retention_probe_batches", type=str, default=None)
 
     args = parser.parse_args()
     run(args)
