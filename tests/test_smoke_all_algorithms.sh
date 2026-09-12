@@ -78,7 +78,17 @@ run_and_check() {
         return
     fi
 
-    log "  Ran in ${elapsed}s"
+    log "  Ran in ${elapsed}s (exit=$exit_code)"
+
+    # Also check log for errors even if exit code is 0
+    if grep -qiE "error:|Traceback|KeyError|TypeError|unrecognized arguments" "$logfile" 2>/dev/null; then
+        log "  ❌ $label: errors found in output despite exit code $exit_code"
+        log "  Error lines:"
+        grep -iE "error:|Traceback|KeyError|TypeError|unrecognized arguments" "$logfile" | tail -5 | sed 's/^/    /'
+        FAIL=$((FAIL+1))
+        ERRORS="$ERRORS\n  $label: errors in output"
+        return
+    fi
 
     # Check exact checkpoint path
     if [ -n "$expected_ckpt_path" ]; then
@@ -210,13 +220,12 @@ run_and_check "REVIVE+RECT" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT_rect-poly1
 # GROUP 3: pathguard_runner
 # -----------------------------------------------------------------------
 
-# PathGuard variant name depends on the runner's naming convention — check any batch_* exists
-run_and_check "PathGuard" "" "" \
+run_and_check "PathGuard" "$CHECKPOINT_ROOT/polykernel_seqreg/PathGuard-ED-poly2-M200-e0.1-lp1.0-ld0.0-cache0/seed$SEED/batch_0/model_weights.pt" "" \
     uv run python src/runners/pathguard_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
     --lambda_prev 1.0 --lambda_delta 0.0 \
-    --kernel_degree 2 --cache_strategy all --cache_max none \
+    --cache_strategy all --cache_max none \
     --save_interval 1 --pathguard --pathguard_M 200 --pathguard_adaptive \
     --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
@@ -235,7 +244,10 @@ run_baseline() {
     local t0=$(date +%s)
 
     local logfile="$RESULT_ROOT/_smoke_${label// /_}.log"
-    PYTHONUNBUFFERED=1 timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash $script $SEED" > "$logfile" 2>&1
+    # Baselines need ordering streams from the real results dir, not _smoke_test
+    local real_result_root="/s3-data/continual-learning/alphaedit/results"
+    [ ! -d "$real_result_root/matched_ordering/orderings" ] && real_result_root="$PROJECT_DIR/results"
+    PYTHONUNBUFFERED=1 timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS RESULT_ROOT=$real_result_root CHECKPOINT_ROOT=$CHECKPOINT_ROOT bash $script $SEED" > "$logfile" 2>&1
     local exit_code=$?
     if [ "$exit_code" -ne 0 ]; then
         log "  Last 20 lines of output:"
@@ -243,7 +255,13 @@ run_baseline() {
     fi
     local elapsed=$(( $(date +%s) - t0 ))
 
-    if [ "$exit_code" -eq 0 ]; then
+    # Check log for errors even if exit code is 0
+    if grep -qiE "^ERROR:|Traceback|KeyError|TypeError|unrecognized arguments" "$logfile" 2>/dev/null; then
+        log "❌ $label: errors found in output"
+        grep -iE "^ERROR:|Traceback|KeyError|TypeError|unrecognized arguments" "$logfile" | tail -5 | sed 's/^/    /'
+        FAIL=$((FAIL+1))
+        ERRORS="$ERRORS\n  $label: errors in output"
+    elif [ "$exit_code" -eq 0 ]; then
         PASS=$((PASS+1))
         log "✓ $label PASSED (${elapsed}s)"
     elif [ "$exit_code" -eq 124 ]; then
