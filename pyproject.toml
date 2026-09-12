@@ -36,7 +36,7 @@ python-preference = "only-managed"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "src/util", "src/polykernel", "src/runners", "src/datasets", "src/mechanism", "src/experiments"]
+pythonpath = ["src", "src/util", "src/polykernel", "src/runners", "src/datasets", "src/mechanism", "src/experiments", "scripts/patches"]
 markers = [
     "slow: marks tests as slow (requires GPU and model)",
     "gpu: marks tests that require GPU access",

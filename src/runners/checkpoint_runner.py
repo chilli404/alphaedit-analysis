@@ -218,6 +218,16 @@ def run(args: argparse.Namespace) -> None:
     hparams_path = alphaedit_root / "hparams" / alg_for_hparams / args.hparams_fname
     hparams = HParams.from_json(hparams_path)
 
+    # Load null-space projection P for AlphaEdit
+    P = None
+    if "AlphaEdit" in args.alg_name:
+        p_path = alphaedit_root / "data" / "stats" / "null_space_project.pt"
+        if p_path.exists():
+            P = torch.load(str(p_path), map_location="cpu")
+            print(f"  Loaded null-space projection P from {p_path}")
+        else:
+            print(f"  WARNING: null_space_project.pt not found at {p_path}")
+
     # Load checkpoint if resuming
     cache_c = None
     if start_from_batch > 0:
@@ -259,9 +269,13 @@ def run(args: argparse.Namespace) -> None:
         return True
 
     def extra_kwargs(batch_idx):
-        if "AlphaEdit" in args.alg_name and cache_c is not None:
-            return {"cache_c": cache_c}
-        return {}
+        kw = {}
+        if "AlphaEdit" in args.alg_name:
+            if P is not None:
+                kw["P"] = P
+            if cache_c is not None:
+                kw["cache_c"] = cache_c
+        return kw
 
     hooks = ExperimentHooks(
         after_edit=after_edit,

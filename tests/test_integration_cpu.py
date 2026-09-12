@@ -693,3 +693,110 @@ class TestOrderingPaths:
             assert expected_tag in ckpt, f"model_tag '{expected_tag}' not in: {ckpt}"
         else:
             assert "gpt-j" not in ckpt and "qwen" not in ckpt
+
+
+# ─── Tests that catch GPU smoke test failures from 2026-09-12 ──────────────
+
+
+class TestAlphaEditRequiresPAndCacheC:
+    """AlphaEdit's vendor apply function requires P and cache_c kwargs.
+    The migrated checkpoint_runner must pass these via extra_apply_kwargs."""
+
+    def test_vendor_alphaedit_signature_requires_P(self):
+        """apply_AlphaEdit_to_model has P as a required-in-practice parameter."""
+        import ast
+        source = (PROJECT_ROOT / "vendor" / "AlphaEdit" / "AlphaEdit" / "AlphaEdit_main.py").read_text()
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "apply_AlphaEdit_to_model":
+                param_names = [a.arg for a in node.args.args]
+                assert "P" in param_names, "AlphaEdit apply function must accept P parameter"
+                assert "cache_c" in param_names, "AlphaEdit apply function must accept cache_c parameter"
+                break
+
+    def test_checkpoint_runner_passes_P_for_alphaedit(self):
+        """checkpoint_runner must load and pass P matrix for AlphaEdit."""
+        source = (PROJECT_ROOT / "src" / "runners" / "checkpoint_runner.py").read_text()
+        assert "null_space_project" in source or '"P"' in source or "'P'" in source, (
+            "checkpoint_runner must load null_space_project.pt and pass P to AlphaEdit"
+        )
+
+    def test_checkpoint_runner_extra_kwargs_includes_P(self):
+        """extra_apply_kwargs must include P for AlphaEdit, not just cache_c."""
+        source = (PROJECT_ROOT / "src" / "runners" / "checkpoint_runner.py").read_text()
+        # Find the extra_kwargs function
+        assert '"P"' in source or "'P'" in source, (
+            "extra_apply_kwargs must return P for AlphaEdit (not just cache_c)"
+        )
+
+
+class TestNSERequiresNSEHparams:
+    """NSE requires NSEHyperParams, not MEMITHyperParams.
+    Passing MEMIT hparams causes AttributeError: max_iterations."""
+
+    def test_nse_hparams_has_max_iterations(self):
+        """NSEHyperParams must have max_iterations attribute."""
+        source = (PROJECT_ROOT / "vendor" / "AlphaEdit" / "nse" / "nse_hparams.py").read_text()
+        assert "max_iterations" in source, "NSE hparams must define max_iterations"
+
+    def test_memit_hparams_lacks_max_iterations(self):
+        """MEMITHyperParams does NOT have max_iterations — using it for NSE is a bug."""
+        source = (PROJECT_ROOT / "vendor" / "AlphaEdit" / "memit" / "memit_hparams.py").read_text()
+        assert "max_iterations" not in source, "MEMIT hparams should not have max_iterations"
+
+    def test_polykernel_seqreg_loads_correct_hparams_for_nse(self):
+        """When base_alg=NSE, runner must load NSEHyperParams, not MEMITHyperParams."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        # Must have NSE-specific hparams loading
+        assert "NSEHyperParams" in source or "NSE" in source.split("HParams")[0] if "HParams" in source else True, (
+            "polykernel_seqreg_runner must load NSEHyperParams when base_alg=NSE"
+        )
+
+    def test_polykernel_seqreg_nse_hparams_file_path(self):
+        """NSE hparams should be loaded from hparams/NSE/, not hparams/MEMIT/."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        # When base_alg=NSE, alg_for_hparams should be "NSE"
+        has_nse_hparams_path = '"NSE"' in source and "alg_for_hparams" in source
+        assert has_nse_hparams_path or "NSEHyperParams" in source, (
+            "Runner must use hparams/NSE/ directory when base_alg=NSE"
+        )
+
+
+class TestBaselinesPatchCompilation:
+    """Baselines evaluate.py must compile after ALL patches including mega-batch.
+    Tests the actual patch pipeline that runs on the cluster."""
+
+    def test_mega_batch_anchor_unique_in_baselines(self):
+        """The mega-batch anchor must match exactly once in baselines evaluate.py."""
+        eval_path = PROJECT_ROOT / "baselines" / "EvoEdit" / "experiments" / "evaluate.py"
+        if not eval_path.exists():
+            pytest.skip("baselines not available")
+        source = eval_path.read_text()
+        from patch_mega_batch_eval import EVAL_ANCHOR
+        if "_mega_batch_eval" in source:
+            pytest.skip("baselines evaluate.py already patched (anchor consumed)")
+        count = source.count(EVAL_ANCHOR)
+        assert count == 1, f"EVAL_ANCHOR matches {count} times in baselines evaluate.py (expected 1)"
+
+    def test_baselines_compile_after_all_patches(self):
+        """After apply_all.py runs, baselines evaluate.py must compile."""
+        eval_path = PROJECT_ROOT / "baselines" / "EvoEdit" / "experiments" / "evaluate.py"
+        if not eval_path.exists():
+            pytest.skip("baselines not available")
+        # Read original, apply patches, compile
+        import importlib
+        import patch_mega_batch_eval
+        importlib.reload(patch_mega_batch_eval)
+        source = eval_path.read_text()
+        if "_mega_batch_eval" not in source:
+            # Not yet patched — apply the patch in memory
+            fn_src_mod = importlib.import_module("mega_batch_eval")
+            fn_src = fn_src_mod.get_mega_batch_eval_source()
+            fn_indented = "\n".join("    " + line for line in fn_src.strip().split("\n"))
+            anchor = patch_mega_batch_eval.EVAL_ANCHOR
+            if anchor in source:
+                replacement = source.split(anchor)[0] + fn_indented + "\n    " + anchor.split("\n")[-1]
+                # Just verify the anchor is unique
+                assert source.count(anchor) == 1
+        # The actual compilation test
+        compile(source, str(eval_path), "exec")

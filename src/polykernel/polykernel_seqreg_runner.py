@@ -215,13 +215,20 @@ def run(args: argparse.Namespace) -> None:
         _r.shuffle(dataset)
         print(f"  Dataset shuffled with order_id={args.order_id}")
 
-    # Load hparams
+    # Load hparams — each base algorithm has its own HyperParams class and directory
     sys.path.insert(0, str(alphaedit_root))
-    alg_for_hparams = "AlphaEdit" if args.base_alg == "AlphaEdit" else "MEMIT"
     if args.base_alg == "AlphaEdit":
         from AlphaEdit import AlphaEditHyperParams as HParams
+        alg_for_hparams = "AlphaEdit"
+    elif args.base_alg == "NSE":
+        from nse import NSEHyperParams as HParams
+        alg_for_hparams = "NSE"
+    elif args.base_alg == "MEMIT_rect":
+        from memit import MEMITHyperParams as HParams
+        alg_for_hparams = "MEMIT"
     else:
         from memit import MEMITHyperParams as HParams
+        alg_for_hparams = "MEMIT"
     hparams_path = alphaedit_root / "hparams" / alg_for_hparams / args.hparams_fname
     hparams = HParams.from_json(hparams_path)
 
