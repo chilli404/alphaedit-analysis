@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
+# STATUS: LEGACY: uses exec(compile()). One-off experiment for cache ablation study. Low priority for migration.
 """
+[LEGACY — exploratory experiment, not used in paper]
+[NOT MIGRATED — uses exec(compile()) dual injection]
+
 Cache Mitigation Batch Runner: Runs all mitigation strategy variants with
 a single model load, resetting state between each variant.
 

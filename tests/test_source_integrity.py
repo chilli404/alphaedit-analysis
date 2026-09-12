@@ -214,6 +214,7 @@ class TestReviveImplementation:
     REVIVE_FILTER = PROJECT_ROOT / "src" / "revive" / "revive_filter.py"
     SVD_CACHE = PROJECT_ROOT / "src" / "revive" / "svd_cache.py"
     POLYKERNEL_RUNNER = PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py"
+    HOOKS_FILE = PROJECT_ROOT / "src" / "algorithms" / "hook_presets.py"
 
     def test_revive_filter_uses_full_matrices(self):
         source = self.REVIVE_FILTER.read_text()
@@ -233,36 +234,27 @@ class TestReviveImplementation:
         )
 
     def test_runner_revive_uses_full_matrices(self):
-        source = self.POLYKERNEL_RUNNER.read_text()
-        # Find the _revive_apply function in the template
-        assert "full_matrices=True" in source
+        """REVIVE now in hook_presets.py — check there."""
+        hooks_src = self.HOOKS_FILE.read_text()
+        assert "full_matrices=True" in hooks_src
 
     def test_runner_revive_uses_searchsorted_not_argmax(self):
-        """The off-by-one bug: argmax returns 0 when σ₁ > τ, making filter a no-op."""
-        source = self.POLYKERNEL_RUNNER.read_text()
-        # The injected _revive_apply should use searchsorted, not argmax for split_rank
-        revive_section = source[source.find("def _revive_apply"):]
-        revive_section = revive_section[:revive_section.find("\ndef ", 1)]
-        assert "searchsorted" in revive_section, (
-            "_revive_apply must use torch.searchsorted for split_rank, not argmax"
-        )
-        # Should NOT use argmax for split_rank
-        assert ".argmax()" not in revive_section, (
-            "_revive_apply must NOT use argmax for split_rank (off-by-one bug)"
-        )
+        """The off-by-one bug fix: searchsorted, not argmax."""
+        hooks_src = self.HOOKS_FILE.read_text()
+        assert "searchsorted" in hooks_src
+        # In revive_hooks, should not use argmax for split_rank
+        revive_start = hooks_src.find("def revive_hooks")
+        revive_section = hooks_src[revive_start:hooks_src.find("\ndef ", revive_start + 1)]
+        assert ".argmax()" not in revive_section
 
     def test_runner_revive_uses_current_weight(self):
-        """REVIVE must compute SVD of CURRENT weight, not cached pretrained weight."""
-        source = self.POLYKERNEL_RUNNER.read_text()
-        revive_section = source[source.find("def _revive_apply"):]
-        revive_section = revive_section[:revive_section.find("\ndef ", 1)]
-        assert "current_weight" in revive_section, (
-            "_revive_apply must accept current_weight parameter"
-        )
+        """REVIVE hook receives current weight via state dict."""
+        hooks_src = self.HOOKS_FILE.read_text()
+        assert "current_weight" in hooks_src or "_current_weights" in hooks_src
 
     def test_revive_default_tau_is_0_1(self):
-        source = self.POLYKERNEL_RUNNER.read_text()
-        assert "revive_tau: float = 0.1" in source or "revive_tau=0.1" in source
+        hooks_src = self.HOOKS_FILE.read_text()
+        assert "revive_tau: float = 0.1" in hooks_src or "revive_tau=0.1" in hooks_src
 
     def test_revive_svd_runs_on_gpu_by_default(self):
         """Reference REVIVE code runs SVD on GPU (wherever the weight lives).
@@ -406,35 +398,24 @@ class TestScriptCompilation:
 
     @pytest.mark.parametrize("base_alg", ["MEMIT", "AlphaEdit", "NSE", "MEMIT_rect"])
     def test_polykernel_script_compiles(self, base_alg):
-        from polykernel_seqreg_runner import build_polykernel_seqreg_script
-        script = build_polykernel_seqreg_script(
-            seed=42, cuda_device="0", alg_name=base_alg,
-            model_name="test", hparams_fname="test.json",
-            ds_name="mcf", dataset_size_limit=200, num_edits=100,
-            downstream_eval_steps=0, conserve_memory=True,
-            lambda_prev=0.0, lambda_delta=0.0,
-            cache_strategy="all", cache_max=None,
-            kernel_type="poly", kernel_degree=1, kernel_sigma="median",
-            output_jsonl="/tmp/test.jsonl",
-            checkpoint_dir="/tmp/ckpt",
-            variant_name=f"{'MEMIT-Seq' if base_alg == 'MEMIT' else base_alg}-poly1-lp0.0-ld0.0-cache0",
-        )
-        compile(script, f"<test-{base_alg}>", "exec")
+        """polykernel_seqreg_runner migrated — test source parses + ExperimentConfig."""
+        import ast
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        ast.parse(source)
+        from util.experiment_config import ExperimentConfig
+        config = ExperimentConfig(base_alg=base_alg, seed=42, kernel_degree=1)
+        prefix = "MEMIT-Seq" if base_alg == "MEMIT" else base_alg
+        assert config.variant_name.startswith(prefix)
 
     @pytest.mark.parametrize("revive", [True, False])
     def test_polykernel_script_compiles_with_revive(self, revive):
-        from polykernel_seqreg_runner import build_polykernel_seqreg_script
-        script = build_polykernel_seqreg_script(
-            seed=42, cuda_device="0", alg_name="MEMIT",
-            model_name="test", hparams_fname="test.json",
-            ds_name="mcf", dataset_size_limit=200, num_edits=100,
-            downstream_eval_steps=0, conserve_memory=True,
-            lambda_prev=1.0, lambda_delta=0.0,
-            cache_strategy="all", cache_max=None,
-            kernel_type="poly", kernel_degree=2, kernel_sigma="median",
-            output_jsonl="/tmp/test.jsonl",
-            checkpoint_dir="/tmp/ckpt",
-            variant_name="MEMIT-Seq-poly2-lp1.0-ld0.0-cache0",
-            revive=revive, revive_tau=0.1,
+        """polykernel_seqreg_runner migrated — test REVIVE variant naming."""
+        from util.experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg="MEMIT", seed=42, kernel_degree=2,
+            lambda_prev=1.0, revive=revive, revive_tau=0.1,
         )
-        compile(script, "<test-revive>", "exec")
+        if revive:
+            assert "REVIVE" in config.variant_name
+        else:
+            assert "REVIVE" not in config.variant_name

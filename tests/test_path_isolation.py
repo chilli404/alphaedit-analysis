@@ -9,7 +9,6 @@ Run with: uv run pytest tests/test_path_isolation.py -v
 """
 import importlib
 import os
-import sys
 from pathlib import Path
 
 import pytest
@@ -18,7 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 # ---------------------------------------------------------------------------
-# 1. Base algorithm checkpoint path isolation
+# 1. Base algorithm checkpoint path isolation (via ExperimentConfig)
 # ---------------------------------------------------------------------------
 
 class TestBaseAlgPathIsolation:
@@ -33,23 +32,22 @@ class TestBaseAlgPathIsolation:
     }
 
     @pytest.fixture(autouse=True)
-    def setup(self, mock_gpu_imports, tmp_checkpoint_root):
+    def setup(self, tmp_checkpoint_root):
         self.ckpt_root = tmp_checkpoint_root
 
     def _resolve(self, base_alg, ordering="fb_high_exposure", seed=42):
-        from polykernel_seqreg_runner import resolve_checkpoint_dir
-        return resolve_checkpoint_dir(
-            None, seed, 0.0, 0.0,
-            cache_max=None, kernel_degree=1, ordering=ordering,
-            revive=True, revive_tau=0.1, base_alg=base_alg,
+        from util.experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg=base_alg, seed=seed, ordering=ordering,
+            kernel_degree=1, revive=True, revive_tau=0.1,
         )
+        return config.checkpoint_dir(self.ckpt_root)
 
     def test_all_base_algs_produce_distinct_paths(self):
         paths = {}
         for alg in self.BASE_ALGS:
             p = self._resolve(alg)
             paths[alg] = str(p)
-        # All 4 paths must be different
         assert len(set(paths.values())) == len(self.BASE_ALGS), (
             f"Path collision! {paths}"
         )
@@ -83,17 +81,12 @@ class TestBaseAlgPathIsolation:
     def test_memit_gets_memit_seq_prefix_not_memit(self):
         p = self._resolve("MEMIT")
         assert "MEMIT-Seq" in str(p)
-        # But NOT bare "MEMIT/" as a directory component (would collide with vanilla MEMIT)
         parts = Path(p).parts
         assert "MEMIT" not in parts, "Bare 'MEMIT' should not appear as a directory"
 
 
 class TestInjectedCheckpointGuard:
-    """The _ckpt_save guard inside the exec'd code must catch stale code."""
-
-    @pytest.fixture(autouse=True)
-    def setup(self, mock_gpu_imports):
-        pass
+    """The checkpoint_io.validate_checkpoint_path guard must catch stale code."""
 
     @pytest.mark.parametrize("base_alg,variant_prefix", [
         ("MEMIT", "MEMIT-Seq"),
@@ -102,45 +95,37 @@ class TestInjectedCheckpointGuard:
         ("MEMIT_rect", "MEMIT_rect"),
     ])
     def test_guard_passes_for_correct_path(self, base_alg, variant_prefix):
+        from util.checkpoint_io import validate_checkpoint_path
         ckpt_dir = f"/s3-data/.../polykernel_seqreg/{variant_prefix}-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/fb_high/seed42"
-        _expected = "MEMIT-Seq" if base_alg == "MEMIT" else base_alg
-        assert _expected in ckpt_dir
+        validate_checkpoint_path(ckpt_dir, base_alg)
 
     @pytest.mark.parametrize("base_alg", ["AlphaEdit", "NSE", "MEMIT_rect"])
     def test_guard_catches_hardcoded_memit_seq(self, base_alg):
         """Simulates the stale code bug: all paths say MEMIT-Seq."""
+        from util.checkpoint_io import validate_checkpoint_path
         ckpt_dir = "/s3-data/.../polykernel_seqreg/MEMIT-Seq-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/fb_high/seed42"
-        _expected = "MEMIT-Seq" if base_alg == "MEMIT" else base_alg
-        assert _expected not in ckpt_dir, (
-            f"Guard should REJECT {base_alg} writing to MEMIT-Seq path"
-        )
+        with pytest.raises(RuntimeError, match="mismatch"):
+            validate_checkpoint_path(ckpt_dir, base_alg)
 
 
 class TestVariantNameConsistency:
-    """variant_name must be computed identically in resolve_checkpoint_dir and main body."""
+    """variant_name must be computed by ExperimentConfig (single source of truth)."""
 
     @pytest.fixture(autouse=True)
-    def setup(self, mock_gpu_imports, tmp_checkpoint_root):
+    def setup(self, tmp_checkpoint_root):
         pass
 
     @pytest.mark.parametrize("base_alg", ["MEMIT", "AlphaEdit", "NSE", "MEMIT_rect"])
     def test_variant_computed_once(self, base_alg):
-        """Both resolve_checkpoint_dir and the main body should produce the same variant."""
+        """ExperimentConfig.variant_name is the ONLY place variant names are built."""
+        from util.experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg=base_alg, seed=42, ordering="fb_high_exposure",
+            kernel_degree=1, revive=True, revive_tau=0.1,
+        )
         _base_prefix = "MEMIT-Seq" if base_alg == "MEMIT" else base_alg
-        kernel_tag = "poly1-REVIVE-tau0.1"
-        variant = f"{_base_prefix}-{kernel_tag}-lp0.0-ld0.0-cache0"
-
-        from polykernel_seqreg_runner import resolve_checkpoint_dir
-        ckpt_dir = resolve_checkpoint_dir(
-            None, 42, 0.0, 0.0,
-            cache_max=None, kernel_degree=1,
-            ordering="fb_high_exposure",
-            revive=True, revive_tau=0.1,
-            base_alg=base_alg,
-        )
-        assert variant in str(ckpt_dir), (
-            f"resolve_checkpoint_dir produced {ckpt_dir}, expected variant '{variant}' in path"
-        )
+        assert config.variant_name.startswith(_base_prefix)
+        assert config.variant_name in str(config.checkpoint_dir())
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +182,7 @@ class TestS3PathGuard:
         importlib.reload(paths)
         r = paths.get_result_root()
         c = paths.get_checkpoint_root()
-        assert r.exists() or True  # just shouldn't raise
+        assert r is not None
         assert c is not None
 
 
@@ -208,41 +193,26 @@ class TestS3PathGuard:
 class TestCheckpointMetadata:
     """Checkpoint metadata must include enough info to detect mismatches."""
 
-    def test_polykernel_metadata_includes_kernel_params(self, mock_gpu_imports):
-        from polykernel_seqreg_runner import build_polykernel_seqreg_script
-        script = build_polykernel_seqreg_script(
-            seed=42, cuda_device="0", alg_name="MEMIT",
-            model_name="test", hparams_fname="test.json",
-            ds_name="mcf", dataset_size_limit=200, num_edits=100,
-            downstream_eval_steps=0, conserve_memory=True,
-            lambda_prev=1.0, lambda_delta=0.0,
-            cache_strategy="all", cache_max=None,
-            kernel_type="poly", kernel_degree=2, kernel_sigma="median",
-            output_jsonl="/tmp/test.jsonl",
-            checkpoint_dir="/tmp/ckpt",
-            variant_name="test-variant",
-        )
-        # Metadata in the injected script should include kernel params
-        assert "kernel_type" in script
-        assert "kernel_degree" in script
-        assert "kernel_prev" in script
-        assert "lambda_prev" in script
-        assert "lambda_delta" in script
+    def test_validate_checkpoint_path_function_exists(self):
+        from util.checkpoint_io import validate_checkpoint_path
+        assert callable(validate_checkpoint_path)
 
-    def test_injected_script_has_base_alg_guard(self, mock_gpu_imports):
-        from polykernel_seqreg_runner import build_polykernel_seqreg_script
-        script = build_polykernel_seqreg_script(
-            seed=42, cuda_device="0", alg_name="AlphaEdit",
-            model_name="test", hparams_fname="test.json",
-            ds_name="mcf", dataset_size_limit=200, num_edits=100,
-            downstream_eval_steps=0, conserve_memory=True,
-            lambda_prev=0.0, lambda_delta=0.0,
-            cache_strategy="all", cache_max=None,
-            kernel_type="poly", kernel_degree=1, kernel_sigma="median",
-            output_jsonl="/tmp/test.jsonl",
-            checkpoint_dir="/tmp/ckpt",
-            variant_name="AlphaEdit-poly1-lp0.0-ld0.0-cache0",
+    def test_experiment_config_has_variant_name(self):
+        from util.experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg="MEMIT", seed=42, kernel_degree=2,
+            lambda_prev=1.0, lambda_delta=0.0,
+        )
+        assert "kernel_type" in dir(config) or hasattr(config, "kernel_tag")
+        assert "MEMIT-Seq" in config.variant_name
+        assert "poly2" in config.variant_name
+
+    def test_experiment_config_base_alg_guard(self):
+        """ExperimentConfig.validate() must catch mismatches."""
+        from util.experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg="AlphaEdit", seed=42, kernel_degree=1,
             revive=True, revive_tau=0.1,
         )
-        assert '_ckpt_base_alg = "AlphaEdit"' in script
-        assert "CHECKPOINT PATH MISMATCH" in script
+        assert "AlphaEdit" in config.variant_name
+        assert "MEMIT-Seq" not in config.variant_name

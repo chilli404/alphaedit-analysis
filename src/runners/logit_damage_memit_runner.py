@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# STATUS: MEASUREMENT: standalone A/B intervention for MEMIT-Seq. Uses exec(compile()) only for loading vendor apply functions.
 """
 MEMIT-Seq Logit-Damage A/B Intervention Runner
 

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
+# STATUS: LEGACY: uses exec(compile()). Key extraction utility for polykernel experiments.
 """
+[ACTIVE — used by run_polykernel_diagnostic.sh for key extraction]
+[NOT MIGRATED — uses exec(compile()) dual injection]
+
 Polynomial-Kernel Memory Diagnostic — Stage 1: Key Extraction
 
 Extracts the raw edit keys (layer activations at subject token positions) from

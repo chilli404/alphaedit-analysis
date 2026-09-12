@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
+# STATUS: LEGACY: uses exec(compile()). One-off experiment for update interference measurement. Low priority for migration.
 """
+[ACTIVE — used by run_interference_experiment.sh for phase-2 fine-grained data]
+[NOT MIGRATED — uses exec(compile()) dual injection]
+
 Phase 2: Fine-Grained Update Interference Runner
 
 Records W_after - W_before for layer 6 at each batch (batches 10-49),

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# STATUS: MEASUREMENT: standalone A/B intervention script (not an edit-eval loop). Uses exec(compile()) only for loading vendor apply functions.
 """
 Direct Logit-Damage Intervention Runner
 

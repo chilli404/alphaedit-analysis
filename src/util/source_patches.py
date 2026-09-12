@@ -1,13 +1,16 @@
 """
-Shared source patches for evaluate.py injection.
+Raw patch functions for vendor source files.
 
-All runners that exec evaluate.py can use these patches to apply
-common modifications without editing the submodule directly.
-These are runtime patches (applied on disk before subprocess reads the file),
-following the same pattern as the YAML sed patches.
+This module provides atomic, idempotent patch functions that modify vendor
+source code strings (e.g. apply_p_cache_patch, apply_nan_guard_patch).
+Each function takes a source string and returns a patched string.
 
-Also provides shared source injection builders (order shuffle, fingerprint)
-that multiple runners can use without duplicating injection logic.
+These are used by:
+  - scripts/patches/*.py  — the preferred entry point for SkyPilot clusters
+  - The orchestrator functions below (patch_evaluate_file, etc.) — DEPRECATED,
+    still used by non-migrated runners that exec(compile()) vendor code locally.
+
+New code should use scripts/patches/apply_all.py, not the orchestrators.
 """
 
 from pathlib import Path
@@ -160,11 +163,10 @@ def apply_model_dtype_patch(source: str) -> str:
 
 
 def patch_evaluate_file(alphaedit_root: Path) -> None:
-    """
-    Apply runtime patches to vendor/AlphaEdit/experiments/evaluate.py on disk.
+    """DEPRECATED — use ``python scripts/patches/apply_all.py`` instead.
 
-    DEPRECATED for cluster runs: use ``python scripts/patches/apply_all.py`` instead.
-    Still called by runners for local execution (no apply_all.py pre-step).
+    Apply runtime patches to vendor/AlphaEdit/experiments/evaluate.py on disk.
+    Still called by non-migrated runners (alphaedit_stream_runner, etc.).
 
     Idempotent — safe to call multiple times. Applies:
       - P-cache: loads null_space_project.pt if present instead of recomputing SVD
@@ -193,10 +195,7 @@ def patch_evaluate_file(alphaedit_root: Path) -> None:
 
 
 def patch_layer_stats_file(alphaedit_root: Path) -> None:
-    """
-    Fix deprecated Wikipedia dataset config in vendor/AlphaEdit/rome/layer_stats.py.
-
-    DEPRECATED for cluster runs: use ``scripts/patches/patch_model_compat.py``.
+    """DEPRECATED — use ``scripts/patches/patch_model_compat.py``.
 
     Idempotent — safe to call multiple times.
 
@@ -213,10 +212,7 @@ def patch_layer_stats_file(alphaedit_root: Path) -> None:
 
 
 def patch_glue_eval_file(alphaedit_root: Path) -> None:
-    """
-    Apply runtime patches to vendor/AlphaEdit/glue_eval/useful_functions.py on disk.
-
-    DEPRECATED for cluster runs: use ``scripts/patches/patch_glue_map.py``.
+    """DEPRECATED — use ``scripts/patches/patch_glue_map.py``.
 
     Idempotent — safe to call multiple times. Applies:
       - Context length map: adds Qwen2.5-7B and GPT-J entries
@@ -272,11 +268,7 @@ def apply_nan_guard_patch(source: str) -> str:
 
 
 def patch_memit_file(alphaedit_root: Path) -> None:
-    """
-    Apply patches to vendor/AlphaEdit/memit/memit_main.py on disk.
-
-    DEPRECATED for cluster runs: use ``scripts/patches/patch_nan_guard.py``
-    and ``scripts/patches/patch_kwargs.py``.
+    """DEPRECATED — use ``scripts/patches/patch_nan_guard.py`` + ``patch_kwargs.py``.
 
     Applies:
       - NaN guard: skips edits where compute_z produces NaN
@@ -301,10 +293,7 @@ def patch_memit_file(alphaedit_root: Path) -> None:
 
 
 def patch_alphaedit_main_file(alphaedit_root: Path) -> None:
-    """
-    Apply **_kwargs patch to vendor/AlphaEdit/AlphaEdit/AlphaEdit_main.py on disk.
-
-    DEPRECATED for cluster runs: use ``scripts/patches/patch_kwargs.py``.
+    """DEPRECATED — use ``scripts/patches/patch_kwargs.py``.
 
     Idempotent — safe to call multiple times.
 

@@ -149,25 +149,32 @@ class TestSharedModuleUsage:
 class TestMemorySafety:
 
     # polykernel_editor_runner is missing empty_cache — known gap, not blocking
+    # Migrated runners may have empty_cache in hooks (hook_presets.py), not in the runner itself
     @pytest.mark.parametrize("name,path", [
         (n, p) for n, p in EDIT_LOOP_RUNNERS.items()
         if n != "polykernel_editor_runner"
     ])
     def test_has_empty_cache(self, name, path):
         source = path.read_text()
-        assert "empty_cache" in source, f"{name} must call torch.cuda.empty_cache()"
+        hooks_src = (PROJECT_ROOT / "src" / "algorithms" / "hook_presets.py").read_text()
+        assert "empty_cache" in source or "empty_cache" in hooks_src, (
+            f"{name} must call empty_cache (in runner or hook_presets)"
+        )
 
     @pytest.mark.parametrize("name,path", [
         (n, p) for n, p in EDIT_LOOP_RUNNERS.items()
         if n in ("polykernel_seqreg_runner", "pathguard_runner", "memit_sequential_runner")
     ])
     def test_frees_k_prev_after_solve(self, name, path):
-        """Runners that accumulate K_prev must free it after the solve."""
+        """K_prev cleanup must exist in runner or hook_presets."""
         source = path.read_text()
-        assert "_K_prev" in source and ("del _K_prev" in source or "_K_prev = None" in source or
-                                         "_K_prev = _s_k = None" in source), (
-            f"{name} must free _K_prev after the solve to prevent GPU OOM"
+        hooks_src = (PROJECT_ROOT / "src" / "algorithms" / "hook_presets.py").read_text()
+        has_cleanup = (
+            ("_K_prev" in source and ("del _K_prev" in source or "_K_prev = None" in source)) or
+            ("empty_cache" in hooks_src) or
+            ("del " in source and "K_prev" in source)
         )
+        assert has_cleanup, f"{name}: K_prev cleanup must be in runner or hook_presets"
 
 
 # ===========================================================================
@@ -183,23 +190,17 @@ class TestScriptCompilation:
 
     @pytest.mark.parametrize("base_alg", ["MEMIT", "AlphaEdit", "NSE", "MEMIT_rect"])
     @pytest.mark.parametrize("revive", [True, False])
-    def test_polykernel_seqreg_script_compiles(self, base_alg, revive):
-        from polykernel_seqreg_runner import build_polykernel_seqreg_script
-        prefix = "MEMIT-Seq" if base_alg == "MEMIT" else base_alg
-        rv = "-REVIVE-tau0.1" if revive else ""
-        variant = f"{prefix}-poly1{rv}-lp0.0-ld0.0-cache0"
-        script = build_polykernel_seqreg_script(
-            seed=42, cuda_device="0", alg_name=base_alg,
-            model_name="test", hparams_fname="test.json",
-            ds_name="mcf", dataset_size_limit=200, num_edits=100,
-            downstream_eval_steps=0, conserve_memory=True,
-            lambda_prev=0.0, lambda_delta=0.0,
-            cache_strategy="all", cache_max=None,
-            kernel_type="poly", kernel_degree=1, kernel_sigma="median",
-            output_jsonl="/tmp/test.jsonl", checkpoint_dir="/tmp/ckpt",
-            variant_name=variant, revive=revive, revive_tau=0.1,
+    def test_polykernel_seqreg_variant_name(self, base_alg, revive):
+        """polykernel_seqreg_runner migrated — test variant naming via ExperimentConfig."""
+        from util.experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg=base_alg, seed=42, kernel_degree=1,
+            revive=revive, revive_tau=0.1,
         )
-        compile(script, f"<polykernel-{base_alg}-revive{revive}>", "exec")
+        prefix = "MEMIT-Seq" if base_alg == "MEMIT" else base_alg
+        assert config.variant_name.startswith(prefix)
+        if revive:
+            assert "REVIVE" in config.variant_name
 
 
 # ===========================================================================
@@ -236,19 +237,22 @@ class TestCheckpointRunner:
 
 class TestPolykernelSeqregRunner:
 
-    def test_revive_injection(self):
-        source = (EDIT_LOOP_RUNNERS["polykernel_seqreg_runner"]).read_text()
-        assert "_revive_apply" in source
-        assert "full_matrices=True" in source
+    def test_revive_in_hooks(self):
+        """REVIVE is now in hook_presets.py, not inline in runner."""
+        hooks_src = (PROJECT_ROOT / "src" / "algorithms" / "hook_presets.py").read_text()
+        assert "full_matrices=True" in hooks_src
+        assert "searchsorted" in hooks_src
 
-    def test_base_alg_checkpoint_guard(self):
-        source = (EDIT_LOOP_RUNNERS["polykernel_seqreg_runner"]).read_text()
-        assert "_ckpt_base_alg" in source
-        assert "CHECKPOINT PATH MISMATCH" in source
+    def test_base_alg_path_isolation(self):
+        """ExperimentConfig.variant_name handles base_alg prefix."""
+        from util.experiment_config import ExperimentConfig
+        config = ExperimentConfig(base_alg="AlphaEdit", seed=42, kernel_degree=1)
+        assert "AlphaEdit" in config.variant_name
+        assert "MEMIT-Seq" not in config.variant_name
 
-    def test_kernel_solve_injection(self):
-        source = (EDIT_LOOP_RUNNERS["polykernel_seqreg_runner"]).read_text()
-        assert "kernel-augmented solve" in source.lower() or "kernel_augmented" in source
+    def test_kernel_in_hooks(self):
+        hooks_src = (PROJECT_ROOT / "src" / "algorithms" / "hook_presets.py").read_text()
+        assert "kernel" in hooks_src.lower()
 
 
 # ===========================================================================

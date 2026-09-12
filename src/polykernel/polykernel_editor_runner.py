@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
+# STATUS: LEGACY: uses exec(compile()). AlphaEdit-poly2/MEMIT-poly2 editor. Different algorithm from polykernel_seqreg (which is migrated).
 """
+[ACTIVE — used by run_polykernel_editor.sh for AlphaEdit-poly2 experiments]
+[NOT MIGRATED — uses exec(compile()) dual injection]
+
 Kernel Editor — Prototype kernel-augmented knowledge editor.
 
 Replaces the linear K@K^T outer product in MEMIT/AlphaEdit's solve with a

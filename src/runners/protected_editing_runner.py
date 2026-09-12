@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
+# STATUS: LEGACY: uses exec(compile()). Experimental runner for protected-editing interventions. Low priority for migration.
 """
+[ACTIVE — used by run_protected_editing.sh; future PathGuard paper]
+[NOT MIGRATED — uses exec(compile()) dual injection]
+
 Protected Editing Runner: cosine-based live vulnerability protection.
 
 After each editing batch, identifies the K most vulnerable previously-installed

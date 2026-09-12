@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# STATUS: MEASUREMENT: same-fact prompt-variant A/B intervention. Uses exec(compile()) only for loading vendor apply functions.
 """
 Same-Fact, Different-Key Logit-Damage Intervention Runner
 

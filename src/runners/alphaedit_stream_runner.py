@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
+# STATUS: LEGACY: uses exec(compile()) for dual injection. Used by matched ordering experiments. Migration blocked on shared state between AlphaEdit_main.py and evaluate.py exec namespaces.
 """
+[ACTIVE — used by run_matched_ordering.sh, run_zsre_ordering_experiment.sh]
+[NOT MIGRATED — uses exec(compile()) dual injection; candidate for harness migration]
+
 AlphaEdit Stream Runner: Runs AlphaEdit on a pre-generated edit stream with
 inline mechanism measurement (cache eigenspectrum, projection loss) and
 checkpointing.
