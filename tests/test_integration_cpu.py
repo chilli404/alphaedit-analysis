@@ -925,3 +925,74 @@ class TestSmokeTestREVIVEValidation:
         """revive_hooks() must print '[REVIVE] layer=' for validation."""
         source = (PROJECT_ROOT / "src" / "algorithms" / "hook_presets.py").read_text()
         assert "[REVIVE] layer=" in source, "revive_hooks must print per-layer info for smoke test validation"
+
+
+class TestSmokeTestTimeouts:
+    """Verify smoke test timeout is reasonable and algorithms can complete in time."""
+
+    def test_timeout_is_5_minutes_or_less(self):
+        """Smoke test timeout must be ≤ 300s (5 min). Longer means something is stuck."""
+        source = (PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh").read_text()
+        import re
+        match = re.search(r'TIMEOUT=(\d+)', source)
+        assert match, "TIMEOUT not found in smoke test script"
+        timeout = int(match.group(1))
+        assert timeout <= 300, f"Smoke test timeout is {timeout}s — should be ≤ 300s"
+
+    def test_dataset_limit_is_small(self):
+        """Smoke test dataset must be small (≤ 50 records) for fast completion."""
+        source = (PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh").read_text()
+        import re
+        match = re.search(r'DATASET_LIMIT=(\d+)', source)
+        assert match, "DATASET_LIMIT not found in smoke test script"
+        limit = int(match.group(1))
+        assert limit <= 50, f"Dataset limit is {limit} — should be ≤ 50 for smoke tests"
+
+    def test_batch_size_is_small(self):
+        """Smoke test batch size must be small (≤ 20 edits) for fast completion."""
+        source = (PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh").read_text()
+        import re
+        match = re.search(r'EDITS=(\d+)', source)
+        assert match, "EDITS not found in smoke test script"
+        edits = int(match.group(1))
+        assert edits <= 20, f"Edits per batch is {edits} — should be ≤ 20 for smoke tests"
+
+
+class TestBaselineScriptPerformance:
+    """Baseline scripts must not do expensive operations inline."""
+
+    def test_evoedit_no_inline_model_download(self):
+        """EvoEdit script must use model_resolve, not snapshot_download."""
+        source = (PROJECT_ROOT / "scripts" / "run_evoedit_baseline.sh").read_text()
+        assert "snapshot_download" not in source, (
+            "EvoEdit script downloads model inline — use model_resolve for cached resolution"
+        )
+
+    def test_nse_no_inline_model_download(self):
+        """NSE script must use model_resolve, not snapshot_download."""
+        source = (PROJECT_ROOT / "scripts" / "run_nse_baseline.sh").read_text()
+        assert "snapshot_download" not in source, (
+            "NSE script downloads model inline — use model_resolve for cached resolution"
+        )
+
+    def test_baselines_no_inline_p_matrix_compute(self):
+        """Baseline scripts must use cached P matrix, not compute SVD inline."""
+        for script in ["run_evoedit_baseline.sh", "run_nse_baseline.sh"]:
+            path = PROJECT_ROOT / "scripts" / script
+            if path.exists():
+                source = path.read_text()
+                assert "torch.linalg.svd" not in source, (
+                    f"{script} computes SVD inline — use cached null_space_project.pt"
+                )
+
+    def test_no_double_patching(self):
+        """apply_all.py and baseline scripts must not patch the same thing twice."""
+        for script in ["run_evoedit_baseline.sh", "run_nse_baseline.sh"]:
+            path = PROJECT_ROOT / "scripts" / script
+            if not path.exists():
+                continue
+            source = path.read_text()
+            # The mega-batch eval is patched by apply_all.py — scripts must not also patch it
+            assert "_mega_batch_eval" not in source, (
+                f"{script} patches mega_batch_eval inline — apply_all.py already handles this"
+            )
