@@ -1314,6 +1314,62 @@ class TestRECTRequiresCacheC:
         )
 
 
+    def test_rect_error_cache_initialized(self):
+        """RECT needs error_cache alongside cache_c. RECT's execute_memit does
+        error_cache[i,:,:] += error_temp which crashes on None."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        init_section = source[source.find("cache_c = None"):source.find("def apply_fn")]
+        assert "error_cache" in init_section and "MEMIT_rect" in init_section, (
+            "polykernel_seqreg_runner must initialize error_cache for MEMIT_rect"
+        )
+
+    def test_rect_error_cache_passed_to_apply(self):
+        """error_cache must be passed to RECT's apply function via extra kwargs."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        apply_section = source[source.find("def apply_fn"):source.find("def after_edit") if "def after_edit" in source else len(source)]
+        assert "error_cache" in apply_section, (
+            "apply_fn must pass error_cache to RECT"
+        )
+
+    def test_checkpoint_runner_initializes_cache_c_for_alphaedit(self):
+        """checkpoint_runner must initialize cache_c to zeros for AlphaEdit.
+        Vendor AlphaEdit_main.py does cache_c[i,:,:] which crashes on None."""
+        source = (PROJECT_ROOT / "src" / "runners" / "checkpoint_runner.py").read_text()
+        ae_section = source[source.find('"AlphaEdit" in args.alg_name'):source.find("# Load checkpoint")]
+        assert "cache_c = torch.zeros" in ae_section, (
+            "checkpoint_runner must initialize cache_c for AlphaEdit before first batch. "
+            "Vendor does cache_c[i,:,:] which crashes on None."
+        )
+
+    def test_mega_batch_eval_template_has_two_placeholders(self):
+        """mega_batch_eval formats template with (num_edits, case_id) — needs two {}."""
+        source = (PROJECT_ROOT / "src" / "util" / "mega_batch_eval.py").read_text()
+        assert "case_result_template.format(num_edits, record" in source, (
+            "mega_batch_eval uses template.format(num_edits, case_id) — "
+            "template must have two {} placeholders"
+        )
+
+    def test_harness_respects_skip_mega_batch_eval(self):
+        """evaluate_harness must check SKIP_MEGA_BATCH_EVAL env var before calling eval_fn.
+        The editing smoke test sets this — eval is the eval cluster's job."""
+        source = (PROJECT_ROOT / "src" / "evaluate_harness.py").read_text()
+        assert "SKIP_MEGA_BATCH_EVAL" in source, (
+            "evaluate_harness must check SKIP_MEGA_BATCH_EVAL env var"
+        )
+
+    def test_smoke_test_skips_eval_for_vendor_runners(self):
+        """run_and_check (vendor runners) must also set SKIP_MEGA_BATCH_EVAL."""
+        source = (PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh").read_text()
+        # Find the run_and_check execution line (not run_baseline)
+        run_and_check_exec = [l for l in source.split("\n")
+                              if "timeout" in l and '"$@"' in l]
+        assert run_and_check_exec, "run_and_check must have a timeout execution line"
+        assert "SKIP_MEGA_BATCH_EVAL" in run_and_check_exec[0], (
+            "run_and_check must set SKIP_MEGA_BATCH_EVAL=1 — "
+            "vendor runners also call mega_batch_eval via the harness"
+        )
+
+
 class TestAlphaEditSolveRegularization:
     """AlphaEdit's LHS must always include P projection and L2 regularization,
     even when hooks.build_lhs is set (e.g. for REVIVE composition)."""
