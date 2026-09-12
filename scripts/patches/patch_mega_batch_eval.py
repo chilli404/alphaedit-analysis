@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src" / "
 from mega_batch_eval import get_mega_batch_eval_source
 
 
-EVAL_ANCHOR = "    for record in ds:"
+EVAL_ANCHOR = "    gen_test_vars = [snips, vec]\n    for record in ds:"
 
 
 def apply(baselines_root: Path = None):
@@ -45,7 +45,8 @@ def apply(baselines_root: Path = None):
     if False:  # skip vendor per-record loop
         for record in ds:'''
 
-    patched = source.replace(EVAL_ANCHOR, fn_indented + "\n" + call, 1)
+    replacement = "    gen_test_vars = [snips, vec]\n" + fn_indented + "\n" + call
+    patched = source.replace(EVAL_ANCHOR, replacement, 1)
     eval_path.write_text(patched)
     print("  [mega-batch] Patched baselines evaluate.py")
     return 1

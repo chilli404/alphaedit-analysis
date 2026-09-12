@@ -146,7 +146,7 @@ class TestPatchMegaBatchEval:
 
     def test_replaces_per_record_loop(self):
         import patch_mega_batch_eval
-        assert patch_mega_batch_eval.EVAL_ANCHOR == "    for record in ds:"
+        assert "for record in ds:" in patch_mega_batch_eval.EVAL_ANCHOR
 
     def test_skips_vendor_per_record_loop(self):
         """After injection, vendor per-record loop must be inside `if False:`."""

@@ -271,11 +271,14 @@ def run(args: argparse.Namespace) -> None:
         base_apply = apply_memit_with_hooks
     elif args.base_alg == "AlphaEdit":
         base_apply = apply_alphaedit_with_hooks
+    elif args.base_alg == "NSE":
+        from nse.nse_main import apply_nse_to_model
+        base_apply = apply_nse_to_model
+    elif args.base_alg == "MEMIT_rect":
+        from memit.memit_seq_rect_main import apply_memit_seq_rect_to_model
+        base_apply = apply_memit_seq_rect_to_model
     else:
-        raise NotImplementedError(
-            f"base_alg={args.base_alg} not yet migrated to harness. "
-            f"Use the legacy runner for NSE/MEMIT_rect."
-        )
+        raise ValueError(f"Unknown base_alg: {args.base_alg}")
 
     # For AlphaEdit: load P matrix and initialize cache_c
     cache_c = None
