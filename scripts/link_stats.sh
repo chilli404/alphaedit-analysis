@@ -67,26 +67,19 @@ else STATS_SUBDIR="${MODEL_NAME##*/}"; fi
 
 P_SRC="$STATS_SRC/$STATS_SUBDIR/null_space_project.pt"
 if [[ -f "$P_SRC" ]]; then
-    # Vendor CWD path (vendor evaluate.py loads from CWD)
-    ln -sf "$P_SRC" "$PROJECT_DIR/vendor/AlphaEdit/null_space_project.pt"
-    ln -sf "$P_SRC" "$PROJECT_DIR/vendor/AlphaEdit/null_space_project_${STATS_SUBDIR}.pt"
-    # Inside wikipedia_stats/ (harness runners check data/stats/{model}/wikipedia_stats/)
-    WIKISTATS="$PROJECT_DIR/vendor/AlphaEdit/data/stats/$STATS_SUBDIR/wikipedia_stats"
-    [[ -d "$WIKISTATS" ]] && ln -sf "$P_SRC" "$WIKISTATS/null_space_project.pt"
-    [[ -d "$PROJECT_DIR/baselines/EvoEdit" ]] && {
-        ln -sf "$P_SRC" "$PROJECT_DIR/baselines/EvoEdit/null_space_project.pt"
-        ln -sf "$P_SRC" "$PROJECT_DIR/baselines/EvoEdit/null_space_project_${STATS_SUBDIR}.pt"
-        BL_WIKISTATS="$PROJECT_DIR/baselines/EvoEdit/data/stats/$STATS_SUBDIR/wikipedia_stats"
-        [[ -d "$BL_WIKISTATS" ]] && ln -sf "$P_SRC" "$BL_WIKISTATS/null_space_project.pt"
-    }
-    echo "  Linked null-space projection: $STATS_SUBDIR"
+    # Copy P matrix locally (not symlink — S3 FUSE doesn't support ln into it).
+    # Vendor evaluate.py loads from CWD; harness runners check alphaedit_root/.
+    cp -f "$P_SRC" "$PROJECT_DIR/vendor/AlphaEdit/null_space_project.pt"
+    [[ -d "$PROJECT_DIR/baselines/EvoEdit" ]] && \
+        cp -f "$P_SRC" "$PROJECT_DIR/baselines/EvoEdit/null_space_project.pt"
+    echo "  Linked cached null-space projection: $STATS_SUBDIR"
 fi
 
 # Per-threshold P caches
 P_COUNT=0
 for p_file in "$STATS_SRC/$STATS_SUBDIR"/null_space_project_t*.pt; do
     [[ -f "$p_file" ]] || continue
-    ln -sf "$p_file" "$PROJECT_DIR/vendor/AlphaEdit/$(basename "$p_file")"
+    cp -f "$p_file" "$PROJECT_DIR/vendor/AlphaEdit/$(basename "$p_file")"
     P_COUNT=$((P_COUNT + 1))
 done
 [[ $P_COUNT -gt 0 ]] && echo "  Linked $P_COUNT per-threshold P cache(s)"

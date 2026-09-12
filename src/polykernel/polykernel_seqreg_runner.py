@@ -303,19 +303,18 @@ def run(args: argparse.Namespace) -> None:
     n_layers = len(hparams.layers)
 
     if args.base_alg == "AlphaEdit":
-        # AlphaEdit needs both P (null-space projection) and cache_c
-        stats_dir = alphaedit_root / "data" / "stats"
-        p_path = stats_dir / "null_space_project.pt"
-        if not p_path.exists():
-            model_stats = stats_dir / model.config._name_or_path.replace("/", "_") / "wikipedia_stats"
-            p_path = model_stats / "null_space_project.pt"
+        # AlphaEdit needs both P (null-space projection) and cache_c.
+        # link_stats.sh copies P to alphaedit_root/null_space_project.pt (local, not S3).
+        p_path = alphaedit_root / "null_space_project.pt"
         if p_path.exists():
             P = torch.load(str(p_path), map_location="cpu")
             print(f"  [AlphaEdit] Loaded P matrix from {p_path} (shape: {P.shape})")
             d = P.shape[-1]
             cache_c = torch.zeros(n_layers, d, d)
         else:
-            print(f"  [AlphaEdit] WARNING: P matrix not found at {p_path}")
+            raise FileNotFoundError(
+                f"P matrix not found at {p_path}. Run link_stats.sh first."
+            )
 
     elif args.base_alg == "NSE":
         # NSE needs cache_c but NOT P. NSE indexes cache_c with neuron indices

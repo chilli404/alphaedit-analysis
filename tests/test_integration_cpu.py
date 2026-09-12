@@ -1018,23 +1018,22 @@ class TestVendorFunctionRequirements:
         nse_cache_section = source[source.find("elif args.base_alg == \"NSE\"", source.find("cache_c = None")):]
         assert "cache_c" in nse_cache_section[:600], "NSE cache_c section must exist"
 
-    def test_link_stats_puts_p_matrix_in_wikipedia_stats(self):
-        """link_stats.sh must symlink the P matrix INTO wikipedia_stats/ so that
-        the runner's fallback path (stats/{model}/wikipedia_stats/null_space_project.pt)
-        finds it. On S3, P lives at stats/{model}/null_space_project.pt — link_stats
-        must bridge this gap by linking it into wikipedia_stats/."""
+    def test_link_stats_copies_p_matrix_locally(self):
+        """link_stats.sh must cp (not symlink) the P matrix to vendor/AlphaEdit/.
+        S3 FUSE doesn't support ln -sf into it, so P must be copied locally."""
         link_stats = (PROJECT_ROOT / "scripts" / "link_stats.sh").read_text()
-        # Must define a WIKISTATS variable pointing to wikipedia_stats AND
-        # use it to link null_space_project.pt
-        has_wikistats_var = "wikipedia_stats" in link_stats and "WIKISTATS" in link_stats
-        has_p_link = "WIKISTATS" in link_stats and "null_space_project" in link_stats
-        assert has_wikistats_var and has_p_link, (
-            "link_stats.sh must link null_space_project.pt into the wikipedia_stats/ "
-            "directory. The runner checks:\n"
-            "  data/stats/{model}/wikipedia_stats/null_space_project.pt\n"
-            "but S3 has it at:\n"
-            "  data/stats/{model}/null_space_project.pt\n"
-            "link_stats.sh must bridge this gap."
+        assert "cp" in link_stats and "null_space_project" in link_stats, (
+            "link_stats.sh must use cp (not ln) for null_space_project.pt — "
+            "S3 FUSE doesn't support symlinks into it."
+        )
+
+    def test_runner_p_path_matches_link_stats(self):
+        """Runner must look for P at alphaedit_root/null_space_project.pt —
+        the exact path that link_stats.sh copies it to."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        assert 'alphaedit_root / "null_space_project.pt"' in source, (
+            "Runner must check alphaedit_root/null_space_project.pt "
+            "(where link_stats.sh copies it)"
         )
 
     def test_alphaedit_lhs_uses_double_precision(self):
