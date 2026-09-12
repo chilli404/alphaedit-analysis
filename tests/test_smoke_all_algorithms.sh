@@ -54,11 +54,15 @@ run_and_check() {
     echo ""
     local t0=$(date +%s)
 
-    # Run with timeout — filter to essential progress only
-    PYTHONUNBUFFERED=1 timeout "$TIMEOUT" "$@" 2>&1 | grep -E --line-buffered \
-        "\[CHECKPOINT\]|\[MEGA-BATCH|_edit==|error:|ERROR|Traceback|KeyError|TypeError|Variant:|Checkpoint dir:|No existing|Checkpoint run|Finished:|Segment:|\[REVIVE\]" \
-        || true
-    local exit_code=${PIPESTATUS[0]}
+    # Run with timeout — full output to log, only errors to stdout
+    local logfile="$RESULT_ROOT/_smoke_${label// /_}.log"
+    PYTHONUNBUFFERED=1 timeout "$TIMEOUT" "$@" > "$logfile" 2>&1
+    local exit_code=$?
+    # Show errors if any
+    if [ "$exit_code" -ne 0 ]; then
+        log "  Last 20 lines of output:"
+        tail -20 "$logfile" | sed 's/^/    /'
+    fi
     local t1=$(date +%s)
     local elapsed=$((t1 - t0))
 
@@ -230,10 +234,13 @@ run_baseline() {
     log "  Script: $script, TARGET_EDITS=$DATASET_LIMIT, NUM_EDITS=$EDITS, SEED=$SEED"
     local t0=$(date +%s)
 
-    PYTHONUNBUFFERED=1 timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash $script $SEED" 2>&1 | grep -E --line-buffered \
-        "\[CHECKPOINT\]|\[MEGA-BATCH|_edit==|error:|ERROR|Traceback|KeyError|TypeError|Variant:|Checkpoint dir:|No existing|complete:|Finished:|\[REVIVE\]" \
-        || true
-    local exit_code=${PIPESTATUS[0]}
+    local logfile="$RESULT_ROOT/_smoke_${label// /_}.log"
+    PYTHONUNBUFFERED=1 timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash $script $SEED" > "$logfile" 2>&1
+    local exit_code=$?
+    if [ "$exit_code" -ne 0 ]; then
+        log "  Last 20 lines of output:"
+        tail -20 "$logfile" | sed 's/^/    /'
+    fi
     local elapsed=$(( $(date +%s) - t0 ))
 
     if [ "$exit_code" -eq 0 ]; then
