@@ -321,14 +321,14 @@ log ""
 # GROUP 1: checkpoint_runner (AlphaEdit, MEMIT)
 # -----------------------------------------------------------------------
 
-run_and_check "AlphaEdit (checkpoint_runner)" "$CHECKPOINT_ROOT/failure_curve/AlphaEdit/seed$SEED/batch_0/model_weights.pt" "" \
+run_and_check "AlphaEdit (checkpoint_runner)" "$CHECKPOINT_ROOT/failure_curve/AlphaEdit/seed$SEED/batch_1/model_weights.pt" "" \
     uv run python src/runners/checkpoint_runner.py \
     --seed $SEED --alg_name AlphaEdit --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
     --save_interval 1 --cuda_device 0 \
     --fast_checkpoint --downstream_eval_steps 0
 
-run_and_check "MEMIT (checkpoint_runner)" "$CHECKPOINT_ROOT/failure_curve/MEMIT/seed$SEED/batch_0/model_weights.pt" "" \
+run_and_check "MEMIT (checkpoint_runner)" "$CHECKPOINT_ROOT/failure_curve/MEMIT/seed$SEED/batch_1/model_weights.pt" "" \
     uv run python src/runners/checkpoint_runner.py \
     --seed $SEED --alg_name MEMIT --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
@@ -339,7 +339,7 @@ run_and_check "MEMIT (checkpoint_runner)" "$CHECKPOINT_ROOT/failure_curve/MEMIT/
 # GROUP 2: polykernel_seqreg_runner (MEMIT-Seq, REVIVE+X)
 # -----------------------------------------------------------------------
 
-run_and_check "MEMIT-Seq" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT-Seq-poly1-lp1.0-ld0.0-cache0/seed$SEED/batch_0/model_weights.pt" "" \
+run_and_check "MEMIT-Seq" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT-Seq-poly1-lp1.0-ld0.0-cache0/seed$SEED/batch_1/model_weights.pt" "" \
     uv run python src/polykernel/polykernel_seqreg_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
@@ -348,7 +348,7 @@ run_and_check "MEMIT-Seq" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT-Seq-poly1-lp
     --save_interval 1 --base_alg MEMIT \
     --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
-run_and_check "REVIVE+MEMIT" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT-Seq-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/seed$SEED/batch_0/model_weights.pt" "" \
+run_and_check "REVIVE+MEMIT" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT-Seq-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/seed$SEED/batch_1/model_weights.pt" "" \
     uv run python src/polykernel/polykernel_seqreg_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
@@ -357,7 +357,7 @@ run_and_check "REVIVE+MEMIT" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT-Seq-poly1
     --save_interval 1 --base_alg MEMIT --revive --revive_tau 0.1 \
     --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
-run_and_check "REVIVE+AlphaEdit" "$CHECKPOINT_ROOT/polykernel_seqreg/AlphaEdit-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/seed$SEED/batch_0/model_weights.pt" "" \
+run_and_check "REVIVE+AlphaEdit" "$CHECKPOINT_ROOT/polykernel_seqreg/AlphaEdit-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/seed$SEED/batch_1/model_weights.pt" "" \
     uv run python src/polykernel/polykernel_seqreg_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
@@ -366,7 +366,7 @@ run_and_check "REVIVE+AlphaEdit" "$CHECKPOINT_ROOT/polykernel_seqreg/AlphaEdit-p
     --save_interval 1 --base_alg AlphaEdit --revive --revive_tau 0.1 \
     --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
-run_and_check "REVIVE+NSE" "$CHECKPOINT_ROOT/polykernel_seqreg/NSE-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/seed$SEED/batch_0/model_weights.pt" "" \
+run_and_check "REVIVE+NSE" "$CHECKPOINT_ROOT/polykernel_seqreg/NSE-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/seed$SEED/batch_1/model_weights.pt" "" \
     uv run python src/polykernel/polykernel_seqreg_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
@@ -375,7 +375,7 @@ run_and_check "REVIVE+NSE" "$CHECKPOINT_ROOT/polykernel_seqreg/NSE-poly1-REVIVE-
     --save_interval 1 --base_alg NSE --revive --revive_tau 0.1 \
     --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
-run_and_check "REVIVE+RECT" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT_rect-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/seed$SEED/batch_0/model_weights.pt" "" \
+run_and_check "REVIVE+RECT" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT_rect-poly1-REVIVE-tau0.1-lp0.0-ld0.0-cache0/seed$SEED/batch_1/model_weights.pt" "" \
     uv run python src/polykernel/polykernel_seqreg_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
@@ -389,7 +389,7 @@ run_and_check "REVIVE+RECT" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT_rect-poly1
 # -----------------------------------------------------------------------
 
 # PathGuard default is EDS (with margin shield), not ED
-run_and_check "PathGuard-poly2-hybrid" "$CHECKPOINT_ROOT/pathguard/PathGuard-EDS-poly2-hybrid-M200/seed$SEED/batch_0/model_weights.pt" "" \
+run_and_check "PathGuard-poly2-hybrid" "$CHECKPOINT_ROOT/pathguard/PathGuard-EDS-poly2-hybrid-M200/seed$SEED/batch_1/model_weights.pt" "" \
     uv run python src/runners/pathguard_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
