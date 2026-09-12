@@ -76,7 +76,7 @@ def alphaedit_hparams(alphaedit_root):
 @pytest.fixture(scope="session")
 def P_matrix(alphaedit_root):
     """Load the null-space projection matrix."""
-    p_path = alphaedit_root / "data" / "stats" / "null_space_project.pt"
+    p_path = alphaedit_root / "null_space_project.pt"
     if not p_path.exists():
         pytest.skip("null_space_project.pt not found (run link_stats.sh)")
     return torch.load(str(p_path), map_location="cpu")
