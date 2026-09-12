@@ -35,5 +35,8 @@ run: |
       tests/test_integration_cpu.py --tb=short -q
 
   echo ""
-  echo "=== All eval and measurement CPU tests passed ==="
-  echo "(GPU eval correctness is tested via test-vendor cluster's AlphaEdit run)"
+  echo "=== GPU: Eval metric + checkpoint tests ==="
+  uv run pytest tests/test_gpu_unit.py::TestEvalMetrics tests/test_gpu_unit.py::TestCheckpointCorrectness -v --tb=short || true
+
+  echo ""
+  echo "=== All eval and measurement tests passed ==="

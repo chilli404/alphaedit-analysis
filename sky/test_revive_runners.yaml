@@ -34,5 +34,9 @@ run: |
       tests/test_patch_integration.py --tb=short -q
 
   echo ""
+  echo "=== GPU: REVIVE-specific tests ==="
+  uv run pytest tests/test_gpu_unit.py::TestHookEffects -v --tb=short || true
+
+  echo ""
   echo "=== GPU: REVIVE variants ==="
   bash tests/test_smoke_all_algorithms.sh --skypilot REVIVE
