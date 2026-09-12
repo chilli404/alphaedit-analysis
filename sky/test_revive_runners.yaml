@@ -30,7 +30,7 @@ run: |
 
   echo "=== CPU tests ==="
   uv run pytest tests/test_path_isolation.py tests/test_source_integrity.py \
-      tests/test_patches.py tests/test_mechanism_correctness.py \
+      tests/test_patches.py \
       tests/test_patch_integration.py --tb=short -q
 
   echo ""

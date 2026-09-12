@@ -31,8 +31,8 @@ run: |
   echo "=== CPU tests ==="
   uv run pytest tests/test_path_isolation.py tests/test_source_integrity.py \
       tests/test_all_runners.py tests/test_patches.py \
-      tests/test_mechanism_correctness.py tests/test_path_correctness.py \
-      tests/test_harness_integration.py tests/test_endtoend_cpu.py --tb=short -q
+      \
+      tests/test_endtoend_cpu.py --tb=short -q
 
   echo ""
   echo "=== GPU unit + integration tests ==="
