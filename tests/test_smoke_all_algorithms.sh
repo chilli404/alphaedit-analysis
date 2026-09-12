@@ -54,9 +54,9 @@ run_and_check() {
     echo ""
     local t0=$(date +%s)
 
-    # Run with timeout — filter to show only key progress lines
+    # Run with timeout — filter to essential progress only
     PYTHONUNBUFFERED=1 timeout "$TIMEOUT" "$@" 2>&1 | grep -E --line-buffered \
-        "LAYER|CHECKPOINT|Execution took|_edit=|error:|ERROR|Traceback|KeyError|TypeError|Saved|Loading|Deltas successfully|Patched|Cached context|Variant:|Started:|Checkpoint dir:|batch|Complete|REVIVE|No existing|MEGA-BATCH|Freed|Algorithm:|Save interval:|Fast checkpoint:|Checkpoint run|Finished:|Results:|Run ID:|Segment:|Metadata written|Polykernel|SeqReg|PathGuard|resumed|checkpoint_dir" \
+        "\[CHECKPOINT\]|\[MEGA-BATCH|_edit==|error:|ERROR|Traceback|KeyError|TypeError|Variant:|Checkpoint dir:|No existing|Checkpoint run|Finished:|Segment:" \
         || true
     local exit_code=${PIPESTATUS[0]}
     local t1=$(date +%s)
@@ -231,7 +231,7 @@ run_baseline() {
     local t0=$(date +%s)
 
     PYTHONUNBUFFERED=1 timeout "$TIMEOUT" bash -c "TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS bash $script $SEED" 2>&1 | grep -E --line-buffered \
-        "LAYER|CHECKPOINT|Execution took|_edit=|error:|ERROR|Traceback|KeyError|TypeError|Saved|Loading|Deltas successfully|Patched|Complete|batch|Variant:|REVIVE|No existing|MEGA-BATCH|Freed|EvoEdit|NSE|RECT|Algorithm:|Finished:|Results:|Metadata" \
+        "\[CHECKPOINT\]|\[MEGA-BATCH|_edit==|error:|ERROR|Traceback|KeyError|TypeError|Variant:|Checkpoint dir:|No existing|complete:|Finished:" \
         || true
     local exit_code=${PIPESTATUS[0]}
     local elapsed=$(( $(date +%s) - t0 ))
