@@ -1137,6 +1137,33 @@ class TestAlphaEditSolveRegularization:
         lhs_section = source[source.find("build_lhs"):source.find("post_solve")]
         assert "L2" in lhs_section, "L2 regularization must appear in the LHS construction"
 
+    def test_alphaedit_solve_rhs_casts_before_matmul(self):
+        """P_i @ layer_ks @ resid.T must cast to double BEFORE matmul, not after.
+        Model loads in float16, P is float32. (P_i @ layer_ks).double() crashes
+        because the matmul itself fails on mixed dtypes. Must use double() first."""
+        import torch
+        # Simulate the dtype mismatch that happens on GPU
+        P_i = torch.randn(64, 64, dtype=torch.float32)
+        layer_ks = torch.randn(64, 10, dtype=torch.float16)
+        resid = torch.randn(32, 10, dtype=torch.float16)
+        # This is what the old code does — fails with dtype mismatch:
+        try:
+            _ = (P_i @ layer_ks @ resid.T).double()
+            matmul_ok = True
+        except RuntimeError:
+            matmul_ok = False
+        # This is what the fixed code should do — cast first:
+        result = P_i.double() @ layer_ks.double() @ resid.double().T
+        assert result.dtype == torch.float64
+        if not matmul_ok:
+            # Verify the source code casts BEFORE matmul
+            source = (PROJECT_ROOT / "src" / "algorithms" / "alphaedit_with_hooks.py").read_text()
+            solve_section = source[source.find("linalg.solve"):source.find("linalg.solve") + 300]
+            assert "P_i.double()" in solve_section or "layer_ks.double()" in solve_section, (
+                "AlphaEdit solve RHS must cast P_i and layer_ks to .double() BEFORE matmul. "
+                "Wrapping the result with .double() fails when P is float32 and layer_ks is float16."
+            )
+
 
 class TestReviveWorksForNonHookAlgorithms:
     """REVIVE must work for NSE and RECT, which are vendor functions that
