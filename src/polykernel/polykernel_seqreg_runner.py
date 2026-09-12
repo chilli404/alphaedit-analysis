@@ -324,6 +324,14 @@ def run(args: argparse.Namespace) -> None:
         cache_c = torch.zeros(n_layers, d, d)
         print(f"  [NSE] Initialized cache_c: ({n_layers}, {d}, {d})")
 
+    elif args.base_alg == "MEMIT_rect":
+        # RECT uses the same cache_c shape as standard MEMIT (output dim of down_proj)
+        sample_layer = hparams.layers[0]
+        weight_name = f"{hparams.rewrite_module_tmp.format(sample_layer)}.weight"
+        d = dict(model.named_parameters())[weight_name].shape[0]
+        cache_c = torch.zeros(n_layers, d, d)
+        print(f"  [RECT] Initialized cache_c: ({n_layers}, {d}, {d})")
+
     # Wrap apply_fn to pass hooks, state, and AlphaEdit extras
     def apply_fn(model, tok, requests, hparams, **kwargs):
         extra = {}
