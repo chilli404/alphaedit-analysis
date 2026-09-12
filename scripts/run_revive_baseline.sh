@@ -54,7 +54,10 @@ if [[ "$BASE_ALG" == "NSE" ]]; then
         for _nse_dir in "$_NSE_CACHE_LOCAL"/NousResearch_*_NSE; do
             [ -d "$_nse_dir" ] || continue
             _canonical="${_nse_dir/NousResearch_/meta-llama_}"
-            [ -e "$_canonical" ] || ln -sf "$(basename "$_nse_dir")" "$_canonical"
+            if [ -d "$_canonical" ] && [ ! -L "$_canonical" ]; then
+                rm -rf "$_canonical"
+            fi
+            ln -sfn "$(basename "$_nse_dir")" "$_canonical"
         done
         _kv_count=$(find "$_NSE_CACHE_LOCAL" -name '*.npz' 2>/dev/null | wc -l)
         echo "  KV cache loaded: $_kv_count files"
