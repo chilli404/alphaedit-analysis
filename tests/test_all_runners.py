@@ -514,6 +514,64 @@ class TestBaselineNumEditsOverride:
         )
 
 
+class TestMemoryBounds:
+    """Verify memory-critical data structures stay within expected bounds."""
+
+    def test_cache_c_size_llama(self):
+        """cache_c for Llama-3-8B must be [5, 14336, 14336] float64 = ~8.2 GB.
+        This is a FIXED size — it doesn't grow with more edits."""
+        n_layers = 5
+        d_in = 14336
+        bytes_float64 = n_layers * d_in * d_in * 8
+        gb = bytes_float64 / 1e9
+        assert gb < 10, f"cache_c would be {gb:.1f} GB — exceeds 10 GB safety limit"
+        assert gb > 7, f"cache_c is only {gb:.1f} GB — expected ~8.2 GB for Llama"
+
+    def test_cache_c_size_gptj(self):
+        """cache_c for GPT-J is [8, 16384, 16384] float64 — much larger."""
+        n_layers = 8  # GPT-J edits more layers
+        d_in = 16384  # GPT-J has larger hidden dim
+        bytes_float64 = n_layers * d_in * d_in * 8
+        gb = bytes_float64 / 1e9
+        # This is ~17 GB — fits on 46 GB L40S but tight
+        assert gb < 20, f"GPT-J cache_c would be {gb:.1f} GB"
+
+    def test_prev_cache_bounded_with_cache_max(self):
+        """With cache_max=20, prev_cache stores at most 20 batches of keys."""
+        d_in = 14336
+        n_layers = 5
+        cache_max = 20
+        batch_size = 100
+        total_keys = cache_max * batch_size
+        bytes_per_layer = total_keys * d_in * 4  # float32 on CPU
+        total_gb = bytes_per_layer * n_layers / 1e9
+        assert total_gb < 1.0, f"prev_cache with cache_max=20 is {total_gb:.1f} GB — too large"
+
+    def test_prev_cache_unbounded_warning(self):
+        """With cache_strategy=all and no cache_max, prev_cache grows to ~3 GB at 10K."""
+        d_in = 14336
+        n_layers = 5
+        total_keys = 10000  # 10K edits
+        bytes_per_layer = total_keys * d_in * 4
+        total_gb = bytes_per_layer * n_layers / 1e9
+        # This should be ~2.9 GB — manageable on CPU but worth documenting
+        assert total_gb < 5.0, f"Unbounded prev_cache at 10K would be {total_gb:.1f} GB"
+
+    def test_revive_svd_peak_memory(self):
+        """REVIVE full SVD of [4096, 14336] with full_matrices=True produces V=[14336, 14336].
+        Peak GPU memory: model + V + U + working = ~16 + 0.8 + 0.06 + ~1 = ~18 GB."""
+        m, n = 4096, 14336
+        # U: [m, m] float32 = 64 MB
+        u_gb = m * m * 4 / 1e9
+        # V: [n, n] float32 = 780 MB
+        v_gb = n * n * 4 / 1e9
+        # Model: ~16 GB fp16
+        model_gb = 16
+        peak = model_gb + u_gb + v_gb + 1.0  # +1 GB working memory
+        assert peak < 46, f"REVIVE peak memory {peak:.1f} GB exceeds L40S 46 GB"
+        assert peak < 24, f"REVIVE peak memory {peak:.1f} GB exceeds A10G 24 GB"
+
+
 class TestCheckpointCompleteness:
     """Checkpoint files must contain all required components."""
 

@@ -233,6 +233,22 @@ validate_log() {
             ;;
     esac
 
+    # Memory checks
+    # Verify GPU memory was freed after editing (checkpoint_runner reports this)
+    if grep -q "\[CHECKPOINT\] Freed editing tensors" "$logfile"; then
+        local free_mem=$(grep "\[CHECKPOINT\] Freed editing tensors" "$logfile" | tail -1 | grep -oP '[\d.]+(?= GiB)')
+        if [ -n "$free_mem" ]; then
+            log "  ✓ GPU memory freed after editing (${free_mem} GiB free)"
+        fi
+    fi
+    # Check cache_c doesn't exceed expected bounds (8.2 GB for Llama 5-layer float64)
+    if grep -q "cache_c" "$logfile"; then
+        if grep -qi "CUDA out of memory.*cache_c\|RuntimeError.*cache_c" "$logfile"; then
+            log "  ❌ cache_c caused OOM"
+            FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: cache_c OOM"; return 1
+        fi
+    fi
+
     # Universal checks — all algorithms must show these
     if ! grep -q "LAYER [4-8]" "$logfile"; then
         log "  ❌ No LAYER editing output"
