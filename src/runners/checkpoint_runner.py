@@ -220,18 +220,22 @@ def run(args: argparse.Namespace) -> None:
 
     # Load null-space projection P for AlphaEdit
     P = None
+    cache_c = None
     if "AlphaEdit" in args.alg_name:
         p_path = alphaedit_root / "null_space_project.pt"
         if p_path.exists():
             P = torch.load(str(p_path), map_location="cpu")
-            print(f"  Loaded null-space projection P from {p_path}")
+            print(f"  Loaded null-space projection P from {p_path} (shape: {P.shape})")
+            d = P.shape[-1]
+            n_layers = len(hparams.layers)
+            cache_c = torch.zeros(n_layers, d, d)
+            print(f"  Initialized cache_c: ({n_layers}, {d}, {d})")
         else:
             raise FileNotFoundError(
                 f"P matrix not found at {p_path}. Run link_stats.sh first."
             )
 
-    # Load checkpoint if resuming
-    cache_c = None
+    # Load checkpoint if resuming (may override cache_c with saved state)
     if start_from_batch > 0:
         ckpt_result = load_checkpoint(
             model, hparams, str(ckpt_dir), start_from_batch - 1,
