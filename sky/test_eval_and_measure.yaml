@@ -1,0 +1,42 @@
+# GPU smoke test: evaluation and measurement infrastructure
+# Tests mega_batch_eval correctness + measurement harness A/B pattern
+# Launch: sky launch sky/test_eval_and_measure.yaml --cluster test-eval --detach-run -y
+# ~5 min on L40S
+
+resources:
+  accelerators: L40s:1
+  cpus: 4+
+  memory: 16+
+
+workdir: .
+
+file_mounts:
+  ~/sky_workdir/.env: ./.env
+
+setup: |
+  set -euo pipefail
+  cd ~/sky_workdir
+  bash scripts/remote_setup.sh
+
+run: |
+  set -euo pipefail
+  cd ~/sky_workdir
+  set -a && source ~/.env 2>/dev/null || source ~/sky_workdir/.env && set +a
+  export RESULT_ROOT="/s3-data/continual-learning/alphaedit/results/_smoke_test"
+  export CHECKPOINT_ROOT="/s3-data/continual-learning/alphaedit/checkpoints/_smoke_test"
+
+  bash scripts/link_stats.sh
+  bash scripts/link_dsets.sh
+  uv run python scripts/patches/apply_all.py
+
+  echo "=== CPU tests (eval + measurement infrastructure) ==="
+  uv run pytest tests/test_shared_infrastructure.py tests/test_evaluate_harness.py \
+      tests/test_measurement_runners.py --tb=short -q
+
+  echo ""
+  echo "=== GPU: Eval correctness (AlphaEdit 1 batch + verify per-case files) ==="
+  # Run one quick AlphaEdit edit + eval to verify mega_batch_eval produces correct output
+  bash tests/test_smoke_all_algorithms.sh --skypilot AlphaEdit
+
+  echo ""
+  echo "=== All eval and measurement tests passed ==="

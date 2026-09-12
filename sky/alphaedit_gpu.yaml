@@ -7,11 +7,6 @@ workdir: .
 
 file_mounts:
   ~/sky_workdir/.env: ./.env
-  ~/sky_workdir/scripts/remote_setup.sh: ./scripts/remote_setup.sh
-  ~/sky_workdir/scripts/link_stats.sh: ./scripts/link_stats.sh
-  ~/sky_workdir/scripts/link_dsets.sh: ./scripts/link_dsets.sh
-  ~/sky_workdir/scripts/download_datasets.sh: ./scripts/download_datasets.sh
-  ~/sky_workdir/src/util/model_download.py: ./src/util/model_download.py
 
 setup: |
   set -euo pipefail
