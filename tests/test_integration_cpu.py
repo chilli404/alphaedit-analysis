@@ -1048,3 +1048,240 @@ class TestVendorFunctionRequirements:
         lhs = hooks.build_lhs(0, layer_ks, None, hparams, state)
         # LHS must be float64 for torch.linalg.solve
         assert lhs.dtype == torch.float64, f"LHS dtype is {lhs.dtype}, must be float64 for solve"
+
+
+# ─── Fixed-Batch Ordering Tests ─────────────────────────────────────────────
+# The paper's centerpiece: identical batches in different temporal orders.
+
+
+class TestOrderingFilesExist:
+    """Every ordering × seed combination must have a stream file."""
+
+    @pytest.mark.parametrize("ordering", [
+        "fb_high_exposure", "fb_low_exposure", "fb_random0", "fb_random1", "fb_random2",
+        "key_clustered", "key_dispersed",
+    ])
+    @pytest.mark.parametrize("seed", [42, 2024, 137])
+    def test_ordering_stream_exists(self, ordering, seed):
+        path = PROJECT_ROOT / "results" / "matched_ordering" / "orderings" / f"{ordering}_seed{seed}.json"
+        if not path.exists():
+            pytest.skip(f"Ordering file not available: {path.name}")
+        import json
+        with open(path) as f:
+            data = json.load(f)
+        assert len(data) >= 100, f"Ordering must have ≥100 records, got {len(data)}"
+        assert all("case_id" in r for r in data[:5]), "Records must have case_id"
+
+
+class TestOrderingPathsAllMethods:
+    """Every method × ordering must produce correct checkpoint and results paths."""
+
+    METHODS = [
+        {"base_alg": "MEMIT", "name": "MEMIT-Seq", "experiment_type": "polykernel_seqreg",
+         "lambda_prev": 1.0, "kernel_degree": 1},
+        {"base_alg": "AlphaEdit", "name": "REVIVE+AlphaEdit", "experiment_type": "polykernel_seqreg",
+         "revive": True, "revive_tau": 0.1},
+        {"base_alg": "MEMIT", "name": "REVIVE+MEMIT", "experiment_type": "polykernel_seqreg",
+         "revive": True, "revive_tau": 0.1, "lambda_prev": 0.0},
+        {"base_alg": "NSE", "name": "REVIVE+NSE", "experiment_type": "polykernel_seqreg",
+         "revive": True, "revive_tau": 0.1, "lambda_prev": 0.0},
+        {"base_alg": "MEMIT_rect", "name": "REVIVE+RECT", "experiment_type": "polykernel_seqreg",
+         "revive": True, "revive_tau": 0.1, "lambda_prev": 0.0},
+    ]
+
+    ORDERINGS = ["fb_high_exposure", "fb_low_exposure", "fb_random0"]
+
+    MODELS = [
+        ("meta-llama/Meta-Llama-3-8B-Instruct", ""),
+        ("EleutherAI/gpt-j-6b", "gpt-j-6b"),
+    ]
+
+    @pytest.mark.parametrize("method", METHODS, ids=[m["name"] for m in METHODS])
+    @pytest.mark.parametrize("ordering", ORDERINGS)
+    @pytest.mark.parametrize("model_name,model_tag", MODELS, ids=["llama", "gptj"])
+    def test_path_contains_ordering(self, method, ordering, model_name, model_tag, tmp_path):
+        from experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg=method["base_alg"], seed=42, ordering=ordering,
+            model_name=model_name,
+            experiment_type=method.get("experiment_type", "polykernel_seqreg"),
+            lambda_prev=method.get("lambda_prev", 0.0),
+            kernel_degree=method.get("kernel_degree", 1),
+            revive=method.get("revive", False),
+            revive_tau=method.get("revive_tau", 0.1),
+        )
+        ckpt = str(config.checkpoint_dir(tmp_path))
+        assert ordering in ckpt, f"Ordering '{ordering}' not in checkpoint path: {ckpt}"
+        if model_tag:
+            assert model_tag in ckpt, f"Model tag '{model_tag}' not in path: {ckpt}"
+
+    @pytest.mark.parametrize("method", METHODS, ids=[m["name"] for m in METHODS])
+    @pytest.mark.parametrize("ordering", ORDERINGS)
+    def test_paths_distinct_across_orderings(self, method, ordering, tmp_path):
+        """Different orderings must produce different checkpoint paths."""
+        from experiment_config import ExperimentConfig
+        paths = set()
+        for o in self.ORDERINGS:
+            config = ExperimentConfig(
+                base_alg=method["base_alg"], seed=42, ordering=o,
+                experiment_type=method.get("experiment_type", "polykernel_seqreg"),
+                lambda_prev=method.get("lambda_prev", 0.0),
+                kernel_degree=method.get("kernel_degree", 1),
+                revive=method.get("revive", False),
+                revive_tau=method.get("revive_tau", 0.1),
+            )
+            paths.add(str(config.checkpoint_dir(tmp_path)))
+        assert len(paths) == len(self.ORDERINGS), "Each ordering must produce a unique path"
+
+
+class TestOrderingShellScripts:
+    """Scripts that run ordering experiments must accept ordering as an argument."""
+
+    def test_run_matched_ordering_accepts_ordering(self):
+        path = PROJECT_ROOT / "scripts" / "run_matched_ordering.sh"
+        if not path.exists():
+            pytest.skip("run_matched_ordering.sh not found")
+        source = path.read_text()
+        assert "ORDERING" in source or "ordering" in source
+
+    def test_run_evoedit_baseline_accepts_ordering(self):
+        path = PROJECT_ROOT / "scripts" / "run_evoedit_baseline.sh"
+        if not path.exists():
+            pytest.skip("run_evoedit_baseline.sh not found")
+        source = path.read_text()
+        assert "ORDERING" in source or "ordering" in source
+
+    def test_run_nse_baseline_accepts_ordering(self):
+        path = PROJECT_ROOT / "scripts" / "run_nse_baseline.sh"
+        if not path.exists():
+            pytest.skip("run_nse_baseline.sh not found")
+        source = path.read_text()
+        assert "ORDERING" in source or "ordering" in source
+
+    def test_run_revive_baseline_accepts_ordering(self):
+        path = PROJECT_ROOT / "scripts" / "run_revive_baseline.sh"
+        if not path.exists():
+            pytest.skip("run_revive_baseline.sh not found")
+        source = path.read_text()
+        assert "ORDERING" in source or "ordering" in source
+
+    def test_polykernel_seqreg_runner_accepts_ordering_arg(self):
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        assert "--ordering" in source, "polykernel_seqreg_runner must accept --ordering"
+
+    def test_polykernel_seqreg_runner_accepts_dataset_override(self):
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        assert "--dataset_override" in source, "Runner must accept --dataset_override for ordering streams"
+
+
+class TestFixedBatchInvariant:
+    """The defining property of fixed-batch orderings: same batches, different order."""
+
+    def test_high_low_same_records(self):
+        """fb_high and fb_low must contain identical records (different order)."""
+        hi = PROJECT_ROOT / "results" / "matched_ordering" / "orderings" / "fb_high_exposure_seed42.json"
+        lo = PROJECT_ROOT / "results" / "matched_ordering" / "orderings" / "fb_low_exposure_seed42.json"
+        if not hi.exists() or not lo.exists():
+            pytest.skip("Ordering files not available")
+        import json
+        with open(hi) as f:
+            hi_ids = sorted(r["case_id"] for r in json.load(f))
+        with open(lo) as f:
+            lo_ids = sorted(r["case_id"] for r in json.load(f))
+        assert hi_ids == lo_ids, "HIGH and LOW must have identical case_ids"
+
+    def test_high_low_different_order(self):
+        """fb_high and fb_low must have different record order (that's the experiment)."""
+        hi = PROJECT_ROOT / "results" / "matched_ordering" / "orderings" / "fb_high_exposure_seed42.json"
+        lo = PROJECT_ROOT / "results" / "matched_ordering" / "orderings" / "fb_low_exposure_seed42.json"
+        if not hi.exists() or not lo.exists():
+            pytest.skip("Ordering files not available")
+        import json
+        with open(hi) as f:
+            hi_order = [r["case_id"] for r in json.load(f)]
+        with open(lo) as f:
+            lo_order = [r["case_id"] for r in json.load(f)]
+        assert hi_order != lo_order, "HIGH and LOW must have different ordering"
+
+    def test_batch_membership_preserved(self):
+        """Within each batch of 100, the same records must appear in both orderings."""
+        hi = PROJECT_ROOT / "results" / "matched_ordering" / "orderings" / "fb_high_exposure_seed42.json"
+        lo = PROJECT_ROOT / "results" / "matched_ordering" / "orderings" / "fb_low_exposure_seed42.json"
+        if not hi.exists() or not lo.exists():
+            pytest.skip("Ordering files not available")
+        import json
+        with open(hi) as f:
+            hi_data = json.load(f)
+        with open(lo) as f:
+            lo_data = json.load(f)
+
+        batch_size = 100
+        hi_batches = [frozenset(r["case_id"] for r in hi_data[i:i+batch_size])
+                      for i in range(0, len(hi_data), batch_size)]
+        lo_batches = [frozenset(r["case_id"] for r in lo_data[i:i+batch_size])
+                      for i in range(0, len(lo_data), batch_size)]
+        assert set(hi_batches) == set(lo_batches), "Batch membership must be identical"
+
+    @pytest.mark.parametrize("seed", [42, 2024, 137])
+    def test_all_seeds_same_record_set(self, seed):
+        """All orderings for the same seed must use the same records."""
+        base = PROJECT_ROOT / "results" / "matched_ordering" / "orderings"
+        hi = base / f"fb_high_exposure_seed{seed}.json"
+        lo = base / f"fb_low_exposure_seed{seed}.json"
+        r0 = base / f"fb_random0_seed{seed}.json"
+        if not all(p.exists() for p in [hi, lo, r0]):
+            pytest.skip(f"Not all ordering files for seed {seed}")
+        import json
+        sets = []
+        for p in [hi, lo, r0]:
+            with open(p) as f:
+                sets.append(set(r["case_id"] for r in json.load(f)))
+        assert sets[0] == sets[1] == sets[2], f"Seed {seed}: all orderings must use same records"
+
+
+class TestV2EvalStructure:
+    """v2 eval files must have both prob-pref and argmax metrics."""
+
+    def test_v2_has_dual_metrics(self):
+        import glob, json
+        v2_files = glob.glob(str(PROJECT_ROOT / "results" / "matched_ordering" / "**" / "*_v2.json"), recursive=True)
+        if not v2_files:
+            pytest.skip("No v2 eval files found")
+        for f in v2_files[:5]:
+            with open(f) as fh:
+                data = json.load(fh)
+            first_key = list(data.keys())[0]
+            metrics = data[first_key].get("all_facts", {})
+            assert "efficacy" in metrics, f"v2 file missing efficacy: {f}"
+            assert "efficacy_argmax" in metrics, f"v2 file missing efficacy_argmax: {f}"
+            assert "neighborhood" in metrics, f"v2 file missing neighborhood: {f}"
+
+    def test_v2_has_cohort_metrics(self):
+        """v2 files should have first_1k and latest_1k cohort metrics."""
+        import glob, json
+        v2_files = glob.glob(str(PROJECT_ROOT / "results" / "matched_ordering" / "**" / "*_v2.json"), recursive=True)
+        if not v2_files:
+            pytest.skip("No v2 eval files found")
+        for f in v2_files[:3]:
+            with open(f) as fh:
+                data = json.load(fh)
+            last_key = sorted(data.keys(), key=lambda k: int(k.replace("_edits", "")))[-1]
+            entry = data[last_key]
+            assert "first_1k" in entry, f"v2 file missing first_1k: {f}"
+            assert "latest_1k" in entry, f"v2 file missing latest_1k: {f}"
+
+    def test_v2_prob_pref_geq_argmax(self):
+        """Prob-pref efficacy should be ≥ argmax efficacy (it's a weaker criterion)."""
+        import glob, json
+        v2_files = glob.glob(str(PROJECT_ROOT / "results" / "matched_ordering" / "**" / "*_v2.json"), recursive=True)
+        if not v2_files:
+            pytest.skip("No v2 eval files found")
+        for f in v2_files[:3]:
+            with open(f) as fh:
+                data = json.load(fh)
+            first_key = list(data.keys())[0]
+            m = data[first_key].get("all_facts", {})
+            if "efficacy" in m and "efficacy_argmax" in m:
+                assert m["efficacy"] >= m["efficacy_argmax"] - 0.01, (
+                    f"Prob-pref ({m['efficacy']}) should be ≥ argmax ({m['efficacy_argmax']})"
+                )
