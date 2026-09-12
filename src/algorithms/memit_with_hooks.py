@@ -157,14 +157,15 @@ def _execute_memit_with_hooks(
         layer_ks, targets = layer_ks.double(), targets.double()
 
         # === HOOK: build_lhs ===
-        # Free GPU memory before building the LHS — cov.double() is 1.53 GiB for Llama
-        torch.cuda.empty_cache()
+        # Covariance is [14336, 14336] — 1.53 GiB in float64. Compute LHS on CPU
+        # to avoid GPU OOM, then move result to GPU for the solve.
+        _ks_cpu = layer_ks.cpu()
         if hooks.build_lhs is not None:
-            lhs = hooks.build_lhs(layer, layer_ks, cov, hparams, state)
+            lhs = hooks.build_lhs(layer, _ks_cpu, cov.cpu(), hparams, state)
         else:
-            lhs = hparams.mom2_update_weight * cov.double() + layer_ks @ layer_ks.T
+            lhs = hparams.mom2_update_weight * cov.cpu().double() + _ks_cpu @ _ks_cpu.T
 
-        adj_k = torch.linalg.solve(lhs, layer_ks)
+        adj_k = torch.linalg.solve(lhs.cuda(), layer_ks)
         resid = targets / (len(hparams.layers) - i)
         upd_matrix = resid @ adj_k.T
 
