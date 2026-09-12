@@ -220,13 +220,14 @@ run_and_check "REVIVE+RECT" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT_rect-poly1
 # GROUP 3: pathguard_runner
 # -----------------------------------------------------------------------
 
-run_and_check "PathGuard" "$CHECKPOINT_ROOT/polykernel_seqreg/PathGuard-ED-poly2-M200-e0.1-lp1.0-ld0.0-cache0/seed$SEED/batch_0/model_weights.pt" "" \
+run_and_check "PathGuard-poly2-hybrid" "$CHECKPOINT_ROOT/pathguard/PathGuard-ED-poly2-hybrid-M200-e0.1/seed$SEED/batch_0/model_weights.pt" "" \
     uv run python src/runners/pathguard_runner.py \
     --seed $SEED --cuda_device 0 --ds_name mcf \
     --dataset_size_limit $DATASET_LIMIT --num_edits $EDITS \
     --lambda_prev 1.0 --lambda_delta 0.0 \
     --cache_strategy all --cache_max none \
     --save_interval 1 --pathguard --pathguard_M 200 --pathguard_adaptive \
+    --pathguard_kernel_degree 2 \
     --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
 # -----------------------------------------------------------------------
