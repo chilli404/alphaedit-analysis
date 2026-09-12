@@ -1027,6 +1027,19 @@ class TestVendorFunctionRequirements:
             "S3 FUSE doesn't support symlinks into it."
         )
 
+    def test_link_stats_removes_stale_symlink_before_copy(self):
+        """link_stats.sh must rm the destination before cp. A previous run may have
+        left a symlink to S3, and cp fails with 'are the same file' when the source
+        resolves through that symlink."""
+        link_stats = (PROJECT_ROOT / "scripts" / "link_stats.sh").read_text()
+        # rm must appear BEFORE cp for the P matrix destination
+        rm_pos = link_stats.find('rm -f "$_P_DST"')
+        cp_pos = link_stats.find('cp "$P_SRC" "$_P_DST"')
+        assert rm_pos > 0 and cp_pos > 0 and rm_pos < cp_pos, (
+            "link_stats.sh must rm -f the P matrix destination BEFORE cp. "
+            "Without this, cp fails when a stale symlink to S3 exists."
+        )
+
     def test_runner_p_path_matches_link_stats(self):
         """Runner must look for P at alphaedit_root/null_space_project.pt —
         the exact path that link_stats.sh copies it to."""
