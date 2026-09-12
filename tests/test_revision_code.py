@@ -576,9 +576,9 @@ class TestNewFilesExist:
         "scripts/run_matched_ordering_gptj.sh",
         "scripts/run_same_fact_damage.sh",
         "scripts/aggregate_percase_evals.py",
-        "sky/eval_task.yaml",
-        "sky/eval_task_zsre.yaml",
-        "sky/same_fact_stage2.yaml",
+        "sky/run.yaml",
+        "sky/test.yaml",
+        "sky/launch.sh",
     ])
     def test_file_exists(self, path):
         full = PROJECT_ROOT / path
