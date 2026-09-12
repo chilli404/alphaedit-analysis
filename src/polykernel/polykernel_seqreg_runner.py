@@ -248,12 +248,14 @@ def run(args: argparse.Namespace) -> None:
     ))
 
     # REVIVE spectral filter
+    _revive_hook = None
     if args.revive:
-        hook_list.append(revive_hooks(
+        _revive_hook = revive_hooks(
             revive_tau=args.revive_tau,
             revive_svd_device=args.revive_svd_device,
             revive_svd_dtype=args.revive_svd_dtype,
-        ))
+        )
+        hook_list.append(_revive_hook)
 
     algo_hooks = compose_hooks(*hook_list)
     algo_state = algo_hooks.get_state()
@@ -381,8 +383,7 @@ def run(args: argparse.Namespace) -> None:
                 if delta.norm() < 1e-10:
                     continue
                 state_rv = {"_current_weights": {wn: pre_weights[wn]}}
-                # Use the REVIVE hook from algo_hooks (already composed)
-                filtered = algo_hooks.post_solve(layer, delta, None, None, wn, state_rv)
+                filtered = _revive_hook.post_solve(layer, delta, None, None, wn, state_rv)
                 with torch.no_grad():
                     params[wn].data.copy_(pre_weights[wn] + filtered.to(params[wn].dtype))
 

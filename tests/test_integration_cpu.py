@@ -1120,6 +1120,23 @@ class TestReviveWorksForNonHookAlgorithms:
         # NSE's apply function signature — it accepts **_kwargs which silently drops hooks
         assert "def apply_nse_to_model" in source
 
+    def test_posthoc_revive_uses_revive_hook_only(self):
+        """Post-hoc REVIVE must call the REVIVE hook directly, not the composed chain.
+        The composed chain includes seqreg_hooks.post_solve which expects
+        state['mechanism_log'] — but the post-hoc state only has _current_weights."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        posthoc_section = source[source.find("# Non-hook path") if "Non-hook path" in source else source.find("pre_weights"):]
+        posthoc_section = posthoc_section[:posthoc_section.find("return result") + 20] if "return result" in posthoc_section else posthoc_section[:500]
+        uses_composed = "algo_hooks.post_solve" in posthoc_section
+        uses_direct_revive = any(x in posthoc_section for x in [
+            "revive_hooks", "_revive_hook", "revive_filter",
+        ])
+        assert not uses_composed or uses_direct_revive, (
+            "Post-hoc REVIVE path must NOT call algo_hooks.post_solve (composed chain). "
+            "The seqreg hook in the chain expects state['mechanism_log'] which doesn't exist "
+            "in the post-hoc state. Use the REVIVE hook directly instead."
+        )
+
     def test_runner_handles_revive_for_non_hook_algorithms(self):
         """polykernel_seqreg_runner must apply REVIVE post-hoc for NSE/RECT
         since their vendor functions don't call hook.post_solve."""
