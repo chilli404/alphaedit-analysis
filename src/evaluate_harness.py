@@ -131,10 +131,11 @@ def load_dataset(ds_name: str, size_limit: int, alphaedit_root: Path = None,
         from paths import get_alphaedit_root
         alphaedit_root = get_alphaedit_root()
 
-    sys.path.insert(0, str(alphaedit_root))
-
-    # Pre-populate vendor globals module so it doesn't need globals.yml from CWD
+    # Pre-populate vendor globals module BEFORE adding to sys.path
+    # (vendor's dsets imports util.globals which reads globals.yml from CWD)
     _ensure_vendor_globals(alphaedit_root)
+
+    sys.path.insert(0, str(alphaedit_root))
 
     if ds_name in ("mcf", "multi_counterfact"):
         from dsets import MultiCounterFactDataset
@@ -153,20 +154,26 @@ def _ensure_vendor_globals(alphaedit_root: Path):
 
     The vendor code does `from util.globals import *` which reads globals.yml
     relative to CWD. Instead of chdir'ing, we create the module with the right
-    values directly.
+    values directly. Must be called BEFORE adding alphaedit_root to sys.path.
     """
-    if "util.globals" in sys.modules:
-        return
-
     import types
-    mod = types.ModuleType("util.globals")
-    mod.RESULTS_DIR = alphaedit_root / "results"
-    mod.DATA_DIR = alphaedit_root / "data"
-    mod.STATS_DIR = alphaedit_root / "data" / "stats"
-    mod.HPARAMS_DIR = alphaedit_root / "hparams"
-    mod.KV_DIR = alphaedit_root / "share" / "projects" / "rewriting-knowledge" / "kvs"
-    mod.REMOTE_ROOT_URL = "https://memit.baulab.info"
-    sys.modules["util.globals"] = mod
+
+    # Create the 'util' package if it doesn't exist as a vendor module yet
+    if "util" not in sys.modules or not hasattr(sys.modules.get("util"), "__path__"):
+        util_mod = types.ModuleType("util")
+        util_mod.__path__ = [str(alphaedit_root / "util")]
+        sys.modules["util"] = util_mod
+
+    # Create util.globals with the correct paths
+    if "util.globals" not in sys.modules:
+        mod = types.ModuleType("util.globals")
+        mod.RESULTS_DIR = alphaedit_root / "results"
+        mod.DATA_DIR = alphaedit_root / "data"
+        mod.STATS_DIR = alphaedit_root / "data" / "stats"
+        mod.HPARAMS_DIR = alphaedit_root / "hparams"
+        mod.KV_DIR = alphaedit_root / "share" / "projects" / "rewriting-knowledge" / "kvs"
+        mod.REMOTE_ROOT_URL = "https://memit.baulab.info"
+        sys.modules["util.globals"] = mod
 
 
 def run_experiment(

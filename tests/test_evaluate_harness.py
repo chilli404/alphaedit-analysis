@@ -296,6 +296,25 @@ class TestLoadDatasetVendorGlobals:
         assert mod.REMOTE_ROOT_URL == yml["REMOTE_ROOT_URL"]
 
 
+class TestVendorGlobals:
+    """Vendor util.globals must be pre-populated before importing vendor modules."""
+
+    def test_ensure_vendor_globals_before_sys_path(self):
+        """_ensure_vendor_globals must be called BEFORE sys.path.insert of alphaedit_root."""
+        source = (Path(__file__).resolve().parent.parent / "src" / "evaluate_harness.py").read_text()
+        ensure_pos = source.find("_ensure_vendor_globals(alphaedit_root)")
+        syspath_pos = source.find('sys.path.insert(0, str(alphaedit_root))')
+        assert ensure_pos < syspath_pos, (
+            "_ensure_vendor_globals must be called BEFORE sys.path.insert. "
+            "Otherwise vendor dsets imports util.globals which reads globals.yml from CWD."
+        )
+
+    def test_ensure_vendor_globals_creates_util_package(self):
+        """Must create the 'util' package module for util.globals to be importable."""
+        source = (Path(__file__).resolve().parent.parent / "src" / "evaluate_harness.py").read_text()
+        assert 'sys.modules["util"]' in source
+
+
 class TestCheckpointIntegration:
     """Checkpoint hooks must be called at the right times."""
 
