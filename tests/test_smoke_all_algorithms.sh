@@ -97,7 +97,7 @@ run_and_check() {
     # Show errors if any
     if [ "$exit_code" -ne 0 ]; then
         log "  Last 20 lines of output:"
-        tail -20 "$logfile" | sed 's/^/    /'
+        tail -100 "$logfile" | sed 's/^/    /'
     fi
     local t1=$(date +%s)
     local elapsed=$((t1 - t0))
@@ -299,7 +299,11 @@ mkdir -p "$RESULT_ROOT" "$CHECKPOINT_ROOT"
 # Verify cleanup worked
 stale=$(find "$CHECKPOINT_ROOT" -name "model_weights.pt" 2>/dev/null | wc -l)
 if [ "$stale" -gt 0 ]; then
-    log "  WARNING: $stale stale checkpoints remain — runners may resume instead of starting fresh"
+    log "  ERROR: $stale stale checkpoints remain after cleanup. Retrying..."
+    rm -rf "$CHECKPOINT_ROOT" 2>/dev/null || true
+    mkdir -p "$CHECKPOINT_ROOT"
+    stale=$(find "$CHECKPOINT_ROOT" -name "model_weights.pt" 2>/dev/null | wc -l)
+    [ "$stale" -gt 0 ] && { log "  FATAL: Cannot clean checkpoints. Aborting."; exit 1; }
 else
     log "  ✓ Cleaned: $CHECKPOINT_ROOT"
 fi
@@ -412,8 +416,12 @@ run_baseline() {
     local logfile=$(mktemp)
     log "───────────────────────────────────────────"
     log "START [$((PASS + FAIL + SKIP + 1))/11]: $label"
-    # Baselines use 1 batch — compute_z runs 25 gradient steps per edit (no cache for EvoEdit)
-    local bl_limit=$EDITS
+    # EvoEdit has no precomputed cache — compute_z runs 25 gradient steps per edit.
+    # Use 1 batch (10 edits) for EvoEdit, 2 batches (20 edits) for everything else.
+    local bl_limit=$DATASET_LIMIT
+    if echo "$label" | grep -qi "EvoEdit"; then
+        bl_limit=$EDITS
+    fi
     log "  Script: $script, TARGET_EDITS=$bl_limit, NUM_EDITS=$EDITS, SEED=$SEED"
     local t0=$(date +%s)
 
@@ -426,13 +434,17 @@ run_baseline() {
     # NSE/EvoEdit scripts extract KV caches from S3 and fail fast if missing.
     # No pre-check needed here — the scripts handle it.
 
+    # Clean results/checkpoints for this algorithm before running
+    rm -rf "$CHECKPOINT_ROOT" 2>/dev/null; mkdir -p "$CHECKPOINT_ROOT"
+    rm -rf "$RESULT_ROOT" 2>/dev/null; mkdir -p "$RESULT_ROOT"
+
     # Skip mega_batch_eval — the editing smoke test validates edits + checkpoints, not eval.
     # Eval is tested by the eval cluster (test_eval_and_measure.yaml).
     PYTHONUNBUFFERED=1 timeout "$TIMEOUT" bash -c "SKIP_MEGA_BATCH_EVAL=1 TARGET_EDITS=$bl_limit NUM_EDITS=$EDITS RESULT_ROOT=$real_result_root CHECKPOINT_ROOT=$CHECKPOINT_ROOT bash $script $SEED" > "$logfile" 2>&1
     local exit_code=$?
     if [ "$exit_code" -ne 0 ]; then
         log "  Last 20 lines of output:"
-        tail -20 "$logfile" | sed 's/^/    /'
+        tail -100 "$logfile" | sed 's/^/    /'
     fi
     local elapsed=$(( $(date +%s) - t0 ))
 
