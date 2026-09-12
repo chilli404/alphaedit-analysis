@@ -1070,23 +1070,42 @@ class TestVendorFunctionRequirements:
         )
 
     def test_evoedit_script_loads_kv_cache(self):
-        """run_evoedit_baseline.sh must load KV caches from S3 tars.
-        Without them, EvoEdit's compute_z does 25 gradient steps per edit."""
+        """run_evoedit_baseline.sh must load KV caches from S3 tars and pass --use_cache.
+        Without caches, EvoEdit's compute_z does 25 gradient steps per edit."""
         source = (PROJECT_ROOT / "scripts" / "run_evoedit_baseline.sh").read_text()
         assert "tar xf" in source, "EvoEdit must extract KV cache tars"
-        assert "exit 1" in source[source.find("KV"):] if "KV" in source else False, (
-            "EvoEdit must fail fast if KV caches aren't available"
+        assert "--use_cache" in source, (
+            "EvoEdit must pass --use_cache to evaluate.py so it reads precomputed v_star"
         )
 
     def test_all_baseline_scripts_fail_fast_without_caches(self):
         """Every baseline script that uses compute_z must exit 1 if caches missing."""
         for script_name in ["run_nse_baseline.sh", "run_evoedit_baseline.sh"]:
             source = (PROJECT_ROOT / "scripts" / script_name).read_text()
-            # Must have exit 1 after cache check
             cache_section = source[source.find("kv_cache") if "kv_cache" in source.lower() else 0:]
             assert "exit 1" in cache_section[:1000], (
                 f"{script_name} must exit 1 if KV caches aren't available"
             )
+
+    def test_kv_cache_symlinks_memit_to_nse(self):
+        """All algorithms use identical compute_z output. The cache directory name
+        differs ({model}_MEMIT for EvoEdit/AlphaEdit/RECT vs {model}_NSE for NSE)
+        but the v_star files are identical. Scripts must symlink _MEMIT → _NSE
+        so all algorithms find the same cache."""
+        # Check at least one script creates the symlink
+        found = False
+        for script in ["run_nse_baseline.sh", "run_evoedit_baseline.sh", "build_nse_cache.sh"]:
+            path = PROJECT_ROOT / "scripts" / script
+            if path.exists():
+                source = path.read_text()
+                if "_MEMIT" in source and ("ln " in source or "symlink" in source.lower()):
+                    found = True
+                    break
+        assert found, (
+            "At least one baseline script must symlink {model}_MEMIT → {model}_NSE "
+            "in the kvs directory. All algorithms use identical compute_z output — "
+            "only the directory name differs."
+        )
 
     def test_nse_kv_cache_tar_structure(self):
         """KV cache tars must extract to {model_name}_NSE/{file}.npz matching

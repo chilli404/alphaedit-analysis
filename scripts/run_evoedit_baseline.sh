@@ -47,6 +47,12 @@ if [[ -d "$_KV_CACHE_S3" ]]; then
         echo "  Extracting KV cache from $(basename $_tar)..."
         tar xf "$_tar" -C "$_KV_CACHE_LOCAL/"
     done
+    # All algorithms use identical compute_z. Symlink _MEMIT → _NSE so EvoEdit finds it.
+    for _nse_dir in "$_KV_CACHE_LOCAL"/*_NSE; do
+        [ -d "$_nse_dir" ] || continue
+        _memit_dir="${_nse_dir%_NSE}_MEMIT"
+        [ -e "$_memit_dir" ] || ln -sf "$(basename "$_nse_dir")" "$_memit_dir"
+    done
     _kv_count=$(find "$_KV_CACHE_LOCAL" -name '*.npz' 2>/dev/null | wc -l)
     echo "  KV cache loaded: $_kv_count files"
     [[ "$_kv_count" -lt 100 ]] && { echo "ERROR: KV cache too small ($_kv_count files)"; exit 1; }
@@ -159,6 +165,7 @@ sys.argv = [
     '--save_every=1000',
     '--conserve_memory',
     '--forgetting_eval_interval=0',
+    '--use_cache',
 ]
 
 # Auto-detect existing run directory for resume

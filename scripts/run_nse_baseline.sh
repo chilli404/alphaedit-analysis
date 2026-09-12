@@ -68,6 +68,13 @@ if [ -d "$_NSE_CACHE_S3" ]; then
         echo "  Upload caches with: bash scripts/build_nse_cache.sh --upload"
         exit 1
     fi
+    # All algorithms use identical compute_z output. Symlink _MEMIT → _NSE
+    # so EvoEdit/AlphaEdit/RECT also find the cache.
+    for _nse_dir in "$_NSE_CACHE_LOCAL"/*_NSE; do
+        [ -d "$_nse_dir" ] || continue
+        _memit_dir="${_nse_dir%_NSE}_MEMIT"
+        [ -e "$_memit_dir" ] || ln -sf "$(basename "$_nse_dir")" "$_memit_dir"
+    done
     _kv_count=$(find "$_NSE_CACHE_LOCAL" -name '*.npz' 2>/dev/null | wc -l)
     echo "  KV cache loaded: $_kv_count files"
     if [ "$_kv_count" -lt 100 ]; then
