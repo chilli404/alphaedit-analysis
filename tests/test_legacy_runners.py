@@ -34,7 +34,6 @@ EDIT_LOOP_RUNNERS = {
     "alphaedit_stream_runner": PROJECT_ROOT / "src" / "runners" / "alphaedit_stream_runner.py",
     "polykernel_editor_runner": PROJECT_ROOT / "src" / "polykernel" / "polykernel_editor_runner.py",
     "update_interference_runner": PROJECT_ROOT / "src" / "runners" / "update_interference_runner.py",
-    "cache_mitigation_batch_runner": PROJECT_ROOT / "src" / "runners" / "cache_mitigation_batch_runner.py",
     "protected_editing_runner": PROJECT_ROOT / "src" / "runners" / "protected_editing_runner.py",
 }
 

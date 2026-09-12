@@ -22,7 +22,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 EDIT_EVAL_RUNNERS = [
     "src/runners/alphaedit_stream_runner.py",
     "src/runners/update_interference_runner.py",
-    "src/runners/cache_mitigation_batch_runner.py",
     "src/runners/protected_editing_runner.py",
 ]
 

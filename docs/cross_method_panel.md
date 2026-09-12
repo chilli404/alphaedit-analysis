@@ -61,40 +61,11 @@ The goal: establish that **edit order is a hidden benchmark axis** that affects 
 
 #### Ordering Stress Test (fb_high / fb_low / fb_random0)
 
-| Method | s42 | s2024 | s137 | V2 Eval |
-|---|---|---|---|---|
-| AlphaEdit | ✅ | ✅ | ✅ | ✅ 9/9 |
-| EvoEdit | ✅ | ✅ | ✅ | ✅ 9/9 |
-| MEMIT-Seq | ✅ | ✅ | ✅ | ✅ 9/9 |
-| PathGuard-poly2 | ✅ | ✅ | ✅ | ✅ 9/9 |
-| NSE | 1/3 | 0/3 | — | 0 |
-| REVIVE+MEMIT | In progress | In progress | — | 0 |
-| REVIVE+AlphaEdit | In progress | In progress | — | 0 |
-| REVIVE+NSE | In progress | In progress | — | 0 |
-| REVIVE+RECT | In progress | In progress | — | 0 |
-| RECT-Aligned | In progress | In progress | — | 0 |
+See `results/matched_ordering/` for current completion status per method, ordering, and seed. V2 eval files (`full_eval_seed*_v2.json`) contain dual-metric (prob-pref + argmax) results.
 
-#### Paper Replications (default MCF order, seed 42)
+Core methods with complete v2 results: AlphaEdit, EvoEdit, MEMIT-Seq, PathGuard-poly2 (3 seeds x 3 orderings each).
 
-| Method | Status | Purpose |
-|---|---|---|
-| EvoEdit paper repl | 70% | Validate against published 98.29% efficacy |
-| NSE paper repl | Running | Validate against published numbers |
-| REVIVE+MEMIT paper repl | 37% | Validate against published numbers |
-| REVIVE+AE paper repl | 28% | Test REVIVE on AlphaEdit base |
-| REVIVE+NSE paper repl | Running | Test REVIVE on NSE base |
-| RECT-Aligned paper repl | 66% | Validate implementation |
-| REVIVE+RECT paper repl | 29% | Combined spectral + alignment |
-
-### GPT-J-6B (MCF, 10K edits, seed 42)
-
-| Method | fb_high | fb_random0 | Eval |
-|---|---|---|---|
-| AlphaEdit | ✅ | Not started | Needs v2 |
-| MEMIT-Seq | ✅ | ✅ | OOM on eval (batch fix needed) |
-| EvoEdit | ✅ | ✅ | Needs v2 |
-| NSE | ✅ | Unknown | Needs v2 |
-| REVIVE+MEMIT | 58% | 59% | In progress |
+Extended methods (varying completion): NSE, REVIVE+MEMIT, REVIVE+AlphaEdit, REVIVE+NSE, REVIVE+RECT, RECT-Aligned.
 
 ---
 

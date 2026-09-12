@@ -82,3 +82,7 @@ uv.lock
 results/polykernel_diagnostic/*.json
 
 results/polykernel_diagnostic/
+.DS_Store
+**/.DS_Store
+CLAUDE.md
+.claude/

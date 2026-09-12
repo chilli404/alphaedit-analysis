@@ -49,7 +49,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 sys.path.insert(0, 'src/util')
-from model_download import resolve_model_path
+from model_resolve import resolve_model_path
 
 LAYER = ${LAYER}
 SEED = ${SEED}

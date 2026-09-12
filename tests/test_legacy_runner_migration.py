@@ -25,7 +25,6 @@ RUNNERS = {
     "runners/capability_probe_runner.py": "migrated",
 
     # LEGACY SINGLE — exec(compile(evaluate.py)) only
-    "runners/cache_mitigation_batch_runner.py": "legacy_single",
     "runners/update_interference_runner.py": "legacy_single",
     "runners/alphaedit_stream_runner.py": "legacy_single",
     "runners/protected_editing_runner.py": "legacy_single",

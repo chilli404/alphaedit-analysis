@@ -74,19 +74,6 @@ class TestCapabilityProbeRunnerMigration:
         assert "evaluate_harness" in source or "run_experiment" in source
 
 
-class TestCacheMitigationRunnerMigration:
-    """cache_mitigation_batch_runner — DEFERRED (multi-variant per model load, cache_c manipulation)."""
-
-    def test_parses(self):
-        source = (PROJECT_ROOT / "src" / "runners" / "cache_mitigation_batch_runner.py").read_text()
-        ast.parse(source)
-
-    @pytest.mark.skip(reason="Complex: multi-variant per model load with cache_c manipulation. Needs GPU verification.")
-    def test_no_exec_compile(self):
-        source = (PROJECT_ROOT / "src" / "runners" / "cache_mitigation_batch_runner.py").read_text()
-        assert "exec(compile(" not in source
-
-
 class TestProtectedEditingRunnerMigration:
     """protected_editing_runner — DEFERRED (dual source injection for protection hooks)."""
 

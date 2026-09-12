@@ -1,168 +1,150 @@
 # AlphaEdit Reproducibility Study
 
-A mechanistic reproducibility study of [AlphaEdit](https://github.com/jianghoucheng/AlphaEdit) (ICLR 2025 Outstanding Paper), targeting TMLR Reproducibility Certification and NeurIPS 2026 MLRC track.
+Rigorous reproducibility study of [AlphaEdit](https://github.com/jianghoucheng/AlphaEdit) (ICLR 2025 Outstanding Paper), investigating temporal path dependence in sequential model editing.
 
----
+**Key finding:** The order in which edits are applied — not just what is edited — determines which memories survive. Identical edit batches produce radically different outcomes under different temporal sequences, and this path sensitivity varies across editing methods.
 
-## Central Thesis
+## Key Results
 
-> AlphaEdit's reliability is limited by two mechanisms: **capacity saturation** (the null-space fills up) and **semantic interference** (the desired edit overlaps with preserved knowledge). The second failure mode is more fundamental — it challenges the assumption that editability and preservation are always separable.
-
----
-
-## Experiment Status
-
-### Core Reproduction
-
-- [x] Obtain HuggingFace access to Llama-3-8B-Instruct
-- [x] GPU smoke test (validate pipeline end-to-end)
-- [x] MVE1 — AlphaEdit on MultiCounterFact (5 seeds)
-- [x] MVE2 — MEMIT on MultiCounterFact (5 seeds)
-- [x] MVE3 — AlphaEdit on zsRE (5 seeds)
-
-### Extended Experiments (3 seeds: 42, 137, 2024)
-
-- [x] Failure curve (500–10K edits)
-- [ ] Null-space rank tracking
-- [ ] MEMIT+SeqReg calibration
-- [ ] Cache mitigation sweep
-- [ ] Capability probe (WikiText perplexity + MMLU)
-- [ ] Second model (Mistral-7B)
-
-### Write-Up
-
-- [ ] Write up for TMLR (target: 2026-07-24)
-
----
-
-## Experiments
-
-### Core Reproduction (MVE)
-
-| ID | Experiment | Tests |
-|----|-----------|-------|
-| MVE1 | AlphaEdit on MultiCounterFact | Primary benchmark: 2000 facts, 5 seeds |
-| MVE2 | MEMIT on MultiCounterFact | Fair comparison under identical conditions |
-| MVE3 | AlphaEdit on zsRE | Cross-dataset generalization |
-
-All MVEs: batches of 100, evaluation every 5 batches, 5 seeds.
-
-### Novel Extensions
-
-| Priority | Experiment | Core question |
-|----------|-----------|---------------|
-| **P0** | Matched ordering | Does key-space geometry of edit sequences affect performance? |
-| P1 | Failure curve (500–10K edits) | Where does AlphaEdit's advantage disappear? |
-| P1 | Null-space rank tracking | Which layers saturate first? |
-| P1 | MEMIT+PrevKeyReg+Ridge | Is null-space projection necessary, or does key-direction regularization suffice? |
-| P2 | Capability probe (WikiText-103) | Does editing destroy general language ability? |
-| P2 | Second model (Mistral-7B) | Do findings generalize beyond Llama-3-8B? |
-
-See [docs/extensions.md](docs/extensions.md) for detailed experimental designs and [docs/metrics.md](docs/metrics.md) for the full metrics/statistical framework.
-
----
+- **Age-selective forgetting**: Older edits are disproportionately lost (42pp gap at 10K edits, 3 seeds)
+- **Path dependence**: Reordering identical fixed batches creates 25pp efficacy differences
+- **Method dependence**: AlphaEdit and EvoEdit are order-sensitive (-22pp, -12pp); MEMIT-Seq and PathGuard are robust (~0pp)
+- **Cross-architecture**: Pattern replicates on Llama-3-8B, GPT-J-6B, and Qwen-2.5-7B
+- **Causal evidence**: Same-state A/B interventions show high-overlap batches cause more immediate logit damage (47/60 trials, p < 0.0001)
 
 ## Setup
 
 ```bash
+git clone --recurse-submodules <repo-url>
+cd alphaedit-analysis
+uv sync
 bash scripts/setup_env.sh
-bash scripts/link_stats.sh /path/to/wikipedia_stats/
 export HF_TOKEN=hf_...
-uv run huggingface-cli login --token $HF_TOKEN
-bash scripts/smoke_test.sh  # requires GPU
 ```
 
-**Requirements**: Python 3.10, NVIDIA GPU ≥ 48GB VRAM, HuggingFace access to `meta-llama/Meta-Llama-3-8B-Instruct`.
+**Requirements:** Python 3.10, NVIDIA GPU with ≥ 48GB VRAM, HuggingFace access to `meta-llama/Meta-Llama-3-8B-Instruct`.
 
----
+### Quick Validation
+
+```bash
+bash scripts/smoke_test.sh   # 5-minute GPU smoke test (2 edits, 10 samples)
+uv run pytest tests/ -q      # 1175 CPU tests (~10 seconds)
+```
 
 ## Running Experiments
 
-### Core Experiments
+### Core Reproduction (5 seeds)
 
 ```bash
-bash scripts/run_mve1_alphaedit_mcf.sh 42
-bash scripts/run_mve2_memit_mcf.sh 42
-bash scripts/run_mve3_alphaedit_zsre.sh 42
+bash scripts/run_mve1_alphaedit_mcf.sh 42    # AlphaEdit on MultiCounterFact
+bash scripts/run_mve2_memit_mcf.sh 42        # MEMIT baseline
+bash scripts/run_mve3_alphaedit_zsre.sh 42   # AlphaEdit on zsRE
 ```
 
-### Failure Curve (Checkpointed)
+### Failure Curve (10K edits with checkpoints)
 
 ```bash
-# Milestone evaluation (RECOMMENDED)
-EVAL_AT_CHECKPOINTS_ONLY=true bash scripts/run_failure_curve_checkpointed.sh 42 both 5000
-
-# Fast mode (testing/iteration)
-FAST_CHECKPOINT=true bash scripts/run_failure_curve_checkpointed.sh 42 AlphaEdit 2000
+EVAL_AT_CHECKPOINTS_ONLY=true \
+  bash scripts/run_failure_curve_checkpointed.sh 42 both 10000
 ```
 
-### Extensions
+### Fixed-Batch Ordering Experiment
 
 ```bash
-bash scripts/run_nullspace_analysis.sh 42
-bash scripts/run_capability_probe.sh 42
-bash scripts/run_matched_ordering.sh 42
-FAST_CHECKPOINT=true bash scripts/run_memit_sequential.sh 42 1 1
+bash scripts/run_matched_ordering.sh 42 AlphaEdit fb_high_exposure
+bash scripts/run_matched_ordering.sh 42 AlphaEdit fb_low_exposure
 ```
 
-### Multi-Seed / Full Sweep
+### Cross-Method Comparison
 
 ```bash
-bash scripts/run_all_seeds.sh mve     # All MVEs × 5 seeds (42, 137, 2024, 7, 99)
-bash scripts/run_all_seeds.sh failure_curve  # Extensions × 3 seeds (42, 137, 2024)
-bash scripts/run_all_seeds.sh all     # Everything with appropriate seed counts
+bash scripts/run_evoedit_baseline.sh 42 fb_high_exposure
+bash scripts/run_nse_baseline.sh 42 fb_high_exposure
+bash scripts/run_revive_baseline.sh 42 fb_high_exposure
 ```
 
 ### SkyPilot (Cloud GPU)
 
 ```bash
-bash sky/sky_launch.sh mve1           # MVE1 × 5 seeds
-bash sky/sky_launch.sh mve1 42        # MVE1, single seed override
-bash sky/sky_launch.sh failure_curve_ckpt  # Extension × 3 seeds
-bash sky/sky_launch.sh all            # All experiments with appropriate seeds
-sky status                            # Monitor clusters
-sky logs ae-mve1_alphaedit_mcf-s42    # Stream logs
-sky down -a                           # Tear down all clusters
+bash sky/sky_launch.sh mve1 42          # Single experiment + seed
+bash sky/sky_launch.sh all              # All experiments
+sky status                              # Monitor
+sky down -a                             # Tear down
 ```
 
----
-
-## Analysis
-
-```bash
-uv run python analysis/aggregate.py --results_dir results
-uv run python analysis/paired_bootstrap.py --results_dir results
-uv run python analysis/plots.py --results_dir results --output_dir results/figures
-uv run python analysis/nullspace_analysis.py --results_dir results/nullspace_tracking
-```
-
----
+See [docs/experiments.md](docs/experiments.md) for the full experiment reference including environment variables, path conventions, and all available scripts.
 
 ## Project Structure
 
 ```
-├── sky/                     # SkyPilot cloud GPU orchestration
-├── scripts/                 # Shell scripts (setup, experiments)
-├── src/                     # Python runners (source injection pattern)
-├── configs/                 # Frozen experiment manifest
-├── vendor/AlphaEdit/        # Git submodule pinned at b84624f
-├── analysis/                # Post-hoc statistical analysis
-├── docs/                    # Detailed documentation
-├── tests/                   # Unit tests
-└── results/                 # Output directory
+alphaedit-analysis/
+├── src/
+│   ├── evaluate_harness.py      # Main experiment loop (replaces vendor evaluate.py)
+│   ├── algorithms/              # Composable per-layer hooks (SeqReg, REVIVE, PathGuard)
+│   │   ├── hooks.py             # AlgorithmHooks dataclass + compose_hooks()
+│   │   ├── hook_presets.py      # seqreg_hooks, revive_hooks, pathguard_hooks, c0_hooks
+│   │   ├── memit_with_hooks.py  # MEMIT with hook call points
+│   │   └── alphaedit_with_hooks.py
+│   ├── runners/                 # Experiment runners (thin wrappers around harness)
+│   ├── util/
+│   │   ├── experiment_config.py # Single source of truth for variant names + paths
+│   │   ├── checkpoint_io.py     # Shared save/load with path validation
+│   │   └── paths.py             # Centralized path resolution + S3 guard
+│   ├── mechanism/               # Mechanistic analysis tools
+│   ├── polykernel/              # Polynomial kernel experiments
+│   └── revive/                  # REVIVE spectral filter
+├── analysis/                    # Paper figure + table generation (Makefile-driven)
+│   └── _standalone/             # One-off analysis scripts
+├── scripts/                     # Shell scripts for experiments + utilities
+│   └── patches/                 # Runtime patches for vendor code
+├── sky/                         # SkyPilot cloud GPU orchestration
+├── tests/                       # 1175 CPU tests + GPU smoke tests
+├── configs/                     # Frozen experiment manifest
+├── vendor/AlphaEdit/            # Git submodule (pinned at b84624f)
+├── docs/                        # Experiment design + technical analysis
+└── paper/                       # Frozen result numbers for the paper
 ```
 
----
+## Architecture
+
+The codebase uses two patterns:
+
+**Harness + hooks** (primary): `evaluate_harness.run_experiment()` runs the edit-eval loop. Algorithm-specific behavior is injected via composable `AlgorithmHooks`:
+
+```python
+from algorithms.hook_presets import seqreg_hooks, revive_hooks, compose_hooks
+
+hooks = compose_hooks(
+    seqreg_hooks(lambda_prev=1.0),
+    revive_hooks(revive_tau=0.1),
+)
+run_experiment(model, tok, hparams, dataset, apply_fn, hooks=hooks, ...)
+```
+
+**Legacy source injection** (secondary): Some runners still read vendor source files as text, patch them, and `exec(compile())`. These are labeled with `STATUS: LEGACY` headers.
+
+## Reproducing Paper Results
+
+Every number in the paper traces to a source file:
+- **`paper/RESULTS_MANIFEST_v2.md`** — authoritative prob-pref numbers for every claim
+- **`paper/result_registry.json`** — machine-readable mapping of every number to its source file, metric type, and checkpoint
+
+## Evaluation Metrics
+
+Results use probability-preference metrics (pairwise NLL comparison, matching published AlphaEdit/EvoEdit papers). Argmax metrics are reported as secondary. See `scripts/eval_prob_preference.py` for the rescoring tool and `analysis/loaders.py` for metric extraction.
 
 ## Citation
 
 ```bibtex
-@inproceedings{fang2024alphaedit,
-  title={AlphaEdit: Null-Space Constrained Knowledge Editing for Language Models},
-  author={Fang, Junfeng and Jiang, Houcheng and ...},
-  booktitle={ICLR},
-  year={2025}
+@article{alphaedit-reproducibility-2026,
+  title={Temporal Paths Determine Which Model Edits Survive},
+  author={},
+  year={2026}
 }
 ```
 
-Upstream code: https://github.com/jianghoucheng/AlphaEdit (pinned at commit `b84624f`)
+**Upstream:** [AlphaEdit](https://github.com/jianghoucheng/AlphaEdit) (Fang et al., ICLR 2025), pinned at commit `b84624f`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

@@ -22,7 +22,6 @@ MIGRATED = [
 MIGRATABLE = [
     "src/runners/checkpoint_runner.py",  # checkpoint hooks needed
     "src/runners/capability_probe_runner.py",  # GLUEEval monkey-patch
-    "src/runners/cache_mitigation_batch_runner.py",  # simple
 ]
 
 # Runners that use dual injection (exec both memit_main.py and evaluate.py)

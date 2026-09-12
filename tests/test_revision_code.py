@@ -570,10 +570,7 @@ class TestNewFilesExist:
         "scripts/run_failure_curve_zsre.sh",
         "scripts/run_matched_ordering_gptj.sh",
         "scripts/run_same_fact_damage.sh",
-        "scripts/aggregate_percase_evals.py",
-        "sky/run.yaml",
         "sky/test.yaml",
-        "sky/launch.sh",
     ])
     def test_file_exists(self, path):
         full = PROJECT_ROOT / path
@@ -586,12 +583,11 @@ class TestNewFilesExist:
         "src/experiments/signed_displacement.py",
         "src/experiments/prompt_variant_keys.py",
         "src/datasets/generate_scheduled_ordering.py",
-        "analysis/pooled_ab_analysis.py",
-        "analysis/logit_damage_analysis.py",
-        "analysis/signed_survival_model.py",
-        "analysis/kernel_vs_cosine.py",
-        "analysis/consolidated_survival_table.py",
-        "scripts/aggregate_percase_evals.py",
+        "analysis/_standalone/pooled_ab_analysis.py",
+        "analysis/_standalone/logit_damage_analysis.py",
+        "analysis/_standalone/signed_survival_model.py",
+        "analysis/_standalone/kernel_vs_cosine.py",
+        "analysis/_standalone/consolidated_survival_table.py",
     ])
     def test_python_parses(self, path):
         full = PROJECT_ROOT / path
