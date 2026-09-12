@@ -1088,18 +1088,16 @@ class TestAlphaEditSolveRegularization:
         source = (PROJECT_ROOT / "src" / "algorithms" / "alphaedit_with_hooks.py").read_text()
         hook_start = source.find("if hooks.build_lhs is not None:")
         assert hook_start > 0
-        # Get the hooks branch up to the else
-        else_pos = source.find("else:", hook_start)
-        hook_branch = source[hook_start:else_pos]
-        # The hook branch must apply P to the hook result, not use it raw
-        # Bad: lhs = hooks.build_lhs(...)  (raw, no P, no L2)
-        # Good: lhs = P @ (hooks.build_lhs(...) + cache_c) + L2
-        lines = [l.strip() for l in hook_branch.split("\n") if "lhs" in l and "=" in l]
-        raw_assignment = any("hooks.build_lhs(" in l and "P" not in l for l in lines)
-        assert not raw_assignment, (
-            "hooks.build_lhs result must NOT be used as the LHS directly. "
-            "It must be wrapped: P @ (hook_result + cache_c) + L2*I. "
-            "Without this, the LHS is singular (rank << dim)."
+        # The hooks.build_lhs result must go into an intermediate variable (inner/term),
+        # NOT directly into `lhs`. The actual `lhs = ...` must include P.
+        solve_section = source[hook_start:source.find("post_solve", hook_start)]
+        # Find the line that actually builds lhs (contains "P" and "lhs =")
+        lhs_lines = [l.strip() for l in solve_section.split("\n")
+                     if l.strip().startswith("lhs") and "=" in l]
+        assert any("P" in l for l in lhs_lines), (
+            "The `lhs = ...` assignment must include P projection. "
+            "hooks.build_lhs provides the inner term only; AlphaEdit wraps with "
+            "P @ (inner + cache_c) + L2*I."
         )
 
     def test_alphaedit_both_paths_use_L2(self):

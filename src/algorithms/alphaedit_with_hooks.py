@@ -113,19 +113,26 @@ def apply_alphaedit_with_hooks(
         targets = targets.repeat_interleave(repeat_factor, dim=1)
         resid = targets / (len(hparams.layers) - i)
 
-        # === HOOK: build_lhs (AlphaEdit default: P @ (K@K^T + cache_c) + L2*I) ===
+        # === HOOK: build_lhs ===
+        # Hooks provide the INNER term only. AlphaEdit always wraps with:
+        #   lhs = P @ (inner + cache_c) + L2*I
+        # This ensures the LHS is full-rank even when the inner term is low-rank.
+        P_i = P[i, :, :].cuda()
+        cache_c_i = cache_c[i, :, :].cuda() if cache_c is not None else torch.zeros(
+            layer_ks.shape[0], layer_ks.shape[0], device="cuda")
+        L2_eye = hparams.L2 * torch.eye(layer_ks.shape[0], device="cuda")
+
         if hooks.build_lhs is not None:
-            lhs = hooks.build_lhs(layer, layer_ks, None, hparams, state)
+            inner = hooks.build_lhs(layer, layer_ks, None, hparams, state)
         else:
-            lhs = (P[i, :, :].cuda() @ (layer_ks @ layer_ks.T + cache_c[i, :, :].cuda())
-                   + hparams.L2 * torch.eye(layer_ks.shape[0], dtype=torch.float, device="cuda"))
+            inner = layer_ks @ layer_ks.T
+
+        lhs = P_i @ (inner + cache_c_i) + L2_eye
 
         # AlphaEdit solve: lhs @ upd = P @ K @ resid^T
-        if hooks.build_lhs is not None:
-            upd_matrix = torch.linalg.solve(lhs.double(), layer_ks.double())
-            upd_matrix = resid.double() @ upd_matrix.T
-        else:
-            upd_matrix = torch.linalg.solve(lhs, P[i, :, :].cuda() @ layer_ks @ resid.T)
+        upd_matrix = torch.linalg.solve(
+            lhs.double(), (P_i @ layer_ks @ resid.T).double()
+        )
 
         weight_name = f"{hparams.rewrite_module_tmp.format(layer)}.weight"
         upd_matrix = _match_shape(upd_matrix, weights[weight_name].shape)
