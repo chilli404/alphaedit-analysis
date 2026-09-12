@@ -1018,6 +1018,37 @@ class TestVendorFunctionRequirements:
         nse_cache_section = source[source.find("elif args.base_alg == \"NSE\"", source.find("cache_c = None")):]
         assert "cache_c" in nse_cache_section[:600], "NSE cache_c section must exist"
 
+    def test_nse_kv_cache_script_exists(self):
+        """build_nse_cache.sh must exist — NSE/EvoEdit need precomputed KV caches
+        or compute_z takes 25 gradient steps per edit (~15 min for 20 edits)."""
+        assert (PROJECT_ROOT / "scripts" / "build_nse_cache.sh").exists(), (
+            "scripts/build_nse_cache.sh missing — needed to populate NSE/EvoEdit KV caches"
+        )
+
+    def test_nse_kv_cache_extracts_from_s3(self):
+        """build_nse_cache.sh must reference S3 or /s3-data for cache source."""
+        source = (PROJECT_ROOT / "scripts" / "build_nse_cache.sh").read_text()
+        assert "s3" in source.lower() or "S3" in source, (
+            "build_nse_cache.sh must extract KV caches from S3"
+        )
+
+    def test_smoke_test_fails_fast_without_kv_cache(self):
+        """Smoke test must fail fast for NSE/EvoEdit if KV caches aren't populated."""
+        source = (PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh").read_text()
+        assert "kv_count" in source or "KV cache" in source, (
+            "Smoke test must check for KV cache before running NSE/EvoEdit "
+            "(without cache, compute_z takes 25 grad steps per edit → guaranteed timeout)"
+        )
+
+    def test_nse_baseline_script_loads_kv_cache(self):
+        """run_nse_baseline.sh must load KV caches from S3 — not the YAML.
+        Without precomputed caches, compute_z runs 25 gradient steps per edit."""
+        source = (PROJECT_ROOT / "scripts" / "run_nse_baseline.sh").read_text()
+        assert "kvs" in source or "kv_cache" in source.lower(), (
+            "run_nse_baseline.sh must load KV caches from S3. "
+            "Cache loading belongs in the script, not the YAML."
+        )
+
     def test_link_stats_copies_p_matrix_locally(self):
         """link_stats.sh must cp (not symlink) the P matrix to vendor/AlphaEdit/.
         S3 FUSE doesn't support ln -sf into it, so P must be copied locally."""
