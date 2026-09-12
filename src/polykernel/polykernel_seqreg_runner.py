@@ -332,28 +332,61 @@ def run(args: argparse.Namespace) -> None:
         cache_c = torch.zeros(n_layers, d, d)
         print(f"  [RECT] Initialized cache_c: ({n_layers}, {d}, {d})")
 
-    # Wrap apply_fn to pass hooks, state, and AlphaEdit extras
+    # MEMIT and AlphaEdit accept hooks= kwarg and call post_solve internally.
+    # NSE and RECT are vendor functions that silently ignore hooks via **_kwargs.
+    # For REVIVE on NSE/RECT, we apply the spectral filter post-hoc on weight deltas.
+    _hooks_aware = args.base_alg in ("MEMIT", "AlphaEdit")
+
     def apply_fn(model, tok, requests, hparams, **kwargs):
         extra = {}
         if cache_c is not None:
             extra["cache_c"] = cache_c
         if P is not None:
             extra["P"] = P
-        # Pass current weights to state for REVIVE
+
+        if _hooks_aware:
+            if args.revive:
+                weights_dict = {}
+                for layer in hparams.layers:
+                    wn = f"{hparams.rewrite_module_tmp.format(layer)}.weight"
+                    param = dict(model.named_parameters()).get(wn)
+                    if param is not None:
+                        weights_dict[wn] = param.data
+                algo_state["_current_weights"] = weights_dict
+
+            return base_apply(
+                model, tok, requests, hparams,
+                hooks=algo_hooks, state=algo_state,
+                **extra, **kwargs,
+            )
+
+        # Non-hook path: NSE / RECT vendor functions
         if args.revive:
-            weights_dict = {}
+            pre_weights = {}
+            params = dict(model.named_parameters())
             for layer in hparams.layers:
                 wn = f"{hparams.rewrite_module_tmp.format(layer)}.weight"
-                param = dict(model.named_parameters()).get(wn)
-                if param is not None:
-                    weights_dict[wn] = param.data
-            algo_state["_current_weights"] = weights_dict
+                if wn in params:
+                    pre_weights[wn] = params[wn].data.detach().clone()
 
-        return base_apply(
-            model, tok, requests, hparams,
-            hooks=algo_hooks, state=algo_state,
-            **extra, **kwargs,
-        )
+        result = base_apply(model, tok, requests, hparams, **extra, **kwargs)
+
+        if args.revive and pre_weights:
+            params = dict(model.named_parameters())
+            for layer in hparams.layers:
+                wn = f"{hparams.rewrite_module_tmp.format(layer)}.weight"
+                if wn not in params or wn not in pre_weights:
+                    continue
+                delta = params[wn].data.double() - pre_weights[wn].double()
+                if delta.norm() < 1e-10:
+                    continue
+                state_rv = {"_current_weights": {wn: pre_weights[wn]}}
+                # Use the REVIVE hook from algo_hooks (already composed)
+                filtered = algo_hooks.post_solve(layer, delta, None, None, wn, state_rv)
+                with torch.no_grad():
+                    params[wn].data.copy_(pre_weights[wn] + filtered.to(params[wn].dtype))
+
+        return result
 
     # Build eval function
     mbe_fn = _make_eval_fn(fast_mode=args.fast_checkpoint)
