@@ -207,35 +207,24 @@ _COV_CACHE = {}
 
 
 def _get_context_templates(model, tok):
+    """Share context templates with vendor to ensure identical results."""
     global _CONTEXT_TEMPLATES_CACHE
     if _CONTEXT_TEMPLATES_CACHE is None:
         _ensure_vendor_path()
-        from util.generate import generate_fast
-        _CONTEXT_TEMPLATES_CACHE = [["{}"]] + [
-            [f.replace("{", " ").replace("}", " ") + ". {}"
-             for f in generate_fast(model, tok,
-                                    ["The", "Therefore", "Because", "I", "You"],
-                                    n_gen_per_prompt=n_gen // 5, max_out_len=length)]
-            for length, n_gen in [(10, 5)]
-        ]
+        from memit.memit_main import get_context_templates, CONTEXT_TEMPLATES_CACHE
+        if CONTEXT_TEMPLATES_CACHE is not None:
+            _CONTEXT_TEMPLATES_CACHE = CONTEXT_TEMPLATES_CACHE
+        else:
+            _CONTEXT_TEMPLATES_CACHE = get_context_templates(model, tok)
         print(f"Cached context templates {_CONTEXT_TEMPLATES_CACHE}")
     return _CONTEXT_TEMPLATES_CACHE
 
 
 def _get_cov(model, tok, layer_name, dataset, n_samples, dtype, force=False):
+    """Share covariance cache with vendor to avoid recomputation."""
     _ensure_vendor_path()
-    from rome.layer_stats import layer_stats
-    from util.globals import STATS_DIR
-
-    model_name = model.config._name_or_path.replace("/", "_")
-    key = (model_name, layer_name)
-    print(f"Retrieving covariance statistics for {model_name} @ {layer_name}.")
-    if key not in _COV_CACHE or force:
-        stat = layer_stats(model, tok, layer_name, STATS_DIR, dataset,
-                          to_collect=["mom2"], sample_size=n_samples, precision=dtype,
-                          force_recompute=force)
-        _COV_CACHE[key] = stat.mom2.moment().float().to("cpu")
-    return _COV_CACHE[key].to("cuda")
+    from memit.memit_main import get_cov
+    return get_cov(model, tok, layer_name, dataset, n_samples, dtype, force_recompute=force)
 
 
 def _match_shape(matrix, shape):
