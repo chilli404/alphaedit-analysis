@@ -8,7 +8,7 @@ exec(compile(evaluate.py)) + exec(compile(memit_main.py)).
 Supports multiple base algorithms via --base_alg:
   - MEMIT (default): apply_memit_with_hooks + seqreg_hooks
   - AlphaEdit: apply_alphaedit_with_hooks + seqreg_hooks
-  - NSE / MEMIT_rect: legacy exec(compile()) fallback (not yet migrated)
+  - NSE / MEMIT_rect: vendor apply functions with post-hoc REVIVE wrapper
 
 REVIVE spectral filter composes with any base: compose_hooks(seqreg, revive)
 
@@ -262,9 +262,12 @@ def run(args: argparse.Namespace) -> None:
 
     # Load checkpoint if resuming
     if start_from_batch > 0:
+        extra_keys = ["prev_cache.pt", "mechanism_log.jsonl"]
+        if error_cache is not None:
+            extra_keys.append("error_cache.pt")
         ckpt_result = load_checkpoint(
             model, hparams, str(ckpt_dir), start_from_batch - 1,
-            extra_state_keys=["prev_cache.pt", "mechanism_log.jsonl"],
+            extra_state_keys=extra_keys,
         )
         if ckpt_result.get("prev_cache.pt") is not None:
             algo_state["prev_cache"] = ckpt_result["prev_cache.pt"]
@@ -273,6 +276,9 @@ def run(args: argparse.Namespace) -> None:
         if ckpt_result.get("mechanism_log.jsonl") is not None:
             algo_state["mechanism_log"] = ckpt_result["mechanism_log.jsonl"]
             print(f"  [CHECKPOINT] Loaded {len(algo_state['mechanism_log'])} log entries")
+        if ckpt_result.get("error_cache.pt") is not None:
+            error_cache = ckpt_result["error_cache.pt"]
+            print(f"  [CHECKPOINT] Loaded error_cache (shape: {error_cache.shape})")
         algo_state["batch_idx"] = [start_from_batch]
 
     # Select apply function based on base_alg
@@ -395,6 +401,12 @@ def run(args: argparse.Namespace) -> None:
 
         result = base_apply(model, tok, requests, hparams, **extra, **kwargs)
 
+        # RECT returns (model, cache_c, error_cache) — capture error_cache
+        if args.base_alg == "MEMIT_rect" and isinstance(result, tuple) and len(result) >= 3:
+            nonlocal error_cache
+            error_cache = result[2]
+            result = (result[0], result[1])  # normalize to 2-tuple for harness
+
         if args.revive and pre_weights:
             params = dict(model.named_parameters())
             for layer in hparams.layers:
@@ -419,8 +431,8 @@ def run(args: argparse.Namespace) -> None:
         nonlocal cache_c
         algo_state["batch_idx"] = [batch_idx + 1]
 
-        # AlphaEdit returns updated cache_c
-        if edit_extra is not None and args.base_alg == "AlphaEdit":
+        # AlphaEdit and NSE return (model, cache_c) — capture the updated cache_c
+        if edit_extra is not None and args.base_alg in ("AlphaEdit", "NSE"):
             cache_c = edit_extra
 
         if should_save(batch_idx, args.save_interval):
@@ -428,6 +440,8 @@ def run(args: argparse.Namespace) -> None:
                 "prev_cache.pt": algo_state.get("prev_cache", {}),
                 "mechanism_log.jsonl": algo_state.get("mechanism_log", []),
             }
+            if error_cache is not None:
+                extra_state["error_cache.pt"] = error_cache
             save_checkpoint(
                 batch_idx, model, hparams, str(ckpt_dir), args.num_edits,
                 extra_state=extra_state,

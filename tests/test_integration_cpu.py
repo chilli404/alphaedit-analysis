@@ -1702,3 +1702,66 @@ class TestV2EvalStructure:
                 assert m["efficacy"] >= m["efficacy_argmax"] - 0.01, (
                     f"Prob-pref ({m['efficacy']}) should be ≥ argmax ({m['efficacy_argmax']})"
                 )
+
+
+class TestNSECacheCUpdatedAfterEdit:
+    """NSE returns (model, cache_c) like AlphaEdit. The after_edit hook must
+    update cache_c for NSE, not just AlphaEdit — otherwise NSE uses stale
+    zeros cache_c for every batch."""
+
+    def test_after_edit_updates_cache_c_for_nse(self):
+        """The after_edit hook must update cache_c when base_alg is NSE."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        after_edit_section = source[source.find("def after_edit("):]
+        after_edit_section = after_edit_section[:after_edit_section.find("\n    def ", 10)]
+        assert '"NSE"' in after_edit_section or "'NSE'" in after_edit_section, (
+            "after_edit must handle NSE's returned cache_c. NSE returns (model, cache_c) "
+            "but only AlphaEdit is checked — NSE cache_c is silently discarded."
+        )
+
+    def test_cache_c_update_covers_all_algorithms_that_return_it(self):
+        """Every algorithm that returns cache_c must have its value captured."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        after_edit_section = source[source.find("def after_edit("):]
+        after_edit_section = after_edit_section[:after_edit_section.find("\n    def ", 10)]
+        # AlphaEdit AND NSE both return (model, cache_c)
+        for alg in ["AlphaEdit", "NSE"]:
+            assert alg in after_edit_section, (
+                f"after_edit must update cache_c for {alg}. "
+                f"Without this, {alg} uses stale zeros cache_c after batch 0."
+            )
+
+
+class TestRECTErrorCachePreserved:
+    """RECT returns (model, cache_c, error_cache). The error_cache must be
+    captured and passed back to the next batch, and saved in checkpoints."""
+
+    def test_rect_error_cache_captured_from_result(self):
+        """The apply_fn wrapper or after_edit must capture error_cache from RECT's 3-tuple."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        # RECT returns 3-tuple: (model, cache_c, error_cache)
+        # The code must extract element [2] and update the error_cache variable
+        assert "error_cache" in source[source.find("def apply_fn"):source.find("def after_edit")], (
+            "apply_fn must handle RECT's 3-tuple return: (model, cache_c, error_cache). "
+            "Currently only cache_c is captured — error_cache is lost between batches."
+        )
+
+    def test_rect_error_cache_saved_in_checkpoint(self):
+        """RECT's error_cache must be included in checkpoint extra_state."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        # Find the section between extra_state creation and the end of save_checkpoint call
+        save_start = source.find("extra_state = {")
+        save_end = source.find("save_checkpoint(", save_start)
+        save_section = source[save_start:save_end + 500]  # include the save_checkpoint call
+        assert "error_cache" in save_section, (
+            "Checkpoint must include error_cache for RECT. Without it, resuming loses "
+            "the rectification correction chain."
+        )
+
+    def test_rect_error_cache_loaded_from_checkpoint(self):
+        """Checkpoint load must restore error_cache for RECT."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        load_section = source[source.find("load_checkpoint"):source.find("# Select apply function")]
+        assert "error_cache" in load_section, (
+            "Checkpoint load must restore error_cache for RECT."
+        )
