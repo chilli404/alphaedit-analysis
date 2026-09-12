@@ -338,12 +338,26 @@ def run(args: argparse.Namespace) -> None:
     # For REVIVE on NSE/RECT, we apply the spectral filter post-hoc on weight deltas.
     _hooks_aware = args.base_alg in ("MEMIT", "AlphaEdit")
 
+    # NSE uses precomputed v_star from W₀. Build cache_template so it loads from kvs/.
+    _nse_cache_template = None
+    if args.base_alg == "NSE":
+        _kvs_dir = alphaedit_root / "share" / "projects" / "rewriting-knowledge" / "kvs"
+        if not _kvs_dir.exists():
+            _kvs_dir = get_project_root() / "baselines" / "EvoEdit" / "share" / "projects" / "rewriting-knowledge" / "kvs"
+        _nse_cache_template = str(
+            _kvs_dir / f"{model.config._name_or_path.replace('/', '_')}_NSE"
+            / f"{args.ds_name}_layer_{{}}_clamp_{{}}_case_{{}}.npz"
+        )
+        print(f"  [NSE] Cache template: {_nse_cache_template}")
+
     def apply_fn(model, tok, requests, hparams, **kwargs):
         extra = {}
         if cache_c is not None:
             extra["cache_c"] = cache_c
         if P is not None:
             extra["P"] = P
+        if _nse_cache_template is not None:
+            extra["cache_template"] = _nse_cache_template
 
         if _hooks_aware:
             if args.revive:

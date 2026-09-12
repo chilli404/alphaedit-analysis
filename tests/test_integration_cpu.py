@@ -1098,6 +1098,16 @@ class TestVendorFunctionRequirements:
             "run_nse_baseline.sh must exit 1 if NSE KV cache not available"
         )
 
+    def test_runner_passes_cache_template_for_nse(self):
+        """polykernel_seqreg_runner must pass cache_template when base_alg=NSE.
+        Without it, apply_nse_to_model gets cache_template=None and recomputes
+        all v_star from scratch (25 gradient steps per edit)."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        assert "cache_template" in source, (
+            "polykernel_seqreg_runner must pass cache_template to apply_nse_to_model. "
+            "Without it, NSE recomputes v_star from scratch even when cache files exist."
+        )
+
     def test_nse_kv_cache_tar_structure(self):
         """KV cache tars must extract to {model_name}_NSE/{file}.npz matching
         the path vendor NSE expects at share/projects/rewriting-knowledge/kvs/."""
