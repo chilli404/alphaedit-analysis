@@ -287,7 +287,7 @@ def run_experiment(
         if hooks.should_eval:
             do_eval = hooks.should_eval(batch_idx)
 
-        if do_eval and hooks.eval_fn:
+        if do_eval and hooks.eval_fn and not os.environ.get("SKIP_MEGA_BATCH_EVAL"):
             hooks.eval_fn(model, tok, dataset[:end_idx], case_result_template,
                          num_edits, all_case_ids, exec_time)
 

@@ -92,7 +92,7 @@ run_and_check() {
     # Run with timeout — full output to log, only errors to stdout
     local _safe_label="${label// /_}"; _safe_label="${_safe_label//+/_}"
     local logfile="$RESULT_ROOT/_smoke_${_safe_label}.log"
-    PYTHONUNBUFFERED=1 timeout "$TIMEOUT" "$@" > "$logfile" 2>&1
+    SKIP_MEGA_BATCH_EVAL=1 PYTHONUNBUFFERED=1 timeout "$TIMEOUT" "$@" > "$logfile" 2>&1
     local exit_code=$?
     # Show errors if any
     if [ "$exit_code" -ne 0 ]; then
