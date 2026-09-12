@@ -22,12 +22,9 @@ run: |
   export RESULT_ROOT="/s3-data/continual-learning/alphaedit/results/_smoke_test"
   export CHECKPOINT_ROOT="/s3-data/continual-learning/alphaedit/checkpoints/_smoke_test"
 
-  # Link data
+  # Link data + apply all patches
   bash scripts/link_stats.sh
   bash scripts/link_dsets.sh
-  bash scripts/patch_baselines.sh "$(pwd)"
-
-  # Apply all patches (vendor + baselines)
   uv run python scripts/patches/apply_all.py
 
   # Run CPU tests first (fast, catches code issues immediately)

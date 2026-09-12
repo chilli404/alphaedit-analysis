@@ -77,7 +77,7 @@ print(resolve_model_path('$MODEL_NAME'))
 echo "  Resolved model: $MODEL_NAME"
 
 # Patch checkpoint save for S3 FUSE compatibility
-python3 "$PROJECT_DIR/scripts/patch_lightweight_checkpoint.py" experiments/evaluate.py
+# Patches applied by scripts/patches/apply_all.py at cluster startup
 
 PYTHONPATH=. uv run python experiments/evaluate.py \
     --alg_name MEMIT_seq_rect \

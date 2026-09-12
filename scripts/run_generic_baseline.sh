@@ -76,7 +76,7 @@ export TOKENIZERS_PARALLELISM=false
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 
 # Patch checkpoint save for S3 FUSE compatibility
-python3 "$PROJECT_DIR/scripts/patch_lightweight_checkpoint.py" experiments/evaluate.py
+# Patches applied by scripts/patches/apply_all.py at cluster startup
 
 # Run with dataset override for ordering
 

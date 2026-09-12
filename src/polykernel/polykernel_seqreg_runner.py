@@ -62,6 +62,7 @@ from setup_hparams import link_hparams
 from source_patches import patch_evaluate_file
 from eval_config import hash_eval_config
 from paths import get_project_root, get_alphaedit_root, get_result_root, get_checkpoint_root
+from mega_batch_eval import get_mega_batch_eval_source
 
 
 # --- Source anchors (commit b84624f) ---

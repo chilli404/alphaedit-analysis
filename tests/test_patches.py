@@ -156,6 +156,56 @@ class TestPatchS3Checkpoint:
         assert "cache_c" in patch_s3_checkpoint.SAVE_REPLACEMENT
 
 
+class TestOldPatchSystemRetired:
+    """Old scattered patching files must not exist — replaced by scripts/patches/."""
+
+    def test_patch_baselines_sh_removed(self):
+        """patch_baselines.sh replaced by patch_kwargs.py."""
+        assert not (PROJECT_ROOT / "scripts" / "patch_baselines.sh").exists(), (
+            "scripts/patch_baselines.sh should be deleted — use scripts/patches/patch_kwargs.py"
+        )
+
+    def test_patch_lightweight_checkpoint_removed(self):
+        """patch_lightweight_checkpoint.py replaced by patch_s3_checkpoint.py."""
+        assert not (PROJECT_ROOT / "scripts" / "patch_lightweight_checkpoint.py").exists(), (
+            "scripts/patch_lightweight_checkpoint.py should be deleted — use scripts/patches/patch_s3_checkpoint.py"
+        )
+
+    def test_no_inline_sed_patches_in_yaml(self):
+        """YAML files must not have inline sed patches — use apply_all.py."""
+        for yaml_file in ["sky/smoke_test.yaml", "sky/alphaedit_gpu.yaml"]:
+            path = PROJECT_ROOT / yaml_file
+            if not path.exists():
+                continue
+            source = path.read_text()
+            # Should not have sed -i patches for vendor code
+            sed_count = source.count("sed -i")
+            assert sed_count == 0, (
+                f"{yaml_file} has {sed_count} inline sed patches — "
+                f"all patches should go through scripts/patches/apply_all.py"
+            )
+
+    def test_yaml_uses_apply_all(self):
+        """Both YAML files must call apply_all.py."""
+        for yaml_file in ["sky/smoke_test.yaml", "sky/alphaedit_gpu.yaml"]:
+            path = PROJECT_ROOT / yaml_file
+            if not path.exists():
+                continue
+            source = path.read_text()
+            assert "apply_all" in source, f"{yaml_file} must call scripts/patches/apply_all.py"
+
+    def test_no_scripts_reference_deleted_files(self):
+        """No active script should reference deleted patch files."""
+        deleted = ["patch_baselines.sh", "patch_lightweight_checkpoint.py"]
+        for script_dir in [PROJECT_ROOT / "scripts", PROJECT_ROOT / "sky"]:
+            for f in script_dir.glob("*"):
+                if f.is_file() and f.suffix in (".sh", ".py", ".yaml"):
+                    source = f.read_text()
+                    for d in deleted:
+                        if d in source and "should be deleted" not in source and "replaced by" not in source:
+                            assert False, f"{f.name} still references deleted {d}"
+
+
 class TestApplyAllIntegration:
     """apply_all must run without errors on the actual codebase."""
 

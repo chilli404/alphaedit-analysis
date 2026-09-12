@@ -111,7 +111,7 @@ class TestAllApplyFunctionsKwargs:
         pre_patch = "P = None,\n) -> Dict[str, Tuple[torch.Tensor]]:"
         assert pre_patch in source or "**_kwargs" in source
 
-    # --- Baselines submodule (patched by patch_baselines.sh) ---
+    # --- Baselines submodule (patched by scripts/patches/patch_kwargs.py) ---
 
     @pytest.mark.skipif(not BASELINES_ROOT.exists(), reason="baselines not present")
     @pytest.mark.parametrize("relpath,funcname", [
@@ -144,9 +144,10 @@ class TestAllApplyFunctionsKwargs:
         )
 
     @pytest.mark.skipif(not BASELINES_ROOT.exists(), reason="baselines not present")
-    def test_patch_baselines_script_exists(self):
-        """The patching script must exist — it's called from the YAML run block."""
-        assert (PROJECT_ROOT / "scripts" / "patch_baselines.sh").exists()
+    def test_patch_system_exists(self):
+        """The unified patch system must exist."""
+        assert (PROJECT_ROOT / "scripts" / "patches" / "apply_all.py").exists()
+        assert (PROJECT_ROOT / "scripts" / "patches" / "patch_kwargs.py").exists()
 
 
 # ===========================================================================
@@ -434,15 +435,15 @@ class TestBaselineScripts:
             assert alg in source, f"baselines evaluate.py must reference {alg}"
 
     @pytest.mark.skipif(not BASELINES_ROOT.exists(), reason="baselines not present")
-    def test_patch_baselines_covers_all_apply_functions(self):
-        """patch_baselines.sh must patch kwargs for EvoEdit, NSE, RECT, MEMIT variants."""
-        path = PROJECT_ROOT / "scripts" / "patch_baselines.sh"
-        if not path.exists():
-            pytest.skip("patch_baselines.sh not present")
-        source = path.read_text()
+    def test_patch_kwargs_covers_all_apply_functions(self):
+        """patch_kwargs.py must cover EvoEdit, NSE, RECT, MEMIT variants."""
+        import sys
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "patches"))
+        import patch_kwargs
+        target_funcs = [t[1] for t in patch_kwargs.BASELINES_TARGETS]
         for func in ["apply_EvoEdit_to_model", "apply_nse_to_model",
                       "apply_memit_seq_rect_to_model"]:
-            assert func in source, f"patch_baselines.sh must patch {func}"
+            assert func in target_funcs, f"patch_kwargs.py must cover {func}"
 
 
 class TestPathGuardArgs:
@@ -666,6 +667,6 @@ class TestYamlDispatch:
     def test_evoedit_dispatches_to_evoedit_script(self, yaml_source):
         assert "run_evoedit_baseline.sh" in yaml_source or "evoedit" in yaml_source.lower()
 
-    def test_patch_baselines_called(self, yaml_source):
-        """patch_baselines.sh must be called in the YAML run block."""
-        assert "patch_baselines" in yaml_source
+    def test_apply_all_called(self, yaml_source):
+        """apply_all.py must be called in the YAML run block."""
+        assert "apply_all" in yaml_source

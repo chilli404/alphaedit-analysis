@@ -1,0 +1,153 @@
+resources:
+  accelerators: L40s:1
+  cpus: 4+
+  memory: 28+
+
+workdir: .
+
+file_mounts:
+  ~/sky_workdir/.env: ./.env
+  ~/sky_workdir/scripts/remote_setup.sh: ./scripts/remote_setup.sh
+  ~/sky_workdir/scripts/link_stats.sh: ./scripts/link_stats.sh
+  ~/sky_workdir/scripts/link_dsets.sh: ./scripts/link_dsets.sh
+  ~/sky_workdir/scripts/download_datasets.sh: ./scripts/download_datasets.sh
+  ~/sky_workdir/src/util/model_download.py: ./src/util/model_download.py
+
+setup: |
+  set -euo pipefail
+
+  cd ~/sky_workdir
+  bash scripts/remote_setup.sh
+
+run: |
+  set -e
+  export PATH="$HOME/.local/bin:$PATH"
+
+  cd ~/sky_workdir
+
+  if [[ -z "${EXPERIMENT_NAME:-}" ]]; then
+    echo "No EXPERIMENT_NAME set - interactive mode."
+    echo "SSH in with: sky ssh <cluster>"
+    echo "Then run:    cd ~/sky_workdir && bash scripts/run_mve1_alphaedit_mcf.sh 42"
+    exit 0
+  fi
+
+  # Always set MODEL_NAME and HPARAMS_FNAME from EXPERIMENT_NAME
+  # (overrides any stale value from .env to prevent cross-model contamination)
+  case "${EXPERIMENT_NAME}" in
+    *qwen*)  MODEL_NAME="Qwen/Qwen2.5-7B-Instruct" ; HPARAMS_FNAME="Qwen2.5-7B.json" ;;
+    *gptj*)  MODEL_NAME="EleutherAI/gpt-j-6b" ; HPARAMS_FNAME="EleutherAI_gpt-j-6B.json" ;;
+    *)       MODEL_NAME="${MODEL_NAME:-NousResearch/Meta-Llama-3-8B-Instruct}" ;;
+  esac
+  # Resolve HPARAMS_FNAME from MODEL_NAME if not already set
+  if [[ -z "${HPARAMS_FNAME:-}" ]]; then
+    case "$MODEL_NAME" in
+      *gpt-j*|*gptj*|*EleutherAI*) HPARAMS_FNAME="EleutherAI_gpt-j-6B.json" ;;
+      *Qwen*|*qwen*)               HPARAMS_FNAME="Qwen2.5-7B.json" ;;
+      *)                           HPARAMS_FNAME="Llama3-8B.json" ;;
+    esac
+  fi
+  export MODEL_NAME
+  export HPARAMS_FNAME
+
+  echo "Linking covariance stats..."
+  bash scripts/link_stats.sh
+
+  # link_stats.sh now handles everything: copies (no symlinks) into both
+  # vendor/AlphaEdit/data/stats/ and baselines/EvoEdit/data/stats/ for ALL
+  # model-name variants. Nothing else needed here.
+
+  echo "Linking datasets..."
+  bash scripts/link_dsets.sh
+
+  # Apply all patches (vendor + baselines) via unified patch system
+  echo "Applying patches..."
+  uv run python scripts/patches/apply_all.py
+
+  echo "Downloading NLTK data..."
+  uv run python -c "import nltk; [nltk.download(pkg, quiet=True) for pkg in ('punkt', 'punkt_tab')]"
+
+  echo "Clearing stale HF cache locks..."
+  find ~/.cache/huggingface/hub/ -name "*.lock" -delete 2>/dev/null || true
+
+  echo "=== Running experiment: ${EXPERIMENT_NAME} seed=${SEED} ==="
+  echo "GPU info:"
+  nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
+
+  export CUDA_DEVICE
+  export TOKENIZERS_PARALLELISM
+  export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
+  export RESULT_ROOT="${RESULT_ROOT:-/s3-data/continual-learning/alphaedit/results}"
+  export CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-/s3-data/continual-learning/alphaedit/checkpoints}"
+  export TARGET_EDITS="${TARGET_EDITS:-}"
+  export SAVE_INTERVAL="${SAVE_INTERVAL:-10}"
+  export CHECKPOINT_DIR="${CHECKPOINT_DIR:-}"
+  export ALG_NAME="${ALG_NAME:-both}"
+  export LAMBDA_PREV="${LAMBDA_PREV:-}"
+  export LAMBDA_DELTA="${LAMBDA_DELTA:-}"
+  export MOM2_OVERRIDE="${MOM2_OVERRIDE:-}"
+  export INJECT_C0="${INJECT_C0:-false}"
+  export C0_WEIGHT="${C0_WEIGHT:-}"
+  export FAST_CHECKPOINT="${FAST_CHECKPOINT:-false}"
+  export EVAL_AT_CHECKPOINTS_ONLY="${EVAL_AT_CHECKPOINTS_ONLY:-false}"
+  export CONTINUE_FROM_RUN="${CONTINUE_FROM_RUN:-}"
+  export NULLSPACE_THRESHOLD="${NULLSPACE_THRESHOLD:-}"
+  export SWEEP_CELL="${SWEEP_CELL:-both}"
+  export CHECKPOINT_BATCH="${CHECKPOINT_BATCH:-}"
+  export KERNEL_DEGREE="${KERNEL_DEGREE:-2}"
+  export KERNEL_TYPE="${KERNEL_TYPE:-poly}"
+  export KERNEL_SIGMA="${KERNEL_SIGMA:-median}"
+  export STREAM_LENGTH="${STREAM_LENGTH:-10000}"
+  export STREAM="${STREAM:-both}"
+  export ORDER_ID="${ORDER_ID:-0}"
+  export ORDERING="${ORDERING:-clustered}"
+  export PATHGUARD_VARIANT="${PATHGUARD_VARIANT:-PathGuard-ED}"
+  export PATHGUARD_M="${PATHGUARD_M:-200}"
+  export PATHGUARD_Q="${PATHGUARD_Q:-10}"
+  export PATHGUARD_FIXED_LAMBDA="${PATHGUARD_FIXED_LAMBDA:-1.0}"
+
+  # Paper replications (no ordering override, first 10K MCF)
+  if [[ "${EXPERIMENT_NAME}" == "evoedit_paper_replication" ]]; then
+    bash "scripts/run_evoedit_paper_replication.sh" "$SEED"
+  elif [[ "${EXPERIMENT_NAME}" == "nse_paper_replication" ]]; then
+    bash "scripts/run_nse_paper_replication.sh" "$SEED"
+  elif [[ "${EXPERIMENT_NAME}" == "revive_paper_replication" ]]; then
+    bash "scripts/run_revive_paper_replication.sh" "$SEED"
+  elif [[ "${EXPERIMENT_NAME}" == "rect_aligned_paper_replication" ]]; then
+    bash "scripts/run_rect_aligned_paper_replication.sh" "$SEED"
+  elif [[ "${EXPERIMENT_NAME}" == "generic_baseline" ]]; then
+    _BL_ORDERING="${ORDERING}"
+    [[ "$_BL_ORDERING" == "clustered" ]] && _BL_ORDERING="fb_random0"
+    bash "scripts/run_generic_baseline.sh" "$SEED" "${_BL_ORDERING}"
+  # Baseline dispatches with ordering as positional arg
+  elif [[ "${EXPERIMENT_NAME}" == evoedit_baseline* ]]; then
+    _BL_ORDERING="${ORDERING}"
+    [[ "$_BL_ORDERING" == "clustered" ]] && _BL_ORDERING="fb_random0"
+    bash "scripts/run_evoedit_baseline.sh" "$SEED" "${_BL_ORDERING}"
+  elif [[ "${EXPERIMENT_NAME}" == "nse_cache_build" ]]; then
+    bash "scripts/build_nse_cache.sh"
+  elif [[ "${EXPERIMENT_NAME}" == nse_baseline* ]]; then
+    _BL_ORDERING="${ORDERING}"
+    [[ "$_BL_ORDERING" == "clustered" ]] && _BL_ORDERING="fb_random0"
+    bash "scripts/run_nse_baseline.sh" "$SEED" "${_BL_ORDERING}"
+  elif [[ "${EXPERIMENT_NAME}" == revive_baseline* ]]; then
+    _BL_ORDERING="${ORDERING}"
+    [[ "$_BL_ORDERING" == "clustered" ]] && _BL_ORDERING="fb_random0"
+    bash "scripts/run_revive_baseline.sh" "$SEED" "${_BL_ORDERING}"
+  # PathGuard dispatches with variant and ordering as positional args
+  # ORDERING default is "clustered" for other experiments, but PathGuard uses "" for canonical
+  elif [[ "${EXPERIMENT_NAME}" == "pathguard" ]]; then
+    _PG_ORDERING="${ORDERING}"
+    [[ "$_PG_ORDERING" == "clustered" ]] && _PG_ORDERING=""
+    bash "scripts/run_pathguard.sh" "$SEED" "${PATHGUARD_VARIANT}" "${_PG_ORDERING}"
+  else
+    bash "scripts/run_${EXPERIMENT_NAME}.sh" "$SEED"
+  fi
+
+  echo ""
+  echo "=== Experiment complete ==="
+  echo "Results:"
+  find "$RESULT_ROOT/" \( -name "*.json" -o -name "*.jsonl" -o -name "*.pt" \) 2>/dev/null | wc -l
+  echo "output files generated."
+
+  echo "Results at: $RESULT_ROOT/"
