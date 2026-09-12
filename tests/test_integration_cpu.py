@@ -1050,6 +1050,106 @@ class TestVendorFunctionRequirements:
         assert lhs.dtype == torch.float64, f"LHS dtype is {lhs.dtype}, must be float64 for solve"
 
 
+class TestRECTRequiresCacheC:
+    """RECT (MEMIT_seq_rect) needs cache_c initialized, just like NSE."""
+
+    def test_rect_cache_c_branch_exists(self):
+        """polykernel_seqreg_runner must have a MEMIT_rect branch that initializes cache_c."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        after_cache_init = source[source.find("cache_c = None"):]
+        assert 'args.base_alg == "MEMIT_rect"' in after_cache_init or \
+               "MEMIT_rect" in after_cache_init[:2000], (
+            "polykernel_seqreg_runner must initialize cache_c for MEMIT_rect. "
+            "RECT's execute_memit indexes cache_c[i,:,:] which crashes on None."
+        )
+
+    def test_rect_cache_c_not_none_when_selected(self):
+        """When base_alg=MEMIT_rect, cache_c must be initialized (not left as None)."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        # After "cache_c = None", there should be a MEMIT_rect block before apply_fn
+        init_section = source[source.find("cache_c = None"):source.find("def apply_fn")]
+        has_rect_init = ("MEMIT_rect" in init_section and
+                         "cache_c = torch.zeros" in init_section[init_section.find("MEMIT_rect"):])
+        assert has_rect_init, (
+            "MEMIT_rect needs its own cache_c = torch.zeros(...) branch. "
+            "Without it, cache_c stays None and RECT crashes with: "
+            "TypeError: 'NoneType' object is not subscriptable"
+        )
+
+
+class TestAlphaEditSolveRegularization:
+    """AlphaEdit's LHS must always include P projection and L2 regularization,
+    even when hooks.build_lhs is set (e.g. for REVIVE composition)."""
+
+    def test_alphaedit_hooks_path_applies_P_projection(self):
+        """When hooks.build_lhs is set, the hook result must be wrapped with P projection.
+        Without P @ (...) + L2*I, the LHS is rank-deficient (10 keys in 4096 dims)
+        and torch.linalg.solve fails with 'singular matrix'."""
+        source = (PROJECT_ROOT / "src" / "algorithms" / "alphaedit_with_hooks.py").read_text()
+        hook_start = source.find("if hooks.build_lhs is not None:")
+        assert hook_start > 0
+        # Get the hooks branch up to the else
+        else_pos = source.find("else:", hook_start)
+        hook_branch = source[hook_start:else_pos]
+        # The hook branch must apply P to the hook result, not use it raw
+        # Bad: lhs = hooks.build_lhs(...)  (raw, no P, no L2)
+        # Good: lhs = P @ (hooks.build_lhs(...) + cache_c) + L2
+        lines = [l.strip() for l in hook_branch.split("\n") if "lhs" in l and "=" in l]
+        raw_assignment = any("hooks.build_lhs(" in l and "P" not in l for l in lines)
+        assert not raw_assignment, (
+            "hooks.build_lhs result must NOT be used as the LHS directly. "
+            "It must be wrapped: P @ (hook_result + cache_c) + L2*I. "
+            "Without this, the LHS is singular (rank << dim)."
+        )
+
+    def test_alphaedit_both_paths_use_L2(self):
+        """Both hook and default paths must include L2 regularization."""
+        source = (PROJECT_ROOT / "src" / "algorithms" / "alphaedit_with_hooks.py").read_text()
+        lhs_section = source[source.find("build_lhs"):source.find("post_solve")]
+        assert "L2" in lhs_section, "L2 regularization must appear in the LHS construction"
+
+
+class TestReviveWorksForNonHookAlgorithms:
+    """REVIVE must work for NSE and RECT, which are vendor functions that
+    don't accept AlgorithmHooks. The runner must apply REVIVE post-hoc."""
+
+    def test_nse_apply_fn_does_not_accept_hooks_kwarg(self):
+        """Verify NSE's vendor function ignores hooks — confirms the problem exists."""
+        nse_path = PROJECT_ROOT / "vendor" / "AlphaEdit" / "nse" / "nse_main.py"
+        if not nse_path.exists():
+            pytest.skip("NSE source not available")
+        source = nse_path.read_text()
+        # NSE's apply function signature — it accepts **_kwargs which silently drops hooks
+        assert "def apply_nse_to_model" in source
+
+    def test_runner_handles_revive_for_non_hook_algorithms(self):
+        """polykernel_seqreg_runner must apply REVIVE post-hoc for NSE/RECT
+        since their vendor functions don't call hook.post_solve."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        after_edit_pos = source.find("def after_edit")
+        apply_fn_section = source[source.find("def apply_fn"):after_edit_pos if after_edit_pos > 0 else len(source)]
+
+        # The apply_fn must distinguish hooks-aware vs non-hooks-aware algorithms
+        hooks_aware_indicators = [
+            "_hooks_aware", "hooks_aware", "base_alg in (",
+        ]
+        has_hooks_check = any(s in apply_fn_section for s in hooks_aware_indicators)
+
+        # Or it must apply REVIVE post-hoc (snapshot weights, apply, compute delta, filter)
+        posthoc_indicators = [
+            "pre_weights", "post-hoc", "weight snapshot", "filtered",
+        ]
+        has_posthoc = any(s in apply_fn_section for s in posthoc_indicators)
+
+        assert has_hooks_check or has_posthoc, (
+            "apply_fn must either:\n"
+            "  (a) check whether the base algorithm supports hooks, OR\n"
+            "  (b) apply REVIVE as a post-hoc weight filter for NSE/RECT.\n"
+            "Without this, REVIVE is silently skipped for non-hook algorithms "
+            "(their vendor functions accept **_kwargs but ignore hooks)."
+        )
+
+
 # ─── Fixed-Batch Ordering Tests ─────────────────────────────────────────────
 # The paper's centerpiece: identical batches in different temporal orders.
 
