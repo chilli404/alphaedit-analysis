@@ -11,7 +11,7 @@ import pytest
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "analysis"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "analysis" / "stats"))
 
 from paired_bootstrap import (
     cohens_d,

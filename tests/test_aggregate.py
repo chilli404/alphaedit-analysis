@@ -14,7 +14,7 @@ import pytest
 
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "analysis"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "analysis" / "stats"))
 
 from aggregate import extract_metrics_from_case, collect_run_results, METRICS
 

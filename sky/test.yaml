@@ -60,6 +60,10 @@ run: |
     tests/test_skypilot_yamls.py \
     tests/test_scientific_integrity.py \
     tests/test_revision_code.py \
+    tests/test_source_patches.py \
+    tests/test_aggregate.py \
+    tests/test_confidence_intervals.py \
+    tests/test_paired_bootstrap.py \
     --tb=short -q
 
   # GPU smoke test (unless SKIP_GPU=1)
