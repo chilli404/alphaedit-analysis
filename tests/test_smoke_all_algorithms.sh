@@ -90,7 +90,8 @@ run_and_check() {
     local t0=$(date +%s)
 
     # Run with timeout — full output to log, only errors to stdout
-    local logfile="$RESULT_ROOT/_smoke_${label// /_}.log"
+    local _safe_label="${label// /_}"; _safe_label="${_safe_label//+/_}"
+    local logfile="$RESULT_ROOT/_smoke_${_safe_label}.log"
     PYTHONUNBUFFERED=1 timeout "$TIMEOUT" "$@" > "$logfile" 2>&1
     local exit_code=$?
     # Show errors if any
@@ -414,7 +415,8 @@ run_baseline() {
     log "  Script: $script, TARGET_EDITS=$DATASET_LIMIT, NUM_EDITS=$EDITS, SEED=$SEED"
     local t0=$(date +%s)
 
-    local logfile="$RESULT_ROOT/_smoke_${label// /_}.log"
+    local _safe_label="${label// /_}"; _safe_label="${_safe_label//+/_}"
+    local logfile="$RESULT_ROOT/_smoke_${_safe_label}.log"
     # Baselines need ordering streams from the real results dir, not _smoke_test
     local real_result_root="/s3-data/continual-learning/alphaedit/results"
     [ ! -d "$real_result_root/matched_ordering/orderings" ] && real_result_root="$PROJECT_DIR/results"
