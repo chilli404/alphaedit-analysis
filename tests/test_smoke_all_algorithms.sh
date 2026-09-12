@@ -412,7 +412,9 @@ run_baseline() {
     local logfile=$(mktemp)
     log "───────────────────────────────────────────"
     log "START [$((PASS + FAIL + SKIP + 1))/11]: $label"
-    log "  Script: $script, TARGET_EDITS=$DATASET_LIMIT, NUM_EDITS=$EDITS, SEED=$SEED"
+    # Baselines use 1 batch — compute_z runs 25 gradient steps per edit (no cache for EvoEdit)
+    local bl_limit=$EDITS
+    log "  Script: $script, TARGET_EDITS=$bl_limit, NUM_EDITS=$EDITS, SEED=$SEED"
     local t0=$(date +%s)
 
     local _safe_label="${label// /_}"; _safe_label="${_safe_label//+/_}"
@@ -426,7 +428,7 @@ run_baseline() {
 
     # Skip mega_batch_eval — the editing smoke test validates edits + checkpoints, not eval.
     # Eval is tested by the eval cluster (test_eval_and_measure.yaml).
-    PYTHONUNBUFFERED=1 timeout "$TIMEOUT" bash -c "SKIP_MEGA_BATCH_EVAL=1 TARGET_EDITS=$DATASET_LIMIT NUM_EDITS=$EDITS RESULT_ROOT=$real_result_root CHECKPOINT_ROOT=$CHECKPOINT_ROOT bash $script $SEED" > "$logfile" 2>&1
+    PYTHONUNBUFFERED=1 timeout "$TIMEOUT" bash -c "SKIP_MEGA_BATCH_EVAL=1 TARGET_EDITS=$bl_limit NUM_EDITS=$EDITS RESULT_ROOT=$real_result_root CHECKPOINT_ROOT=$CHECKPOINT_ROOT bash $script $SEED" > "$logfile" 2>&1
     local exit_code=$?
     if [ "$exit_code" -ne 0 ]; then
         log "  Last 20 lines of output:"
