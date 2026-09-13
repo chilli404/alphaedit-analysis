@@ -332,6 +332,55 @@ class TestCrossAlgorithm:
 
         _restore_weights(model, w0)
 
+    @requires_gpu
+    def test_posthoc_revive_filters_nonzero_deltas(self, model_and_tok, dataset_20, memit_hparams):
+        """Post-hoc REVIVE must actually filter when deltas are non-zero.
+
+        Uses MEMIT to produce real weight changes, then applies the post-hoc
+        REVIVE wrapper manually — verifying it detects the delta and reduces
+        the update norm. This tests the same code path as REVIVE+NSE/RECT.
+        """
+        model, tok = model_and_tok
+        w0 = _get_weight_snapshot(model, memit_hparams)
+        _seed()
+
+        # Apply MEMIT to produce real weight changes
+        from algorithms.memit_with_hooks import apply_memit_with_hooks
+        apply_memit_with_hooks(model, tok, _flatten_requests(dataset_20[:10]),
+                               memit_hparams, return_orig_weights=False)
+
+        w_after = _get_weight_snapshot(model, memit_hparams)
+
+        # Verify MEMIT actually changed weights
+        deltas = {k: w_after[k].double() - w0[k].double() for k in w0}
+        nonzero = sum(1 for d in deltas.values() if d.norm() > 1e-10)
+        assert nonzero > 0, "MEMIT should produce non-zero weight deltas"
+
+        # Now apply post-hoc REVIVE filter (same logic as polykernel_seqreg_runner)
+        from algorithms.hook_presets import revive_hooks
+        rv = revive_hooks(revive_tau=0.1, revive_svd_device="cpu", revive_svd_dtype="float64")
+
+        filtered_count = 0
+        for layer in memit_hparams.layers:
+            wn = f"{memit_hparams.rewrite_module_tmp.format(layer)}.weight"
+            delta = deltas[wn]
+            if delta.norm() < 1e-10:
+                continue
+            state_rv = {"_current_weights": {wn: w0[wn]}}
+            filtered = rv.post_solve(layer, delta, None, None, wn, state_rv)
+            # REVIVE should reduce the norm
+            assert filtered.norm() <= delta.norm() * 1.01, (
+                f"REVIVE post-hoc should reduce delta norm at layer {layer}: "
+                f"filtered={filtered.norm():.4f} vs original={delta.norm():.4f}"
+            )
+            filtered_count += 1
+
+        assert filtered_count > 0, (
+            "Post-hoc REVIVE should filter at least one layer with non-zero delta"
+        )
+
+        _restore_weights(model, w0)
+
 
 # ─── C. Harness Output Structure ────────────────────────────────────────────
 

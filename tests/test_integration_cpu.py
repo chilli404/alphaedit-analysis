@@ -2016,6 +2016,43 @@ class TestRevivePostHocPrintsOutput:
         )
 
 
+class TestReviveNonZeroDeltaCoverage:
+    """We must verify that post-hoc REVIVE is tested with REAL non-zero deltas,
+    not just the zero-delta acceptance path."""
+
+    def test_revive_rect_smoke_validates_actual_filtering(self):
+        """REVIVE+RECT smoke test must check for [REVIVE] layer= AND removed=.
+        RECT produces large weight deltas, so the filter should actually run."""
+        smoke = PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh"
+        if not smoke.exists():
+            pytest.skip("smoke test not found")
+        source = smoke.read_text()
+        revive_section = source[source.find("*REVIVE*)"):source.find(";;", source.find("*REVIVE*)"))]
+        assert "[REVIVE] layer=" in revive_section, "Must check for per-layer SVD output"
+        assert "removed=" in revive_section, "Must check that filter removes something"
+
+    def test_gpu_integration_tests_posthoc_revive(self):
+        """GPU integration tests must include a test for post-hoc REVIVE with non-zero deltas."""
+        gpu_test = PROJECT_ROOT / "tests" / "test_gpu_integration.py"
+        if not gpu_test.exists():
+            pytest.skip("GPU integration test not found")
+        source = gpu_test.read_text()
+        assert "posthoc_revive_filters_nonzero_deltas" in source, (
+            "GPU integration tests must include test_posthoc_revive_filters_nonzero_deltas. "
+            "This verifies the post-hoc REVIVE path works with real weight changes, "
+            "not just the zero-delta acceptance path."
+        )
+
+    def test_revive_rect_is_tested_on_smoke_cluster(self):
+        """REVIVE+RECT must appear in the smoke test with expected checkpoint path."""
+        smoke = PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh"
+        if not smoke.exists():
+            pytest.skip("smoke test not found")
+        source = smoke.read_text()
+        assert "REVIVE+RECT" in source, "Smoke test must include REVIVE+RECT"
+        assert "MEMIT_rect-poly1-REVIVE" in source, "Expected RECT checkpoint path in smoke test"
+
+
 class TestPostHocReviveContract:
     """The post-hoc REVIVE wrapper for NSE/RECT must:
     1. Snapshot weights before edit
