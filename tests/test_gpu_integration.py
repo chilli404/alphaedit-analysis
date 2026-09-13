@@ -98,6 +98,12 @@ def _get_weight_snapshot(model, hparams):
     return snapshot
 
 
+def _flatten_requests(records):
+    """Convert dataset records to vendor apply_fn format."""
+    return [{"case_id": r["case_id"], **r["requested_rewrite"]}
+            if "requested_rewrite" in r else r for r in records]
+
+
 def _restore_weights(model, snapshot):
     params = dict(model.named_parameters())
     for k, v in snapshot.items():
