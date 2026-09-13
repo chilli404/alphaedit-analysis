@@ -2170,6 +2170,55 @@ class TestExperimentConfigKernelTag:
         assert c.kernel_tag == "rbf_median"
 
 
+class TestRECTCacheCInCheckpoint:
+    """RECT cache_c must be saved in checkpoints so resumed runs don't start with zeros."""
+
+    def test_cache_c_saved_in_checkpoint_for_rect(self):
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        save_section = source[source.find("extra_state = {"):source.find("save_checkpoint(") + 500]
+        assert "cache_c" in save_section, (
+            "Checkpoint must save cache_c for RECT. Without it, resumed runs start "
+            "with zeros cache_c, producing different results than continuous runs."
+        )
+
+    def test_cache_c_loaded_from_checkpoint(self):
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        load_section = source[source.find("load_checkpoint"):source.find("# Select apply function")]
+        assert "cache_c" in load_section, (
+            "Checkpoint load must restore cache_c for algorithms that use it."
+        )
+
+
+class TestMemitSeqOutputJsonlMkdir:
+    """memit_sequential_runner must mkdir before writing output_jsonl (S3 FUSE safety)."""
+
+    def test_mkdir_before_output_jsonl_write(self):
+        source = (PROJECT_ROOT / "src" / "runners" / "memit_sequential_runner.py").read_text()
+        write_pos = source.find('with open(output_jsonl')
+        if write_pos < 0:
+            pytest.skip("output_jsonl write not found")
+        pre_write = source[max(0, write_pos - 300):write_pos]
+        assert "mkdir" in pre_write, (
+            "memit_sequential_runner must mkdir parent before writing output_jsonl. "
+            "On S3 FUSE, directories created at startup may not persist."
+        )
+
+
+class TestReviveCurrentWeightsCloned:
+    """REVIVE hooks _current_weights must hold clones, not references.
+    References break if earlier layers' weights are modified in-place."""
+
+    def test_hooks_path_clones_weights(self):
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        # Find the weights_dict construction (before _current_weights assignment)
+        weights_area = source[source.find("if args.revive:"):source.find("algo_state[\"_current_weights\"]") + 50]
+        assert ".clone()" in weights_area, (
+            "REVIVE _current_weights must use .clone() not bare .data reference. "
+            "Without cloning, in-place weight modifications from earlier layers "
+            "corrupt the SVD input for later layers."
+        )
+
+
 class TestGetMegaBatchEvalSource:
     """get_mega_batch_eval_source must return compilable Python that defines _mega_batch_eval."""
 

@@ -272,9 +272,10 @@ def run(args: argparse.Namespace) -> None:
         hooks=hooks,
     )
 
-    # Write mechanism log
+    # Write mechanism log (re-ensure parent dir exists — S3 FUSE may drop it)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     output_jsonl = results_dir / f"log_seed{args.seed}_lp{args.lambda_prev}_ld{args.lambda_delta}_{timestamp}.jsonl"
+    output_jsonl.parent.mkdir(parents=True, exist_ok=True)
     log_entries = algo_state.get("mechanism_log", [])
     with open(output_jsonl, "w") as f:
         for entry in log_entries:

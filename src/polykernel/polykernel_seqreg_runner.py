@@ -263,6 +263,8 @@ def run(args: argparse.Namespace) -> None:
     # Load checkpoint if resuming
     if start_from_batch > 0:
         extra_keys = ["prev_cache.pt", "mechanism_log.jsonl"]
+        if cache_c is not None:
+            extra_keys.append("cache_c.pt")
         if error_cache is not None:
             extra_keys.append("error_cache.pt")
         ckpt_result = load_checkpoint(
@@ -276,6 +278,9 @@ def run(args: argparse.Namespace) -> None:
         if ckpt_result.get("mechanism_log.jsonl") is not None:
             algo_state["mechanism_log"] = ckpt_result["mechanism_log.jsonl"]
             print(f"  [CHECKPOINT] Loaded {len(algo_state['mechanism_log'])} log entries")
+        if ckpt_result.get("cache_c.pt") is not None:
+            cache_c = ckpt_result["cache_c.pt"]
+            print(f"  [CHECKPOINT] Loaded cache_c (shape: {cache_c.shape})")
         if ckpt_result.get("error_cache.pt") is not None:
             error_cache = ckpt_result["error_cache.pt"]
             print(f"  [CHECKPOINT] Loaded error_cache (shape: {error_cache.shape})")
@@ -410,7 +415,7 @@ def run(args: argparse.Namespace) -> None:
                     wn = f"{hparams.rewrite_module_tmp.format(layer)}.weight"
                     param = dict(model.named_parameters()).get(wn)
                     if param is not None:
-                        weights_dict[wn] = param.data
+                        weights_dict[wn] = param.data.detach().clone()
                 algo_state["_current_weights"] = weights_dict
 
             return base_apply(
@@ -474,6 +479,8 @@ def run(args: argparse.Namespace) -> None:
                 "prev_cache.pt": algo_state.get("prev_cache", {}),
                 "mechanism_log.jsonl": algo_state.get("mechanism_log", []),
             }
+            if cache_c is not None:
+                extra_state["cache_c.pt"] = cache_c
             if error_cache is not None:
                 extra_state["error_cache.pt"] = error_cache
             save_checkpoint(
