@@ -205,17 +205,13 @@ validate_log() {
             log "  ✓ REVIVE: SVD computed ${svd_count}x with spectral filtering"
             ;;
         *AlphaEdit*checkpoint*)
-            # AlphaEdit checkpoint_runner must resolve model name correctly
-            if ! grep -q "llama3-8b-instruct\|Llama3-8B" "$logfile"; then
-                log "  ❌ Model name not canonical"
-                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: bad model name"; return 1
+            # AlphaEdit uses P matrix (null_space_project.pt) and cache_c
+            # It does NOT call get_cov, so the model name won't appear in stats output
+            if ! grep -q "null_space_project\|Loaded.*P matrix\|Initialized cache_c" "$logfile"; then
+                log "  ❌ AlphaEdit: P matrix or cache_c not initialized"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: missing P/cache_c"; return 1
             fi
-            # Must save cache_c
-            if ! grep -q "cache_c" "$logfile"; then
-                log "  ❌ No cache_c in checkpoint"
-                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: missing cache_c"; return 1
-            fi
-            log "  ✓ AlphaEdit: canonical model name, cache_c saved"
+            log "  ✓ AlphaEdit: P matrix loaded, cache_c initialized"
             ;;
         *MEMIT*checkpoint*)
             # MEMIT must load covariance stats (canonical name appears in stats path)

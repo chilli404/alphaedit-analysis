@@ -1881,6 +1881,29 @@ class TestCanonicalNameResolvesStats:
                 )
 
 
+class TestSmokeTestAlphaEditValidation:
+    """AlphaEdit smoke test validation must not require model name in log output.
+    AlphaEdit uses null_space_project.pt (P matrix), not get_cov, so it never
+    prints the model name during stats lookup."""
+
+    def test_alphaedit_validation_doesnt_require_model_name(self):
+        """AlphaEdit smoke test check must NOT require model name string in output."""
+        smoke = PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh"
+        if not smoke.exists():
+            pytest.skip("smoke test not found")
+        source = smoke.read_text()
+        # Find the AlphaEdit validation section
+        ae_start = source.find("*AlphaEdit*checkpoint*")
+        ae_end = source.find(";;", ae_start) if ae_start >= 0 else -1
+        if ae_start < 0:
+            pytest.skip("AlphaEdit validation section not found")
+        ae_section = source[ae_start:ae_end]
+        assert "null_space_project" in ae_section or "P matrix" in ae_section or "cache_c" in ae_section, (
+            "AlphaEdit validation should check for P matrix or cache_c, not model name. "
+            "AlphaEdit uses null_space_project.pt directly and never prints the model name."
+        )
+
+
 class TestCheckpointVerification:
     """Checkpoints saved to S3 FUSE may silently fail to persist.
     save_checkpoint must verify the file exists after writing."""
