@@ -1748,6 +1748,20 @@ class TestAlphaEditModelDtype:
         )
 
 
+class TestCheckpointVerification:
+    """Checkpoints saved to S3 FUSE may silently fail to persist.
+    save_checkpoint must verify the file exists after writing."""
+
+    def test_save_checkpoint_verifies_write(self):
+        """save_checkpoint must verify model_weights.pt exists after torch.save."""
+        source = (PROJECT_ROOT / "src" / "util" / "checkpoint_io.py").read_text()
+        save_section = source[source.find("def save_checkpoint"):source.find("def load_checkpoint")]
+        assert "exists()" in save_section or "verify" in save_section.lower(), (
+            "save_checkpoint must verify the checkpoint file exists after writing. "
+            "S3 FUSE can silently drop writes."
+        )
+
+
 class TestOutputJsonlParentDir:
     """The output_jsonl write must ensure its parent directory exists.
     On S3 FUSE, directories created 200+ seconds earlier may not persist."""

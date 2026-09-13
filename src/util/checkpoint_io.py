@@ -121,6 +121,14 @@ def save_checkpoint(
     with open(batch_dir / "metadata.json", "w") as f:
         json.dump(meta, f, indent=2)
 
+    # Verify critical files exist (S3 FUSE can silently drop writes)
+    weights_path = batch_dir / "model_weights.pt"
+    meta_path = batch_dir / "metadata.json"
+    if not weights_path.exists():
+        raise RuntimeError(f"[CHECKPOINT] WRITE FAILED: {weights_path} not found after save")
+    if not meta_path.exists():
+        raise RuntimeError(f"[CHECKPOINT] WRITE FAILED: {meta_path} not found after save")
+
     print(f"  [CHECKPOINT] Saved batch {batch_idx} ({(batch_idx + 1) * num_edits} edits) -> {batch_dir}")
     return batch_dir
 
