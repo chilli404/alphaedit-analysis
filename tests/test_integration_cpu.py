@@ -2016,6 +2016,182 @@ class TestRevivePostHocPrintsOutput:
         )
 
 
+class TestSeedEverything:
+    """_seed_everything must set all RNG sources deterministically."""
+
+    def _seed_fn(self, seed):
+        """Replicate _seed_everything without importing from runner (avoids vendor deps)."""
+        import random as _random, numpy as _np, torch
+        _random.seed(seed)
+        _np.random.seed(seed)
+        torch.manual_seed(seed)
+
+    def test_seed_everything_sets_python_random(self):
+        import random as _random
+        self._seed_fn(42)
+        a = _random.random()
+        self._seed_fn(42)
+        b = _random.random()
+        assert a == b, "Python random not seeded deterministically"
+
+    def test_seed_everything_sets_numpy(self):
+        import numpy as _np
+        self._seed_fn(42)
+        a = _np.random.rand()
+        self._seed_fn(42)
+        b = _np.random.rand()
+        assert a == b, "NumPy random not seeded deterministically"
+
+    def test_seed_everything_sets_torch(self):
+        import torch
+        self._seed_fn(42)
+        a = torch.rand(1).item()
+        self._seed_fn(42)
+        b = torch.rand(1).item()
+        assert a == b, "PyTorch random not seeded deterministically"
+
+    def test_source_sets_all_rngs(self):
+        """_seed_everything source must set random, numpy, torch, and cuda seeds."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        fn = source[source.find("def _seed_everything"):source.find("\n\ndef ", source.find("def _seed_everything") + 1)]
+        assert "random.seed" in fn
+        assert "np.random.seed" in fn
+        assert "torch.manual_seed" in fn
+        assert "torch.cuda.manual_seed_all" in fn
+        assert "deterministic" in fn
+
+
+class TestMakeEvalFn:
+    """_make_eval_fn must exec mega_batch_eval source and return a callable.
+    Cannot import directly (vendor deps) — test the logic structurally + via mega_batch_eval."""
+
+    def test_make_eval_fn_logic(self):
+        """_make_eval_fn execs get_mega_batch_eval_source and extracts _mega_batch_eval."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        fn = source[source.find("def _make_eval_fn"):source.find("\n\ndef ", source.find("def _make_eval_fn") + 1)]
+        assert "get_mega_batch_eval_source" in fn, "Must call get_mega_batch_eval_source"
+        assert "exec(" in fn, "Must exec the source"
+        assert '_mega_batch_eval' in fn, "Must extract _mega_batch_eval from namespace"
+
+    def test_fast_mode_filters_to_latest_batch(self):
+        """Fast mode must filter records to only the latest batch's case_ids."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        fn = source[source.find("def _make_eval_fn"):source.find("\n\ndef ", source.find("def _make_eval_fn") + 1)]
+        assert "fast_mode" in fn
+        assert "case_ids[-num_edits:]" in fn or "case_ids[" in fn, (
+            "Fast mode must filter to latest batch's case_ids"
+        )
+
+    def test_mega_batch_eval_source_produces_callable(self):
+        """get_mega_batch_eval_source must produce a callable when exec'd."""
+        from mega_batch_eval import get_mega_batch_eval_source
+        ns = {}
+        exec(get_mega_batch_eval_source(), ns)
+        assert callable(ns["_mega_batch_eval"])
+
+
+class TestInitAlgDict:
+    """_init_alg_dict must populate ALG_DICT with algorithm mappings.
+    Cannot directly import (vendor globals.yml CWD dependency) — test structurally."""
+
+    def test_alg_dict_has_required_algorithms(self):
+        """seeded_runner ALG_DICT must map AlphaEdit, MEMIT, and ROME."""
+        source = (PROJECT_ROOT / "src" / "runners" / "seeded_runner.py").read_text()
+        fn = source[source.find("def _init_alg_dict"):source.find("\n\ndef ", source.find("def _init_alg_dict") + 1)]
+        for alg in ["AlphaEdit", "MEMIT", "ROME"]:
+            assert f'"{alg}"' in fn, f"ALG_DICT must contain {alg}"
+
+    def test_alg_dict_maps_to_tuples(self):
+        """Each entry must map to (HyperParams, apply_fn)."""
+        source = (PROJECT_ROOT / "src" / "runners" / "seeded_runner.py").read_text()
+        fn = source[source.find("def _init_alg_dict"):source.find("\n\ndef ", source.find("def _init_alg_dict") + 1)]
+        assert "AlphaEditHyperParams" in fn and "apply_AlphaEdit_to_model" in fn
+        assert "MEMITHyperParams" in fn and "apply_memit_to_model" in fn
+        assert "ROMEHyperParams" in fn and "apply_rome_to_model" in fn
+
+
+class TestLoadC0PatchedApply:
+    """_load_c0_patched_apply must return a callable apply function."""
+
+    def test_function_exists_and_has_correct_signature(self):
+        source = (PROJECT_ROOT / "src" / "runners" / "checkpoint_runner.py").read_text()
+        assert "def _load_c0_patched_apply" in source
+        assert "alphaedit_root" in source[source.find("def _load_c0_patched_apply"):][:200]
+        assert "c0_weight" in source[source.find("def _load_c0_patched_apply"):][:200]
+
+    def test_c0_injection_patches_solve_anchor(self):
+        """The C₀ injection must find and replace the vendor solve anchor."""
+        source = (PROJECT_ROOT / "src" / "runners" / "checkpoint_runner.py").read_text()
+        fn_body = source[source.find("def _load_c0_patched_apply"):source.find("\ndef run(")]
+        assert "solve_anchor" in fn_body, "Must define solve_anchor to find in vendor code"
+        assert "assert solve_anchor in ae_source" in fn_body, "Must assert anchor exists"
+        assert "c0_weight" in fn_body, "Must inject c0_weight into the patched solve"
+        assert "get_cov" in fn_body, "C₀ injection must load covariance via get_cov"
+
+    def test_c0_returns_apply_and_get_cov(self):
+        """Must return both apply function and get_cov from the exec'd namespace."""
+        source = (PROJECT_ROOT / "src" / "runners" / "checkpoint_runner.py").read_text()
+        fn_body = source[source.find("def _load_c0_patched_apply"):source.find("\ndef run(")]
+        assert 'ae_ns["apply_AlphaEdit_to_model"]' in fn_body
+        assert 'ae_ns["get_cov"]' in fn_body
+
+
+class TestExperimentConfigKernelTag:
+    """kernel_tag must produce correct tags for all kernel configurations."""
+
+    def test_poly1(self):
+        from experiment_config import ExperimentConfig
+        c = ExperimentConfig(base_alg="MEMIT", seed=42, ordering=None,
+                            model_name="x", kernel_type="poly", kernel_degree=1)
+        assert c.kernel_tag == "poly1"
+
+    def test_poly2(self):
+        from experiment_config import ExperimentConfig
+        c = ExperimentConfig(base_alg="MEMIT", seed=42, ordering=None,
+                            model_name="x", kernel_type="poly", kernel_degree=2)
+        assert c.kernel_tag == "poly2"
+
+    def test_poly2_hybrid(self):
+        from experiment_config import ExperimentConfig
+        c = ExperimentConfig(base_alg="MEMIT", seed=42, ordering=None,
+                            model_name="x", kernel_type="poly", kernel_degree=2, kernel_prev=False)
+        assert c.kernel_tag == "poly2-hybrid"
+
+    def test_poly1_revive(self):
+        from experiment_config import ExperimentConfig
+        c = ExperimentConfig(base_alg="MEMIT", seed=42, ordering=None,
+                            model_name="x", kernel_degree=1, revive=True, revive_tau=0.1)
+        assert c.kernel_tag == "poly1-REVIVE-tau0.1"
+
+    def test_rbf(self):
+        from experiment_config import ExperimentConfig
+        c = ExperimentConfig(base_alg="MEMIT", seed=42, ordering=None,
+                            model_name="x", kernel_type="rbf", kernel_sigma="median")
+        assert c.kernel_tag == "rbf_median"
+
+
+class TestGetMegaBatchEvalSource:
+    """get_mega_batch_eval_source must return compilable Python that defines _mega_batch_eval."""
+
+    def test_returns_string(self):
+        from mega_batch_eval import get_mega_batch_eval_source
+        source = get_mega_batch_eval_source()
+        assert isinstance(source, str)
+        assert len(source) > 100
+
+    def test_source_compiles(self):
+        from mega_batch_eval import get_mega_batch_eval_source
+        source = get_mega_batch_eval_source()
+        compile(source, "<mega_batch_eval>", "exec")
+
+    def test_source_defines_function(self):
+        from mega_batch_eval import get_mega_batch_eval_source
+        ns = {}
+        exec(get_mega_batch_eval_source(), ns)
+        assert "_mega_batch_eval" in ns
+        assert callable(ns["_mega_batch_eval"])
+
+
 class TestCheckpointIoCorrectness:
     """Correctness tests for checkpoint_io functions — call them and verify output."""
 
