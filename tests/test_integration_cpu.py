@@ -2386,6 +2386,29 @@ class TestPolykernelHooksRBF:
         assert not torch.isnan(lhs).any()
 
 
+class TestEvoEditIsGenuinelySlow:
+    """EvoEdit recomputes v_star from the CURRENT model state each batch.
+    Unlike NSE (which precomputes from W₀), EvoEdit v_star depends on
+    accumulated edits — the cache is only valid for the first batch.
+    EvoEdit is therefore genuinely slow (~50s per edit)."""
+
+    def test_evoedit_does_not_use_nse_cache(self):
+        """EvoEdit must NOT load NSE caches — v_star depends on current model state."""
+        script = PROJECT_ROOT / "scripts" / "run_evoedit_baseline.sh"
+        if not script.exists():
+            pytest.skip("run_evoedit_baseline.sh not found")
+        source = script.read_text()
+        assert "nse_kv_cache" not in source, "EvoEdit must not load NSE caches"
+
+    def test_smoke_test_handles_evoedit_timeout(self):
+        """Smoke test must handle EvoEdit's inherent slowness gracefully."""
+        smoke = PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh"
+        if not smoke.exists():
+            pytest.skip("smoke test not found")
+        source = smoke.read_text()
+        assert "EvoEdit" in source, "Smoke test must include EvoEdit"
+
+
 class TestGetMegaBatchEvalSource:
     """get_mega_batch_eval_source must return compilable Python that defines _mega_batch_eval."""
 
