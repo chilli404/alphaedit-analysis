@@ -417,9 +417,10 @@ run_baseline() {
     log "───────────────────────────────────────────"
     log "START [$((PASS + FAIL + SKIP + 1))/11]: $label"
     # EvoEdit has no precomputed cache — compute_z runs 25 gradient steps per edit.
-    # Use 1 batch (10 edits) for EvoEdit, 2 batches (20 edits) for everything else.
+    # EvoEdit and NSE use iterative v_star optimization (25 gradient steps per edit)
+    # which is ~5x slower than MEMIT-family methods. Use 1 batch to stay within timeout.
     local bl_limit=$DATASET_LIMIT
-    if echo "$label" | grep -qi "EvoEdit"; then
+    if echo "$label" | grep -qiE "EvoEdit|NSE"; then
         bl_limit=$EDITS
     fi
     log "  Script: $script, TARGET_EDITS=$bl_limit, NUM_EDITS=$EDITS, SEED=$SEED"
