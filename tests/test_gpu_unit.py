@@ -335,46 +335,10 @@ class TestCheckpointCorrectness:
 
 class TestEvalMetrics:
 
-    @requires_gpu
-    def test_argmax_stricter_than_prob_pref(self, model_and_tok, small_dataset):
-        """Argmax success should be ≤ prob-pref success on any batch."""
-        model, tok = model_and_tok
-
-        argmax_success = 0
-        prob_pref_success = 0
-        total = 0
-
-        for record in small_dataset[:10]:
-            rw = record["requested_rewrite"]
-            prompt = rw["prompt"].format(rw["subject"])
-            target_new = rw["target_new"]["str"]
-            target_true = rw["target_true"]["str"]
-
-            inputs_new = tok(prompt + target_new, return_tensors="pt").to("cuda")
-            inputs_true = tok(prompt + target_true, return_tensors="pt").to("cuda")
-
-            with torch.no_grad():
-                nll_new = -model(**inputs_new).logits[0, -1].log_softmax(-1).max().item()
-                nll_true = -model(**inputs_true).logits[0, -1].log_softmax(-1).max().item()
-
-            # prob-pref: is target_new more probable?
-            if nll_new < nll_true:
-                prob_pref_success += 1
-
-            # argmax: is first token of target_new the argmax?
-            new_tok_id = tok(f" {target_new}", add_special_tokens=False).input_ids[0]
-            prompt_ids = tok(prompt, return_tensors="pt").to("cuda")
-            with torch.no_grad():
-                logits = model(**prompt_ids).logits[0, -1]
-            if logits.argmax().item() == new_tok_id:
-                argmax_success += 1
-
-            total += 1
-
-        # Argmax is strictly harder — shouldn't exceed prob-pref
-        assert argmax_success <= prob_pref_success + 1, (  # +1 for measurement noise
-            f"Argmax ({argmax_success}/{total}) should not exceed prob-pref ({prob_pref_success}/{total})"
-        )
+    # NOTE: argmax-vs-prob-pref invariant is tested by
+    # test_mega_batch_eval_prob_pref_geq_argmax which uses the actual multi-token
+    # evaluator. A single-token test on unedited models doesn't hold because
+    # neither metric is meaningful before edits are applied.
 
     @requires_gpu
     def test_mega_batch_eval_produces_per_case_jsons(self, model_and_tok, small_dataset, memit_hparams, tmp_path):
