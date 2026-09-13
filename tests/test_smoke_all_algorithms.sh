@@ -478,8 +478,8 @@ run_baseline() {
         }
     elif [ "$exit_code" -eq 124 ]; then
         FAIL=$((FAIL+1))
-        ERRORS="$ERRORS\n  $label: TIMEOUT (${TIMEOUT}s)"
-        log "❌ $label: TIMEOUT after ${TIMEOUT}s"
+        ERRORS="$ERRORS\n  $label: TIMEOUT (${bl_timeout}s)"
+        log "❌ $label: TIMEOUT after ${bl_timeout}s"
     else
         FAIL=$((FAIL+1))
         ERRORS="$ERRORS\n  $label: exit $exit_code"
