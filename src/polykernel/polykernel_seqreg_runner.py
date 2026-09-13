@@ -351,17 +351,45 @@ def run(args: argparse.Namespace) -> None:
     # For REVIVE on NSE/RECT, we apply the spectral filter post-hoc on weight deltas.
     _hooks_aware = args.base_alg in ("MEMIT", "AlphaEdit")
 
-    # NSE uses precomputed v_star from W₀. Build cache_template so it loads from kvs/.
+    # NSE uses precomputed v_star from W₀. Without these, compute_z does 25 gradient
+    # steps per edit (~1.5s each), making runs 5x slower. Extract from S3 tar if needed.
     _nse_cache_template = None
     if args.base_alg == "NSE":
         _kvs_dir = alphaedit_root / "share" / "projects" / "rewriting-knowledge" / "kvs"
         if not _kvs_dir.exists():
             _kvs_dir = get_project_root() / "baselines" / "EvoEdit" / "share" / "projects" / "rewriting-knowledge" / "kvs"
+
+        _nse_model_dir = _kvs_dir / f"{args.model_name.replace('/', '_')}_NSE"
+        _nse_npz_count = len(list(_nse_model_dir.glob("*.npz"))) if _nse_model_dir.exists() else 0
+
+        if _nse_npz_count < 100:
+            _tar_dir = Path("/s3-data/continual-learning/alphaedit/nse_kv_cache")
+            if not _tar_dir.exists():
+                _tar_dir = get_project_root() / "data" / "nse_kv_cache"
+            if _tar_dir.exists():
+                import tarfile
+                _kvs_dir.mkdir(parents=True, exist_ok=True)
+                for _tar_path in sorted(_tar_dir.glob("*.tar")):
+                    print(f"  [NSE] Extracting KV cache from {_tar_path.name}...")
+                    with tarfile.open(str(_tar_path), "r") as tf:
+                        tf.extractall(str(_kvs_dir))
+                # Symlink model name variants so canonical name resolves
+                _model_canonical = args.model_name.replace("/", "_") + "_NSE"
+                if not (_kvs_dir / _model_canonical).exists():
+                    for _d in _kvs_dir.iterdir():
+                        if _d.is_dir() and _d.name.endswith("_NSE") and _d.name != _model_canonical:
+                            (_kvs_dir / _model_canonical).symlink_to(_d.name)
+                            break
+                _nse_npz_count = len(list(_nse_model_dir.glob("*.npz"))) if _nse_model_dir.exists() else 0
+                print(f"  [NSE] KV cache: {_nse_npz_count} files extracted")
+            else:
+                print(f"  [NSE] WARNING: No KV cache tar at {_tar_dir}. "
+                      f"compute_z will use slow gradient optimization (25 steps/edit).")
+
         _nse_cache_template = str(
-            _kvs_dir / f"{args.model_name.replace('/', '_')}_NSE"
-            / f"{args.ds_name}_layer_{{}}_clamp_{{}}_case_{{}}.npz"
+            _nse_model_dir / f"{args.ds_name}_layer_{{}}_clamp_{{}}_case_{{}}.npz"
         )
-        print(f"  [NSE] Cache template: {_nse_cache_template}")
+        print(f"  [NSE] Cache template: {_nse_cache_template} ({_nse_npz_count} cached)")
 
     def apply_fn(model, tok, requests, hparams, **kwargs):
         extra = {}

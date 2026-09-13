@@ -1731,6 +1731,72 @@ class TestCaseResultTemplate:
                 break
 
 
+class TestNSEKVCacheLoading:
+    """NSE must load precomputed v_star from KV cache files to avoid slow
+    gradient optimization (25 steps per edit). Without cache, NSE times out."""
+
+    def test_polykernel_runner_builds_cache_template_for_nse(self):
+        """polykernel_seqreg_runner must build _nse_cache_template when base_alg=NSE."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        assert "_nse_cache_template" in source, "Runner must build NSE cache template"
+        # The template must be passed to the apply function
+        assert "cache_template" in source[source.find("def apply_fn"):source.find("def after_edit")], (
+            "apply_fn must pass cache_template to NSE's apply function"
+        )
+
+    def test_nse_cache_template_format_matches_files(self):
+        """The cache template must produce paths matching the actual .npz filenames."""
+        # Template: {kvs_dir}/{model}_NSE/{ds}_layer_{z_layer}_clamp_{clamp}_case_{case_id}.npz
+        cache_dir = PROJECT_ROOT / "data" / "nse_kv_cache" / "NousResearch_Meta-Llama-3-8B-Instruct_NSE"
+        if not cache_dir.exists():
+            pytest.skip("NSE KV cache not available locally")
+        files = list(cache_dir.glob("*.npz"))
+        assert len(files) > 0, "Cache dir exists but has no .npz files"
+        # Verify naming convention
+        sample = files[0].name
+        parts = sample.replace(".npz", "").split("_")
+        assert "layer" in sample, f"Cache filename must contain 'layer': {sample}"
+        assert "clamp" in sample, f"Cache filename must contain 'clamp': {sample}"
+        assert "case" in sample, f"Cache filename must contain 'case': {sample}"
+
+    def test_nse_baseline_script_extracts_cache(self):
+        """run_nse_baseline.sh must extract KV cache from S3 tar before running NSE."""
+        script_path = PROJECT_ROOT / "scripts" / "run_nse_baseline.sh"
+        if not script_path.exists():
+            pytest.skip("run_nse_baseline.sh not found")
+        source = script_path.read_text()
+        assert "tar" in source and "nse_kv_cache" in source, (
+            "run_nse_baseline.sh must extract NSE KV cache from S3 tar archives"
+        )
+
+    def test_smoke_test_baseline_yaml_allows_cache_extraction_time(self):
+        """The baseline YAML must give enough timeout for NSE cache extraction + editing."""
+        import glob
+        yamls = glob.glob(str(PROJECT_ROOT / "sky" / "test_baseline*.yaml"))
+        if not yamls:
+            pytest.skip("No baseline test YAML found")
+        content = open(yamls[0]).read()
+        # Should have SMOKE_TIMEOUT >= 900
+        if "SMOKE_TIMEOUT" in content:
+            import re
+            match = re.search(r"SMOKE_TIMEOUT=(\d+)", content)
+            if match:
+                timeout = int(match.group(1))
+                assert timeout >= 900, f"Baseline timeout {timeout}s too low for NSE cache extraction + editing"
+
+    def test_runner_extracts_nse_cache_from_tar(self):
+        """polykernel_seqreg_runner must extract NSE KV cache from S3 tar if the
+        kvs/ directory is empty or missing. Without this, compute_z falls through
+        to 25 gradient steps per edit and the run times out."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        nse_section = source[source.find("_nse_cache_template"):source.find("def apply_fn")]
+        assert "tar" in nse_section or "extract" in nse_section.lower(), (
+            "polykernel_seqreg_runner must extract NSE KV cache from tar archives "
+            "when base_alg=NSE. Without precomputed v_star, NSE does 25 gradient "
+            "steps per edit and times out on smoke tests."
+        )
+
+
 class TestNSECacheCUpdatedAfterEdit:
     """NSE returns (model, cache_c) like AlphaEdit. The after_edit hook must
     update cache_c for NSE, not just AlphaEdit — otherwise NSE uses stale
