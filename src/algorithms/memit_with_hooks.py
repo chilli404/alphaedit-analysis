@@ -124,6 +124,15 @@ def _execute_memit_with_hooks(
                 print(f"Error reading cache: {e}. Recomputing...")
         if not data_loaded:
             cur_z = compute_z(model, tok, request, hparams, z_layer, context_templates)
+            if torch.isnan(cur_z).any():
+                print(f"  [NaN GUARD] compute_z produced NaN for case_id={request.get('case_id', '?')}; using unedited z")
+                cur_z = get_module_input_output_at_words(
+                    model, tok, z_layer,
+                    context_templates=[request["prompt"]],
+                    words=[request["subject"]],
+                    module_template=hparams.layer_module_tmp,
+                    fact_token_strategy=hparams.fact_token,
+                )[1].squeeze()
             z_list.append(cur_z)
             if cache_fname is not None:
                 cache_fname.parent.mkdir(exist_ok=True, parents=True)

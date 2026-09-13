@@ -2016,6 +2016,212 @@ class TestRevivePostHocPrintsOutput:
         )
 
 
+class TestCheckpointIoCorrectness:
+    """Correctness tests for checkpoint_io functions — call them and verify output."""
+
+    def test_should_save_interval_1(self):
+        """should_save with interval=1 should save every batch."""
+        from checkpoint_io import should_save
+        assert should_save(0, 1) is True
+        assert should_save(1, 1) is True
+        assert should_save(99, 1) is True
+
+    def test_should_save_interval_10(self):
+        """should_save with interval=10 should save at 9, 19, 29..."""
+        from checkpoint_io import should_save
+        assert should_save(8, 10) is False
+        assert should_save(9, 10) is True
+        assert should_save(10, 10) is False
+        assert should_save(19, 10) is True
+
+    def test_should_skip(self):
+        """should_skip returns True for batches before start_batch."""
+        from checkpoint_io import should_skip
+        assert should_skip(0, 5) is True
+        assert should_skip(4, 5) is True
+        assert should_skip(5, 5) is False
+        assert should_skip(0, 0) is False
+
+    def test_validate_checkpoint_path_correct(self):
+        """validate_checkpoint_path should pass for correct paths."""
+        from checkpoint_io import validate_checkpoint_path
+        validate_checkpoint_path("/tmp/MEMIT-Seq-poly1/seed42", "MEMIT")
+        validate_checkpoint_path("/tmp/AlphaEdit-poly1/seed42", "AlphaEdit")
+        validate_checkpoint_path("/tmp/NSE-poly1/seed42", "NSE")
+
+    def test_validate_checkpoint_path_mismatch(self):
+        """validate_checkpoint_path should raise for wrong algorithm in path."""
+        from checkpoint_io import validate_checkpoint_path
+        with pytest.raises(RuntimeError, match="Checkpoint path mismatch"):
+            validate_checkpoint_path("/tmp/MEMIT-Seq-poly1/seed42", "AlphaEdit")
+
+    def test_find_latest_checkpoint_empty(self, tmp_path):
+        """find_latest_checkpoint on empty dir returns None."""
+        from checkpoint_io import find_latest_checkpoint
+        assert find_latest_checkpoint(tmp_path) is None
+
+    def test_find_latest_checkpoint_with_batches(self, tmp_path):
+        """find_latest_checkpoint finds the highest batch with metadata."""
+        from checkpoint_io import find_latest_checkpoint
+        import json
+        for b in [0, 9, 19]:
+            d = tmp_path / f"batch_{b}"
+            d.mkdir()
+            (d / "metadata.json").write_text(json.dumps({"batch_idx": b}))
+        result = find_latest_checkpoint(tmp_path)
+        assert result is not None
+        assert result[0] == 19
+
+
+class TestExperimentConfigCorrectness:
+    """Correctness tests for ExperimentConfig — construct configs and verify outputs."""
+
+    def test_variant_name_memit(self):
+        """MEMIT base_alg should produce MEMIT-Seq prefix."""
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
+        from experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg="MEMIT", seed=42, ordering=None,
+            model_name="meta-llama/Meta-Llama-3-8B-Instruct",
+            lambda_prev=1.0, lambda_delta=0.0, kernel_degree=1,
+        )
+        assert config.variant_name.startswith("MEMIT-Seq-")
+
+    def test_variant_name_alphaedit(self):
+        """AlphaEdit base_alg should produce AlphaEdit prefix, not MEMIT-Seq."""
+        from experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg="AlphaEdit", seed=42, ordering=None,
+            model_name="meta-llama/Meta-Llama-3-8B-Instruct",
+            lambda_prev=0.0, lambda_delta=0.0, kernel_degree=1, revive=True, revive_tau=0.1,
+        )
+        assert config.variant_name.startswith("AlphaEdit-")
+        assert "MEMIT-Seq" not in config.variant_name
+
+    def test_variant_name_nse(self):
+        """NSE should produce NSE prefix."""
+        from experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg="NSE", seed=42, ordering=None,
+            model_name="meta-llama/Meta-Llama-3-8B-Instruct",
+            lambda_prev=0.0, lambda_delta=0.0, kernel_degree=1, revive=True, revive_tau=0.1,
+        )
+        assert config.variant_name.startswith("NSE-")
+
+    def test_variant_name_rect(self):
+        """MEMIT_rect should produce MEMIT_rect prefix."""
+        from experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg="MEMIT_rect", seed=42, ordering=None,
+            model_name="meta-llama/Meta-Llama-3-8B-Instruct",
+            lambda_prev=0.0, lambda_delta=0.0, kernel_degree=1,
+        )
+        assert config.variant_name.startswith("MEMIT_rect-")
+
+    def test_all_base_algs_produce_distinct_variants(self):
+        """Every base_alg must produce a distinct variant_name prefix."""
+        from experiment_config import ExperimentConfig
+        names = set()
+        for alg in ["MEMIT", "AlphaEdit", "NSE", "MEMIT_rect"]:
+            config = ExperimentConfig(
+                base_alg=alg, seed=42, ordering=None,
+                model_name="meta-llama/Meta-Llama-3-8B-Instruct",
+                lambda_prev=0.0, lambda_delta=0.0, kernel_degree=1,
+            )
+            prefix = config.variant_name.split("-")[0]
+            assert prefix not in names or alg == "MEMIT", (
+                f"{alg} produces prefix '{prefix}' which conflicts with another algorithm"
+            )
+            names.add(prefix)
+
+    def test_checkpoint_dir_contains_variant(self):
+        """checkpoint_dir must contain the variant_name."""
+        from experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg="AlphaEdit", seed=42, ordering="fb_high_exposure",
+            model_name="meta-llama/Meta-Llama-3-8B-Instruct",
+            lambda_prev=0.0, lambda_delta=0.0, kernel_degree=1, revive=True, revive_tau=0.1,
+            experiment_type="polykernel_seqreg",
+        )
+        ckpt = config.checkpoint_dir()
+        assert "AlphaEdit" in str(ckpt)
+        assert "fb_high_exposure" in str(ckpt)
+        assert "seed42" in str(ckpt)
+
+    def test_model_tag_empty_for_llama(self):
+        """Llama (default model) should have empty model_tag."""
+        from experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg="MEMIT", seed=42, ordering=None,
+            model_name="meta-llama/Meta-Llama-3-8B-Instruct",
+        )
+        assert config.model_tag == ""
+
+    def test_model_tag_gptj(self):
+        """GPT-J should have model_tag 'gpt-j-6b'."""
+        from experiment_config import ExperimentConfig
+        config = ExperimentConfig(
+            base_alg="MEMIT", seed=42, ordering=None,
+            model_name="EleutherAI/gpt-j-6b",
+        )
+        assert config.model_tag == "gpt-j-6b"
+
+
+class TestPathsCorrectness:
+    """Correctness tests for paths.py functions."""
+
+    def test_get_project_root(self):
+        from paths import get_project_root
+        root = get_project_root()
+        assert (root / "src").is_dir()
+        assert (root / "vendor").is_dir()
+
+    def test_get_alphaedit_root(self):
+        from paths import get_alphaedit_root
+        root = get_alphaedit_root()
+        assert "AlphaEdit" in str(root)
+
+    def test_s3_guard_logic_exists(self):
+        """_require_s3 must check for SKYPILOT_TASK_ID and /s3-data/ in path."""
+        source = (PROJECT_ROOT / "src" / "util" / "paths.py").read_text()
+        assert "SKYPILOT_TASK_ID" in source, "paths.py must check SKYPILOT_TASK_ID"
+        assert "/s3-data/" in source, "paths.py must check for /s3-data/ in path"
+        assert "RuntimeError" in source, "paths.py must raise RuntimeError for non-S3 paths"
+
+    def test_s3_guard_passes_for_s3_path(self):
+        """_require_s3 should pass for /s3-data/ paths."""
+        import os
+        from paths import _require_s3
+        old = os.environ.get("SKYPILOT_TASK_ID")
+        try:
+            os.environ["SKYPILOT_TASK_ID"] = "test-123"
+            import importlib, paths
+            importlib.reload(paths)
+            result = paths._require_s3(Path("/s3-data/test"), "TEST_VAR")
+            assert str(result) == "/s3-data/test"
+        finally:
+            if old is None:
+                os.environ.pop("SKYPILOT_TASK_ID", None)
+            else:
+                os.environ["SKYPILOT_TASK_ID"] = old
+            import importlib, paths
+            importlib.reload(paths)
+
+
+class TestMemitNaNGuard:
+    """memit_with_hooks must handle NaN from compute_z, matching the vendor's guard."""
+
+    def test_memit_hooks_has_nan_guard(self):
+        """memit_with_hooks.py must check for NaN after compute_z."""
+        source = (PROJECT_ROOT / "src" / "algorithms" / "memit_with_hooks.py").read_text()
+        z_section = source[source.find("compute_z("):source.find("zs = torch.stack")]
+        assert "isnan" in z_section or "nan" in z_section.lower(), (
+            "memit_with_hooks must check for NaN after compute_z. "
+            "Vendor memit_main.py has a NaN guard that falls back to the unedited z-value. "
+            "Without this, NaN propagates to weight updates and produces garbage."
+        )
+
+
 class TestReviveNonZeroDeltaCoverage:
     """We must verify that post-hoc REVIVE is tested with REAL non-zero deltas,
     not just the zero-delta acceptance path."""
