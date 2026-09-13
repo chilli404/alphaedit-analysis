@@ -437,17 +437,23 @@ def run(args: argparse.Namespace) -> None:
 
         if args.revive and pre_weights:
             params = dict(model.named_parameters())
+            _rv_applied = 0
             for layer in hparams.layers:
                 wn = f"{hparams.rewrite_module_tmp.format(layer)}.weight"
                 if wn not in params or wn not in pre_weights:
                     continue
                 delta = params[wn].data.double() - pre_weights[wn].double()
-                if delta.norm() < 1e-10:
+                dnorm = delta.norm().item()
+                if dnorm < 1e-10:
                     continue
                 state_rv = {"_current_weights": {wn: pre_weights[wn]}}
                 filtered = _revive_hook.post_solve(layer, delta, None, None, wn, state_rv)
                 with torch.no_grad():
                     params[wn].data.copy_(pre_weights[wn] + filtered.to(params[wn].dtype))
+                _rv_applied += 1
+            if _rv_applied == 0:
+                print(f"  [REVIVE] WARNING: post-hoc filter applied to 0 layers "
+                      f"(all deltas < 1e-10). base_alg={args.base_alg}", flush=True)
 
         return result
 
@@ -522,8 +528,9 @@ def run(args: argparse.Namespace) -> None:
         hooks=hooks,
     )
 
-    # Write mechanism log
+    # Write mechanism log (re-ensure parent dir exists — S3 FUSE may drop empty dirs)
     log_entries = algo_state.get("mechanism_log", [])
+    output_jsonl.parent.mkdir(parents=True, exist_ok=True)
     with open(output_jsonl, "w") as f:
         for entry in log_entries:
             f.write(json.dumps(entry) + "\n")

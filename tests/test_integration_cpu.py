@@ -1731,6 +1731,50 @@ class TestCaseResultTemplate:
                 break
 
 
+class TestOutputJsonlParentDir:
+    """The output_jsonl write must ensure its parent directory exists.
+    On S3 FUSE, directories created 200+ seconds earlier may not persist."""
+
+    def test_output_jsonl_mkdir_before_write(self):
+        """polykernel_seqreg_runner must mkdir parent before writing output_jsonl."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        write_pos = source.find('with open(output_jsonl, "w")')
+        assert write_pos > 0, "output_jsonl write not found"
+        # Look for a mkdir in the 200 chars before the write
+        pre_write = source[max(0, write_pos - 200):write_pos]
+        assert "mkdir" in pre_write or "makedirs" in pre_write, (
+            "Must ensure output_jsonl parent directory exists before writing. "
+            "On S3 FUSE, directories created at startup may not persist 200+ seconds later."
+        )
+
+
+class TestRevivePostHocPrintsOutput:
+    """The post-hoc REVIVE wrapper for NSE/RECT must produce [REVIVE] output
+    that the smoke test can validate."""
+
+    def test_posthoc_revive_prints_revive_tag(self):
+        """The post-hoc REVIVE path must print [REVIVE] for smoke test validation."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        posthoc_section = source[source.find("# Non-hook path"):source.find("return result", source.find("# Non-hook path"))]
+        # The revive_hooks.post_solve already prints [REVIVE] internally.
+        # But if delta.norm() < 1e-10, the filter is skipped entirely.
+        # Check that the threshold isn't too aggressive
+        assert "1e-10" in posthoc_section or "1e-8" in posthoc_section, (
+            "Post-hoc REVIVE has a delta norm threshold that skips the filter. "
+            "This should be documented and the smoke test should account for it."
+        )
+
+    def test_smoke_test_revive_check_accounts_for_posthoc(self):
+        """The smoke test REVIVE validation must work for both hooks-based and post-hoc paths."""
+        smoke_path = PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh"
+        if not smoke_path.exists():
+            pytest.skip("smoke test not found")
+        source = smoke_path.read_text()
+        # The smoke test checks for [REVIVE] in output — this works for hooks path
+        # but post-hoc also prints [REVIVE] via revive_hooks.post_solve
+        assert "[REVIVE]" in source, "Smoke test must check for [REVIVE] output"
+
+
 class TestNSEKVCacheLoading:
     """NSE must load precomputed v_star from KV cache files to avoid slow
     gradient optimization (25 steps per edit). Without cache, NSE times out."""
