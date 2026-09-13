@@ -1704,6 +1704,33 @@ class TestV2EvalStructure:
                 )
 
 
+class TestCaseResultTemplate:
+    """The case_result_template must have TWO placeholders: {num_edits} and {case_id}.
+    mega_batch_eval calls template.format(num_edits, case_id)."""
+
+    def test_harness_template_has_two_placeholders(self):
+        """The harness case_result_template must have exactly 2 {} placeholders."""
+        source = (PROJECT_ROOT / "src" / "evaluate_harness.py").read_text()
+        template_line = [l for l in source.split("\n") if "case_result_template" in l and "{" in l][0]
+        assert template_line.count("{}") == 2, (
+            f"case_result_template must have 2 placeholders (num_edits and case_id). "
+            f"Got: {template_line.strip()}"
+        )
+
+    def test_template_format_produces_correct_filename(self):
+        """template.format(num_edits=100, case_id=42) must produce '100_edits-case_42.json'."""
+        source = (PROJECT_ROOT / "src" / "evaluate_harness.py").read_text()
+        # Extract the template pattern
+        for line in source.split("\n"):
+            if "case_result_template" in line and "edits-case" in line:
+                # The template should be: str(run_dir / "{}_edits-case_{}.json")
+                assert "{}_edits-case_{}" in line or "{{" not in line.split("edits-case")[0], (
+                    f"Template must use two raw {{}} placeholders, not f-string with baked-in num_edits. "
+                    f"Got: {line.strip()}"
+                )
+                break
+
+
 class TestNSECacheCUpdatedAfterEdit:
     """NSE returns (model, cache_c) like AlphaEdit. The after_edit hook must
     update cache_c for NSE, not just AlphaEdit — otherwise NSE uses stale

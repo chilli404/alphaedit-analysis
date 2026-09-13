@@ -224,7 +224,7 @@ def run_experiment(
     run_dir = results_dir / f"run_{str(run_id).zfill(3)}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    case_result_template = str(run_dir / f"{num_edits}_edits-case_{{}}.json")
+    case_result_template = str(run_dir / "{}_edits-case_{}.json")
 
     total_batches = len(dataset) // num_edits
     if max_batches is not None:
