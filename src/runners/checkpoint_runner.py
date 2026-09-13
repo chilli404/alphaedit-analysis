@@ -187,7 +187,11 @@ def run(args: argparse.Namespace) -> None:
     print(f"{'=' * 70}")
 
     # Load model + tokenizer
-    model, tok = load_model_and_tok(args.model_name)
+    # AlphaEdit vendor code does float32 matmul (P @ layer_ks). Loading in float16
+    # causes dtype mismatch. Use float32 for AlphaEdit, float16 for MEMIT.
+    import torch
+    _dtype = torch.float32 if "AlphaEdit" in args.alg_name else None
+    model, tok = load_model_and_tok(args.model_name, dtype=_dtype)
 
     # Load dataset
     dataset = load_dataset(
