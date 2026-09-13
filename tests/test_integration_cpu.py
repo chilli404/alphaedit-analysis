@@ -2430,8 +2430,8 @@ class TestNSECacheCUpdatedAfterEdit:
         source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
         after_edit_section = source[source.find("def after_edit("):]
         after_edit_section = after_edit_section[:after_edit_section.find("\n    def ", 10)]
-        # AlphaEdit AND NSE both return (model, cache_c)
-        for alg in ["AlphaEdit", "NSE"]:
+        # AlphaEdit, NSE, and RECT all return cache_c that must be captured
+        for alg in ["AlphaEdit", "NSE", "MEMIT_rect"]:
             assert alg in after_edit_section, (
                 f"after_edit must update cache_c for {alg}. "
                 f"Without this, {alg} uses stale zeros cache_c after batch 0."

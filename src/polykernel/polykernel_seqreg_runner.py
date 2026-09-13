@@ -465,8 +465,8 @@ def run(args: argparse.Namespace) -> None:
         nonlocal cache_c
         algo_state["batch_idx"] = [batch_idx + 1]
 
-        # AlphaEdit and NSE return (model, cache_c) — capture the updated cache_c
-        if edit_extra is not None and args.base_alg in ("AlphaEdit", "NSE"):
+        # AlphaEdit, NSE, and RECT all return cache_c — capture the updated value
+        if edit_extra is not None and args.base_alg in ("AlphaEdit", "NSE", "MEMIT_rect"):
             cache_c = edit_extra
 
         if should_save(batch_idx, args.save_interval):
