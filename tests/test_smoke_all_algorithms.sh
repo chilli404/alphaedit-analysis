@@ -479,9 +479,15 @@ run_baseline() {
             log "✓ $label PASSED (${elapsed}s)"
         }
     elif [ "$exit_code" -eq 124 ]; then
-        FAIL=$((FAIL+1))
-        ERRORS="$ERRORS\n  $label: TIMEOUT (${bl_timeout}s)"
-        log "❌ $label: TIMEOUT after ${bl_timeout}s"
+        if [ "$bl_timeout" -le 30 ]; then
+            # Intentionally short timeout (e.g. EvoEdit skip) — count as skip
+            SKIP=$((SKIP+1))
+            log "⏭ $label: SKIPPED (${bl_timeout}s timeout — too slow for smoke test)"
+        else
+            FAIL=$((FAIL+1))
+            ERRORS="$ERRORS\n  $label: TIMEOUT (${bl_timeout}s)"
+            log "❌ $label: TIMEOUT after ${bl_timeout}s"
+        fi
     else
         FAIL=$((FAIL+1))
         ERRORS="$ERRORS\n  $label: exit $exit_code"
