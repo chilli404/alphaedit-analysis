@@ -1748,6 +1748,139 @@ class TestAlphaEditModelDtype:
         )
 
 
+class TestBaselineCanonicalName:
+    """Baseline scripts (NSE, RECT, EvoEdit) must set model.config._name_or_path
+    to the canonical stats directory name. Without this, get_cov looks for
+    stats under the raw S3 path (e.g. _s3-data_continual-learning_models_Meta-Llama-3-8B)
+    and tries to download Wikipedia to compute covariance from scratch."""
+
+    def test_nse_script_sets_canonical_name(self):
+        """run_nse_baseline.sh must set model.config._name_or_path after loading."""
+        script = PROJECT_ROOT / "scripts" / "run_nse_baseline.sh"
+        if not script.exists():
+            pytest.skip("run_nse_baseline.sh not found")
+        source = script.read_text()
+        assert "_name_or_path" in source, (
+            "run_nse_baseline.sh must set model.config._name_or_path to canonical name. "
+            "Without this, get_cov looks for stats under the raw model path."
+        )
+
+    def test_rect_script_reapplies_patches(self):
+        """run_rect_aligned_paper_replication.sh must re-apply patches before running.
+        Workdir sync can overwrite on-disk patches, so the script must re-apply them."""
+        script = PROJECT_ROOT / "scripts" / "run_rect_aligned_paper_replication.sh"
+        if not script.exists():
+            pytest.skip("run_rect_aligned_paper_replication.sh not found")
+        source = script.read_text()
+        assert "apply_all" in source, (
+            "run_rect_aligned_paper_replication.sh must re-apply patches (apply_all.py) "
+            "before running. Without canonical name patch, RECT's get_cov looks for "
+            "stats under the raw S3 path and tries to download Wikipedia."
+        )
+
+    def test_no_trust_remote_code_in_runners(self):
+        """No runner or experiment script should set trust_remote_code.
+        If stats aren't found, the fix is to set the canonical model name, not
+        to bypass safety checks. Data download scripts (download_*.py) are exempt."""
+        import glob
+        exempt = {"download_mmlu.py", "download_wikitext.py", "download_datasets.sh"}
+        for pattern in ["scripts/run_*.sh", "scripts/eval_*.py", "src/**/*.py"]:
+            for f in glob.glob(str(PROJECT_ROOT / pattern), recursive=True):
+                if Path(f).name in exempt:
+                    continue
+                content = open(f).read()
+                assert "trust_remote_code" not in content.lower(), (
+                    f"{f} uses trust_remote_code — this is unsafe in runners. "
+                    f"Fix the stats lookup (canonical model name) instead."
+                )
+
+    def test_link_stats_creates_symlink_for_canonical_name(self):
+        """link_stats.sh must create symlinks so the canonical name resolves to stats."""
+        script = PROJECT_ROOT / "scripts" / "link_stats.sh"
+        if not script.exists():
+            pytest.skip("link_stats.sh not found")
+        source = script.read_text()
+        assert "llama3-8b-instruct" in source or "canonical" in source.lower(), (
+            "link_stats.sh must create stats symlinks for canonical names"
+        )
+
+
+class TestCanonicalNameResolvesStats:
+    """Every code path that calls get_cov must find stats under the canonical name.
+    Stats are at data/stats/{canonical_name}/wikipedia_stats/*.npz.
+    If the model name isn't canonical, get_cov downloads Wikipedia and crashes."""
+
+    CANONICAL_NAMES = {
+        "meta-llama/Meta-Llama-3-8B-Instruct": "llama3-8b-instruct",
+        "NousResearch/Meta-Llama-3-8B-Instruct": "llama3-8b-instruct",
+        "/s3-data/continual-learning/models/Meta-Llama-3-8B": "llama3-8b-instruct",
+        "EleutherAI/gpt-j-6b": "gpt-j-6b",
+        "Qwen/Qwen2.5-7B-Instruct": "qwen2.5-7b-instruct",
+    }
+
+    @pytest.mark.parametrize("raw_name,expected", list(CANONICAL_NAMES.items()))
+    def test_evaluate_harness_canonical_name(self, raw_name, expected):
+        """evaluate_harness._canonical_name_or_path must resolve all variants."""
+        sys.path.insert(0, str(PROJECT_ROOT / "src"))
+        from evaluate_harness import _canonical_name_or_path
+        assert _canonical_name_or_path(raw_name) == expected
+
+    def test_nse_model_patch_sets_canonical(self):
+        """NSE script's model loading patch must contain canonical name logic."""
+        script = PROJECT_ROOT / "scripts" / "run_nse_baseline.sh"
+        if not script.exists():
+            pytest.skip("run_nse_baseline.sh not found")
+        source = script.read_text()
+        for canonical in ["llama3-8b-instruct", "gpt-j-6b", "qwen2.5-7b-instruct"]:
+            assert canonical in source, (
+                f"NSE script must set canonical name '{canonical}' for stats lookup. "
+                f"Without this, get_cov uses the raw model path and tries to download Wikipedia."
+            )
+
+    def test_baseline_evaluate_patched_by_apply_all(self):
+        """apply_all.py must patch baselines evaluate.py with canonical names."""
+        source = (PROJECT_ROOT / "scripts" / "patches" / "patch_canonical_name.py").read_text()
+        assert "baselines_root" in source, (
+            "patch_canonical_name must accept baselines_root to patch baselines evaluate.py"
+        )
+        for canonical in ["llama3-8b-instruct", "gpt-j-6b"]:
+            assert canonical in source, (
+                f"patch_canonical_name must set '{canonical}' for baselines evaluate.py"
+            )
+
+    def test_stats_dir_has_canonical_names(self):
+        """Stats directory must have entries for canonical names."""
+        stats_dir = PROJECT_ROOT / "data" / "stats"
+        if not stats_dir.exists():
+            pytest.skip("data/stats not available")
+        for canonical in ["llama3-8b-instruct", "gpt-j-6b"]:
+            p = stats_dir / canonical
+            if not p.exists():
+                # Check if symlinked under a different name
+                found = any(canonical in d.name for d in stats_dir.iterdir() if d.is_dir())
+                assert found, (
+                    f"Stats directory must have entry for '{canonical}'. "
+                    f"link_stats.sh should create this symlink."
+                )
+
+    def test_get_cov_uses_name_or_path_not_model_name(self):
+        """Vendor get_cov must use model.config._name_or_path, not the --model_name arg.
+        This ensures the canonical name patch takes effect."""
+        for rect_path in [
+            PROJECT_ROOT / "baselines" / "EvoEdit" / "memit" / "memit_seq_rect_main.py",
+            PROJECT_ROOT / "baselines" / "EvoEdit" / "nse" / "nse_main.py",
+        ]:
+            if not rect_path.exists():
+                continue
+            source = rect_path.read_text()
+            if "get_cov" in source:
+                get_cov_section = source[source.find("def get_cov"):][:500]
+                assert "_name_or_path" in get_cov_section, (
+                    f"{rect_path.name} get_cov must use model.config._name_or_path "
+                    f"(set by canonical patch), not the raw model_name argument."
+                )
+
+
 class TestCheckpointVerification:
     """Checkpoints saved to S3 FUSE may silently fail to persist.
     save_checkpoint must verify the file exists after writing."""
