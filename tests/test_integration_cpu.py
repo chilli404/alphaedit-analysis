@@ -2219,6 +2219,173 @@ class TestReviveCurrentWeightsCloned:
         )
 
 
+class TestSeqregCacheMaxTrimming:
+    """seqreg_hooks with cache_max must trim old batches."""
+
+    def test_recent_strategy_trims_to_cache_max(self):
+        """With cache_strategy='recent' and cache_max=2, only last 2 batches kept."""
+        import torch
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "algorithms"))
+        from hook_presets import seqreg_hooks
+        hooks = seqreg_hooks(lambda_prev=1.0, cache_max=2, cache_strategy="recent")
+        state = hooks.get_state()
+        # Simulate 3 batches of keys for layer 0
+        for _ in range(3):
+            ks = torch.randn(64, 10, dtype=torch.float64)
+            hooks.post_solve(0, torch.randn(64, 64), None, ks, "layer.0.weight", state)
+        assert len(state["prev_cache"][0]) == 2, (
+            f"With cache_max=2 and strategy='recent', should keep 2 batches, got {len(state['prev_cache'][0])}"
+        )
+
+    def test_all_strategy_does_not_trim(self):
+        """With cache_strategy='all', all batches kept regardless of cache_max."""
+        import torch
+        from hook_presets import seqreg_hooks
+        hooks = seqreg_hooks(lambda_prev=1.0, cache_max=2, cache_strategy="all")
+        state = hooks.get_state()
+        for _ in range(5):
+            ks = torch.randn(64, 10, dtype=torch.float64)
+            hooks.post_solve(0, torch.randn(64, 64), None, ks, "layer.0.weight", state)
+        assert len(state["prev_cache"][0]) == 5, "Strategy 'all' should keep all batches"
+
+
+class TestComposeHooksCovNone:
+    """compose_hooks with cov=None must not crash (AlphaEdit+REVIVE path)."""
+
+    def test_composed_build_lhs_with_cov_none(self):
+        import torch
+        from hook_presets import seqreg_hooks, revive_hooks
+        from hooks import compose_hooks
+        composed = compose_hooks(seqreg_hooks(lambda_prev=0.0), revive_hooks(revive_tau=0.1))
+        state = composed.get_state()
+        ks = torch.randn(64, 10, dtype=torch.float64)
+        hparams = type('H', (), {'mom2_update_weight': 1.0})()
+        lhs = composed.build_lhs(0, ks, None, hparams, state)
+        assert lhs is not None
+        assert not torch.isnan(lhs).any(), "LHS with cov=None must not produce NaN"
+
+
+class TestExperimentConfigEdgeCases:
+    """Edge cases for ExperimentConfig properties."""
+
+    def test_memit_seq_variant_name(self):
+        from experiment_config import ExperimentConfig
+        c = ExperimentConfig(base_alg="MEMIT", seed=42, ordering=None,
+                            model_name="x", lambda_prev=1.0, lambda_delta=0.5)
+        name = c.memit_seq_variant_name
+        assert "MEMIT-Seq" in name
+        assert "lp1.0" in name
+        assert "ld0.5" in name
+
+    def test_model_tag_qwen(self):
+        from experiment_config import ExperimentConfig
+        c = ExperimentConfig(base_alg="MEMIT", seed=42, ordering=None,
+                            model_name="Qwen/Qwen2.5-7B-Instruct")
+        assert c.model_tag == "qwen2.5-7b"
+
+    def test_validate_checkpoint_path_rect(self):
+        from checkpoint_io import validate_checkpoint_path
+        validate_checkpoint_path("/tmp/MEMIT_rect-poly1/seed42", "MEMIT_rect")
+
+    def test_validate_checkpoint_path_all_algs(self):
+        from checkpoint_io import validate_checkpoint_path
+        for alg, expected in [("MEMIT", "MEMIT-Seq"), ("AlphaEdit", "AlphaEdit"),
+                              ("NSE", "NSE"), ("MEMIT_rect", "MEMIT_rect")]:
+            validate_checkpoint_path(f"/tmp/{expected}-poly1/seed42", alg)
+
+    def test_canonical_name_unknown_model(self):
+        """Unknown model should return lowercased basename."""
+        from evaluate_harness import _canonical_name_or_path
+        result = _canonical_name_or_path("some-org/custom-model-7b")
+        assert result == "custom-model-7b"
+
+    def test_variant_name_complex_config(self):
+        """Full config: revive + hybrid + poly3."""
+        from experiment_config import ExperimentConfig
+        c = ExperimentConfig(base_alg="NSE", seed=42, ordering="fb_high",
+                            model_name="x", kernel_degree=3, kernel_prev=False,
+                            revive=True, revive_tau=0.2, lambda_prev=0.5, lambda_delta=0.1)
+        name = c.variant_name
+        assert name.startswith("NSE-")
+        assert "poly3-hybrid" in name
+        assert "REVIVE-tau0.2" in name
+        assert "lp0.5" in name
+        assert "ld0.1" in name
+
+
+class TestCheckpointIoSerializationPaths:
+    """save_checkpoint must handle .pt, .jsonl, and .json extra_state correctly."""
+
+    def test_save_and_load_all_formats(self, tmp_path):
+        import torch, json
+        from checkpoint_io import save_checkpoint, load_checkpoint
+        from unittest.mock import MagicMock
+
+        model = MagicMock()
+        model.named_parameters.return_value = []
+        hparams = MagicMock()
+        hparams.layers = []
+        hparams.rewrite_module_tmp = "model.layers.{}.mlp.down_proj"
+
+        extra = {
+            "tensor_data.pt": torch.randn(3, 3),
+            "log.jsonl": [{"batch": 0, "loss": 1.5}, {"batch": 1, "loss": 0.8}],
+        }
+
+        save_checkpoint(0, model, hparams, str(tmp_path), 10,
+                       extra_state=extra, metadata={"test": True})
+
+        result = load_checkpoint(model, hparams, str(tmp_path), 0,
+                                extra_state_keys=["tensor_data.pt", "log.jsonl"])
+
+        assert result["loaded"] is True
+        assert torch.is_tensor(result["tensor_data.pt"])
+        assert result["tensor_data.pt"].shape == (3, 3)
+        assert len(result["log.jsonl"]) == 2
+        assert result["log.jsonl"][0]["batch"] == 0
+
+    def test_find_latest_skips_dirs_without_metadata(self, tmp_path):
+        """Batch dirs without metadata.json should be skipped."""
+        import json
+        from checkpoint_io import find_latest_checkpoint
+        (tmp_path / "batch_5").mkdir()
+        (tmp_path / "batch_10").mkdir()
+        (tmp_path / "batch_10" / "metadata.json").write_text(json.dumps({"batch_idx": 10}))
+        result = find_latest_checkpoint(tmp_path)
+        assert result is not None
+        assert result[0] == 10, "Should skip batch_5 (no metadata) and find batch_10"
+
+
+class TestPathguardHooksPostUpdate:
+    """pathguard_hooks.post_update must record weight_norm."""
+
+    def test_post_update_records_norm(self):
+        import torch
+        from hook_presets import pathguard_hooks
+        hooks = pathguard_hooks(pathguard_M=100)
+        state = hooks.get_state()
+        w = torch.randn(64, 64)
+        hooks.post_update(0, "test.weight", w, state)
+        assert len(state["displacement_history"]) == 1
+        assert "weight_norm" in state["displacement_history"][0]
+        assert state["displacement_history"][0]["layer"] == 0
+
+
+class TestPolykernelHooksRBF:
+    """polykernel_hooks with RBF kernel must not crash."""
+
+    def test_rbf_build_lhs(self):
+        import torch
+        from hook_presets import polykernel_hooks
+        hooks = polykernel_hooks(kernel_type="rbf", kernel_sigma="median")
+        ks = torch.randn(64, 10, dtype=torch.float64)
+        cov = torch.eye(64, dtype=torch.float64)
+        hparams = type('H', (), {'mom2_update_weight': 1.0})()
+        lhs = hooks.build_lhs(0, ks, cov, hparams, {})
+        assert lhs.shape == (64, 64)
+        assert not torch.isnan(lhs).any()
+
+
 class TestGetMegaBatchEvalSource:
     """get_mega_batch_eval_source must return compilable Python that defines _mega_batch_eval."""
 
