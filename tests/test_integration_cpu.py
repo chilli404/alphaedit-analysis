@@ -1971,6 +1971,30 @@ class TestRevivePostHocPrintsOutput:
             "Small datasets (20 records) can produce weight deltas below threshold."
         )
 
+    def test_smoke_test_skips_removed_check_on_zero_deltas(self):
+        """When zero deltas are accepted, the 'removed=' check must also be skipped.
+        If the filter doesn't run, there's no removed= output to check."""
+        smoke_path = PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh"
+        if not smoke_path.exists():
+            pytest.skip("smoke test not found")
+        source = smoke_path.read_text()
+        # The removed= check must be conditional — either inside an else block
+        # of the zero-delta check, or guarded by a flag
+        revive_section = source[source.find("*REVIVE*)"):source.find(";;", source.find("*REVIVE*)"))]
+        # After accepting zero deltas, the code must NOT unconditionally check removed=
+        # There should be a skip/return/flag before the removed= check
+        zero_delta_pos = revive_section.find("post-hoc filter applied to 0 layers")
+        removed_pos = revive_section.find('removed=', zero_delta_pos)
+        if zero_delta_pos >= 0 and removed_pos >= 0:
+            between = revive_section[zero_delta_pos:removed_pos]
+            has_early_return = "return" in between or "skip" in between.lower()
+            has_guard = "else" in between or "_zero_delta" in between
+            assert has_early_return or has_guard, (
+                "The 'removed=' check must be skipped when zero deltas are accepted. "
+                "Currently it runs unconditionally after the zero-delta warning, causing "
+                "REVIVE+NSE to fail even when zero deltas are expected on small datasets."
+            )
+
     def test_posthoc_revive_prints_warning_on_zero_deltas(self):
         """The post-hoc REVIVE wrapper must print a WARNING when all deltas are zero.
         Without this, the smoke test can't distinguish 'filter skipped (OK)' from

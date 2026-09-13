@@ -191,6 +191,8 @@ validate_log() {
             if ! grep -q "\[REVIVE\] layer=" "$logfile"; then
                 if grep -q "post-hoc filter applied to 0 layers" "$logfile"; then
                     log "  ⚠ REVIVE: post-hoc filter skipped (zero deltas on small dataset)"
+                    # Zero deltas on small datasets is expected — pass without checking removed=
+                    return 0
                 else
                     log "  ❌ REVIVE SVD not computed per-layer"
                     FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: REVIVE SVD missing"; return 1
