@@ -191,8 +191,17 @@ class TestDatasetLoading:
     def test_dataset_override_from_json(self, alphaedit_root):
         """load_dataset with dataset_override loads from JSON file."""
         from evaluate_harness import load_dataset
-        ordering_dir = PROJECT_ROOT / "results" / "matched_ordering" / "orderings"
-        json_files = list(ordering_dir.glob("*.json")) if ordering_dir.exists() else []
+        # Check multiple possible locations for ordering files
+        candidates = [
+            PROJECT_ROOT / "results" / "matched_ordering" / "orderings",
+            Path("/s3-data/continual-learning/alphaedit/results/matched_ordering/orderings"),
+        ]
+        json_files = []
+        for d in candidates:
+            if d.exists():
+                json_files = list(d.glob("*.json"))
+                if json_files:
+                    break
         if not json_files:
             pytest.skip("No ordering JSON files available")
         ds = load_dataset("mcf", size_limit=10, dataset_override=str(json_files[0]))
