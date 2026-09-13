@@ -392,6 +392,7 @@ def run(args: argparse.Namespace) -> None:
         print(f"  [NSE] Cache template: {_nse_cache_template} ({_nse_npz_count} cached)")
 
     def apply_fn(model, tok, requests, hparams, **kwargs):
+        nonlocal error_cache
         extra = {}
         if cache_c is not None:
             extra["cache_c"] = cache_c
@@ -431,7 +432,6 @@ def run(args: argparse.Namespace) -> None:
 
         # RECT returns (model, cache_c, error_cache) — capture error_cache
         if args.base_alg == "MEMIT_rect" and isinstance(result, tuple) and len(result) >= 3:
-            nonlocal error_cache
             error_cache = result[2]
             result = (result[0], result[1])  # normalize to 2-tuple for harness
 

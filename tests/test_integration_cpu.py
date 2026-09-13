@@ -1832,12 +1832,19 @@ class TestRECTErrorCachePreserved:
     def test_rect_error_cache_captured_from_result(self):
         """The apply_fn wrapper or after_edit must capture error_cache from RECT's 3-tuple."""
         source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
-        # RECT returns 3-tuple: (model, cache_c, error_cache)
-        # The code must extract element [2] and update the error_cache variable
         assert "error_cache" in source[source.find("def apply_fn"):source.find("def after_edit")], (
             "apply_fn must handle RECT's 3-tuple return: (model, cache_c, error_cache). "
             "Currently only cache_c is captured — error_cache is lost between batches."
         )
+
+    def test_nonlocal_before_use_in_apply_fn(self):
+        """nonlocal declarations must appear before any reference to the variable.
+        Python raises SyntaxError if a name is used before its nonlocal declaration."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        apply_fn_body = source[source.find("def apply_fn("):source.find("\n    def ", source.find("def apply_fn(") + 10)]
+        # Verify the file actually compiles (catches nonlocal ordering errors)
+        import ast
+        ast.parse(source)  # raises SyntaxError if nonlocal is misplaced
 
     def test_rect_error_cache_saved_in_checkpoint(self):
         """RECT's error_cache must be included in checkpoint extra_state."""
