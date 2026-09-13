@@ -195,6 +195,9 @@ override_code = '''    # === DATASET OVERRIDE (injected by runner) ===
     import json as _ov_json
     with open(\"$STREAM_PATH\", \"r\") as _ov_f:
         _ov_stream = _ov_json.load(_ov_f)
+    # Respect dataset_size_limit — don't load more records than requested
+    if dataset_size_limit and len(_ov_stream) > dataset_size_limit:
+        _ov_stream = _ov_stream[:dataset_size_limit]
     _ov_attr = \"_data\" if hasattr(ds, \"_data\") else \"data\"
     _ov_existing = getattr(ds, _ov_attr)
     _ov_id_map = {r.get(\"case_id\", i): r for i, r in enumerate(_ov_existing)}

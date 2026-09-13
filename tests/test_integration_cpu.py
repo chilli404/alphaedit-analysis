@@ -1934,9 +1934,124 @@ class TestRevivePostHocPrintsOutput:
         if not smoke_path.exists():
             pytest.skip("smoke test not found")
         source = smoke_path.read_text()
-        # The smoke test checks for [REVIVE] in output — this works for hooks path
-        # but post-hoc also prints [REVIVE] via revive_hooks.post_solve
         assert "[REVIVE]" in source, "Smoke test must check for [REVIVE] output"
+
+    def test_smoke_test_accepts_zero_delta_warning(self):
+        """Smoke test must accept 'post-hoc filter applied to 0 layers' as a pass.
+        Post-hoc REVIVE for NSE/RECT may produce zero deltas on small datasets."""
+        smoke_path = PROJECT_ROOT / "tests" / "test_smoke_all_algorithms.sh"
+        if not smoke_path.exists():
+            pytest.skip("smoke test not found")
+        source = smoke_path.read_text()
+        assert "post-hoc filter applied to 0 layers" in source, (
+            "Smoke test must accept zero-delta warning as pass for REVIVE+NSE/RECT. "
+            "Small datasets (20 records) can produce weight deltas below threshold."
+        )
+
+    def test_posthoc_revive_prints_warning_on_zero_deltas(self):
+        """The post-hoc REVIVE wrapper must print a WARNING when all deltas are zero.
+        Without this, the smoke test can't distinguish 'filter skipped (OK)' from
+        'filter broken (bug)'."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        posthoc = source[source.find("# Non-hook path"):source.find("return result", source.find("# Non-hook path"))]
+        assert "_rv_applied == 0" in posthoc or "applied to 0" in posthoc, (
+            "Post-hoc REVIVE must print warning when 0 layers are filtered. "
+            "This allows the smoke test to distinguish correct skips from bugs."
+        )
+
+    def test_posthoc_revive_warning_contains_base_alg(self):
+        """The zero-delta warning must include base_alg for debugging."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        warning_section = source[source.find("_rv_applied == 0"):source.find("_rv_applied == 0") + 200] if "_rv_applied == 0" in source else ""
+        assert "base_alg" in warning_section, (
+            "Post-hoc REVIVE zero-delta warning must include base_alg so we know "
+            "which algorithm produced zero deltas."
+        )
+
+
+class TestPostHocReviveContract:
+    """The post-hoc REVIVE wrapper for NSE/RECT must:
+    1. Snapshot weights before edit
+    2. Compute delta after edit
+    3. Skip layers with delta norm < threshold
+    4. Apply REVIVE filter for non-zero deltas
+    5. Print warning if ALL layers skipped
+    6. Print [REVIVE] layer= for each filtered layer"""
+
+    def test_posthoc_snapshots_pre_weights(self):
+        """Must clone weights before calling base_apply."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        posthoc = source[source.find("# Non-hook path"):source.find("return result", source.find("# Non-hook path"))]
+        assert ".detach().clone()" in posthoc, "Must clone pre_weights (not just reference)"
+
+    def test_posthoc_computes_delta_in_double(self):
+        """Delta computation must use float64 to avoid precision loss."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        posthoc = source[source.find("# Non-hook path"):source.find("return result", source.find("# Non-hook path"))]
+        assert ".double()" in posthoc, "Delta must be computed in float64"
+
+    def test_posthoc_has_delta_threshold(self):
+        """Must skip layers with delta norm below threshold (avoids noise)."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        posthoc = source[source.find("# Non-hook path"):source.find("return result", source.find("# Non-hook path"))]
+        assert "1e-10" in posthoc or "1e-8" in posthoc, "Must have delta norm threshold"
+
+    def test_posthoc_calls_revive_post_solve(self):
+        """Must call _revive_hook.post_solve for filtering."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        posthoc = source[source.find("# Non-hook path"):source.find("return result", source.find("# Non-hook path"))]
+        assert "post_solve" in posthoc, "Must call revive_hook.post_solve for spectral filtering"
+
+    def test_posthoc_writes_back_filtered_weights(self):
+        """Must write pre_weight + filtered_delta back to model."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        posthoc = source[source.find("# Non-hook path"):source.find("return result", source.find("# Non-hook path"))]
+        assert "pre_weights[wn] + filtered" in posthoc or "pre_weights[wn] +" in posthoc, (
+            "Must write back pre_weight + filtered_delta, not just filtered_delta"
+        )
+
+    def test_posthoc_only_for_non_hook_algorithms(self):
+        """Post-hoc REVIVE must only run for NSE/RECT, not MEMIT/AlphaEdit."""
+        source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
+        assert "_hooks_aware" in source, "Must have _hooks_aware flag"
+        hooks_line = [l for l in source.split("\n") if "_hooks_aware" in l and "=" in l and "if" not in l][0]
+        assert "MEMIT" in hooks_line and "AlphaEdit" in hooks_line, (
+            "_hooks_aware must include MEMIT and AlphaEdit (they use hooks-based REVIVE)"
+        )
+        for alg in ["NSE", "MEMIT_rect"]:
+            assert alg not in hooks_line, (
+                f"{alg} must NOT be in _hooks_aware — it uses post-hoc REVIVE"
+            )
+
+
+class TestBaselineStreamOverrideRespectsLimit:
+    """Baseline scripts that override the dataset with an ordering stream must
+    respect dataset_size_limit. Without this, the stream loads all 10K records
+    even when the smoke test requests only 10."""
+
+    def test_nse_stream_override_respects_limit(self):
+        """run_nse_baseline.sh stream override must limit to dataset_size_limit."""
+        script = PROJECT_ROOT / "scripts" / "run_nse_baseline.sh"
+        if not script.exists():
+            pytest.skip("run_nse_baseline.sh not found")
+        source = script.read_text()
+        override_section = source[source.find("DATASET OVERRIDE"):source.find("END OVERRIDE")]
+        assert "dataset_size_limit" in override_section, (
+            "NSE stream override must respect dataset_size_limit. "
+            "Without this, the stream loads all 10K records even for smoke tests."
+        )
+
+    def test_evoedit_stream_override_respects_limit(self):
+        """run_evoedit_baseline.sh stream override must limit to dataset_size_limit."""
+        script = PROJECT_ROOT / "scripts" / "run_evoedit_baseline.sh"
+        if not script.exists():
+            pytest.skip("run_evoedit_baseline.sh not found")
+        source = script.read_text()
+        if "DATASET OVERRIDE" in source:
+            override_section = source[source.find("DATASET OVERRIDE"):source.find("END OVERRIDE")]
+            assert "dataset_size_limit" in override_section, (
+                "EvoEdit stream override must respect dataset_size_limit."
+            )
 
 
 class TestNSEKVCacheLoading:
