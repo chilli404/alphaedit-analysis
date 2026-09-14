@@ -158,8 +158,8 @@ with open('experiments/evaluate.py', 'r') as f:
     source = f.read()
 
 # --- Patch 1: Model loading — resolve to S3 FUSE or HF cache ---
-_model_load_original = '        model = AutoModelForCausalLM.from_pretrained(model_name).cuda()\n        tok = AutoTokenizer.from_pretrained(model_name)'
-_model_load_patched = '        import sys as _sys; _sys.path.insert(0, \"$PROJECT_DIR/src/util\")\n        from model_resolve import resolve_model_path as _resolve_model\n        _resolved = _resolve_model(model_name)\n        print(f\"  [MODEL] Resolved: {model_name} -> {_resolved}\")\n        model = AutoModelForCausalLM.from_pretrained(_resolved).cuda()\n        tok = AutoTokenizer.from_pretrained(_resolved)'
+_model_load_original = '        model = AutoModelForCausalLM.from_pretrained(model_name).cuda()\n        print(f\"  Model dtype: {next(model.parameters()).dtype}\")\n        tok = AutoTokenizer.from_pretrained(model_name)'
+_model_load_patched = '        import sys as _sys; _sys.path.insert(0, \"$PROJECT_DIR/src/util\")\n        from model_resolve import resolve_model_path as _resolve_model\n        _resolved = _resolve_model(model_name)\n        print(f\"  [MODEL] Resolved: {model_name} -> {_resolved}\")\n        model = AutoModelForCausalLM.from_pretrained(_resolved).cuda()\n        print(f\"  Model dtype: {next(model.parameters()).dtype}\")\n        tok = AutoTokenizer.from_pretrained(_resolved)'
 assert _model_load_original in source, 'Model load anchor not found in EvoEdit evaluate.py'
 source = source.replace(_model_load_original, _model_load_patched, 1)
 

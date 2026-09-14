@@ -28,6 +28,7 @@ import patch_glue_map
 import patch_model_compat
 import patch_mega_batch_eval
 import patch_s3_checkpoint
+import patch_rect_aligned
 
 
 def apply_all(vendor: bool = True, baselines: bool = True):
@@ -51,6 +52,7 @@ def apply_all(vendor: bool = True, baselines: bool = True):
         total += patch_kwargs.apply(baselines_root=baselines_root)
         total += patch_mega_batch_eval.apply(baselines_root)
         total += patch_s3_checkpoint.apply(baselines_root)
+        total += patch_rect_aligned.apply(baselines_root)
 
     print(f"\n=== Done: {total} patches applied ===")
     return total

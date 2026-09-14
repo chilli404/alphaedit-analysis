@@ -170,7 +170,7 @@ def run(args: argparse.Namespace) -> None:
             print("  No existing checkpoints found. Starting from batch 0.")
 
     # Print config
-    eval_mode = "Milestone" if args.eval_at_checkpoints_only else ("Fast" if args.fast_checkpoint else "Full")
+    eval_mode = "End only" if args.eval_at_end_only else ("Milestone" if args.eval_at_checkpoints_only else ("Fast" if args.fast_checkpoint else "Full"))
     kernel_mode = "HYBRID (kernel current only, linear K_prev)" if not args.kernel_prev else "full (kernel both)"
     print(f"\n{'=' * 70}")
     print("Polykernel+SeqReg Runner (harness-based)")

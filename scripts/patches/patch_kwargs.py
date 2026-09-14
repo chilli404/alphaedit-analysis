@@ -34,6 +34,7 @@ def _add_kwargs_to_signature(source: str, func_name: str) -> tuple[str, bool]:
 VENDOR_TARGETS = [
     ("memit/memit_main.py", "apply_memit_to_model"),
     ("AlphaEdit/AlphaEdit_main.py", "apply_AlphaEdit_to_model"),
+    ("nse/nse_main.py", "apply_nse_to_model"),
 ]
 
 BASELINES_TARGETS = [
