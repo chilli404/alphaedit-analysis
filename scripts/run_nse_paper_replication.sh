@@ -61,13 +61,14 @@ fi
 python3 -c "import nltk; [nltk.download(pkg, quiet=True) for pkg in ('punkt', 'punkt_tab')]" 2>/dev/null || true
 
 export CUDA_VISIBLE_DEVICES="$DEVICE"
+export SKIP_MEGA_BATCH_EVAL=1
 export PYTHONHASHSEED="$SEED"
 export TOKENIZERS_PARALLELISM=false
 
 # Override results dir to use S3 FUSE mount if available
-_RESULT_DIR="${RESULT_ROOT:-results}"
+_RESULT_DIR="${RESULT_ROOT:-results}/failure_curve_checkpointed"
 if [ -d "/s3-data" ]; then
-    _RESULT_DIR="/s3-data/continual-learning/alphaedit/results/paper_replications"
+    _RESULT_DIR="/s3-data/continual-learning/alphaedit/results/failure_curve_checkpointed"
 fi
 cat > globals.yml << GLOBALEOF
 ---

@@ -35,9 +35,13 @@ run: |
       tests/test_endtoend_cpu.py --tb=short -q
 
   echo ""
-  echo "=== GPU unit + integration tests ==="
-  uv run pytest tests/test_gpu_unit.py tests/test_gpu_integration.py -v --tb=short
+  echo "=== GPU unit tests ==="
+  uv run pytest tests/test_gpu_unit.py -v --tb=short
+
+  echo ""
+  echo "=== GPU integration tests ==="
+  uv run pytest tests/test_gpu_integration.py -v --tb=short
 
   echo ""
   echo "=== GPU: Vendor runners (AlphaEdit, MEMIT, MEMIT-Seq, PathGuard) ==="
-  bash tests/test_smoke_all_algorithms.sh --skypilot AlphaEdit_ckpt MEMIT_ckpt MEMIT-Seq PathGuard
+  SMOKE_TIMEOUT=600 bash tests/test_smoke_all_algorithms.sh --skypilot AlphaEdit_ckpt MEMIT_ckpt MEMIT-Seq PathGuard

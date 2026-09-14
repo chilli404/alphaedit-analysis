@@ -420,9 +420,9 @@ def load_model_from_checkpoint(model_name: str, ckpt_path: Path):
 
     token = os.environ.get("HF_TOKEN")
     model_path = resolve_model_path(model_name)
-    print(f"  Loading base model: {model_path} (float16)")
+    print(f"  Loading base model: {model_path}")
     model = AutoModelForCausalLM.from_pretrained(
-        model_path, torch_dtype=torch.float16, token=token,
+        model_path, token=token,
     ).cuda()
     tok = AutoTokenizer.from_pretrained(model_path, token=token)
     tok.pad_token = tok.eos_token
@@ -438,7 +438,7 @@ def load_model_from_checkpoint(model_name: str, ckpt_path: Path):
     loaded = 0
     for name, tensor in weights.items():
         if name in param_dict:
-            param_dict[name].data.copy_(tensor.cuda().half())
+            param_dict[name].data.copy_(tensor.cuda().to(param_dict[name].dtype))
             loaded += 1
     del weights
     torch.cuda.empty_cache()
@@ -457,7 +457,7 @@ def swap_checkpoint_weights(model, ckpt_path: Path):
     param_dict = dict(model.named_parameters())
     for name, tensor in weights.items():
         if name in param_dict:
-            param_dict[name].data.copy_(tensor.cuda().half())
+            param_dict[name].data.copy_(tensor.cuda().to(param_dict[name].dtype))
     del weights
     torch.cuda.empty_cache()
 

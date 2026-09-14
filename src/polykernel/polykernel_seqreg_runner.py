@@ -215,6 +215,10 @@ def run(args: argparse.Namespace) -> None:
         _r.shuffle(dataset)
         print(f"  Dataset shuffled with order_id={args.order_id}")
 
+    # Pre-populate vendor globals before importing vendor modules
+    from evaluate_harness import _ensure_vendor_globals
+    _ensure_vendor_globals(alphaedit_root)
+
     # Load hparams — each base algorithm has its own HyperParams class and directory
     sys.path.insert(0, str(alphaedit_root))
     if args.base_alg == "AlphaEdit":
@@ -261,11 +265,13 @@ def run(args: argparse.Namespace) -> None:
     algo_state = algo_hooks.get_state()
 
     # Load checkpoint if resuming
+    cache_c = None
+    error_cache = None
     if start_from_batch > 0:
         extra_keys = ["prev_cache.pt", "mechanism_log.jsonl"]
-        if cache_c is not None:
+        if args.base_alg in ("AlphaEdit", "MEMIT"):
             extra_keys.append("cache_c.pt")
-        if error_cache is not None:
+        if args.base_alg == "MEMIT_rect":
             extra_keys.append("error_cache.pt")
         ckpt_result = load_checkpoint(
             model, hparams, str(ckpt_dir), start_from_batch - 1,
@@ -507,7 +513,11 @@ def run(args: argparse.Namespace) -> None:
             print(f"{'=' * 30}{total_edits}_edit{'=' * 30}", flush=True)
         print(f"Execution took {exec_time}", flush=True)
 
+    total_batches = len(dataset) // args.num_edits
+
     def should_eval_fn(batch_idx):
+        if args.eval_at_end_only:
+            return batch_idx == total_batches - 1
         if args.eval_at_checkpoints_only:
             return should_save(batch_idx, args.save_interval)
         return True
@@ -638,6 +648,8 @@ def main():
     eval_group = parser.add_mutually_exclusive_group()
     eval_group.add_argument("--fast_checkpoint", action="store_true")
     eval_group.add_argument("--eval_at_checkpoints_only", action="store_true")
+    eval_group.add_argument("--eval_at_end_only", action="store_true",
+                            help="Only evaluate at the final batch (saves checkpoints normally)")
 
     # Dataset override and ordering
     parser.add_argument("--dataset_override", type=str, default=None)

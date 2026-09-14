@@ -26,7 +26,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-SKY_YAML="$PROJECT_DIR/sky/eval_probpref.yaml"
+SKY_YAML="$PROJECT_DIR/sky/alphaedit_gpu.yaml"
 
 EXECUTE=false
 CHECKPOINTS_OVERRIDE=""
@@ -99,6 +99,7 @@ launch_eval() {
         echo "  [$priority_tag #$JOB_COUNT] Launching: $cluster_name"
         local -a cmd=(sky launch "$SKY_YAML"
             --env-file "$PROJECT_DIR/.env"
+            --env "EXPERIMENT_NAME=v2_eval"
             --env "SEED=$seed"
             --env "ALG_NAME=$alg"
             --env "ORDERING=$ordering")
@@ -123,7 +124,7 @@ launch_eval() {
         if [[ -n "$CHECKPOINTS_OVERRIDE" ]]; then
             ckpt_str=" --env 'CHECKPOINTS=$CHECKPOINTS_OVERRIDE'"
         fi
-        echo "    sky launch $SKY_YAML --env SEED=$seed --env ALG_NAME=$alg --env ORDERING=$ordering$ckpt_str --cluster $cluster_name --detach-run -y"
+        echo "    sky launch $SKY_YAML --env EXPERIMENT_NAME=v2_eval --env SEED=$seed --env ALG_NAME=$alg --env ORDERING=$ordering$ckpt_str --cluster $cluster_name --detach-run -y"
         echo ""
     fi
 }

@@ -98,10 +98,12 @@ def load_model_and_tok(model_name: str, device: str = "cuda", dtype=None, token:
     load_kwargs = {"token": token or os.environ.get("HF_TOKEN")}
     if dtype:
         load_kwargs["torch_dtype"] = dtype
-    else:
-        load_kwargs["torch_dtype"] = torch.float16
+    # else: no torch_dtype → float32 (matches vendor evaluate.py exactly)
 
+    print(f"  Loading model: {model_path}")
     model = AutoModelForCausalLM.from_pretrained(model_path, **load_kwargs).to(device)
+    model_dtype = next(model.parameters()).dtype
+    print(f"  Model dtype: {model_dtype}")
     tok = AutoTokenizer.from_pretrained(model_path, token=load_kwargs["token"])
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token

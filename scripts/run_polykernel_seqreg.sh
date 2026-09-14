@@ -28,7 +28,15 @@ fi
 
 # Caller's explicit values take priority over .env defaults
 MODEL_NAME="${_CALLER_MODEL_NAME:-${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}}"
-HPARAMS_FNAME="${_CALLER_HPARAMS:-${HPARAMS_FNAME:-Llama3-8B.json}}"
+if [[ -n "$_CALLER_HPARAMS" ]]; then
+    HPARAMS_FNAME="$_CALLER_HPARAMS"
+elif [[ -z "${HPARAMS_FNAME:-}" ]]; then
+    case "$MODEL_NAME" in
+        *gpt-j*|*gptj*|*EleutherAI*) HPARAMS_FNAME="EleutherAI_gpt-j-6B.json" ;;
+        *Qwen*|*qwen*)               HPARAMS_FNAME="Qwen2.5-7B.json" ;;
+        *)                           HPARAMS_FNAME="Llama3-8B.json" ;;
+    esac
+fi
 
 SEED="${1:-42}"
 LAMBDA_PREV="${2:-${LAMBDA_PREV:-1.0}}"

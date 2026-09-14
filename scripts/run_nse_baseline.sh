@@ -23,7 +23,7 @@ fi
 if [[ -n "$_PRESET_MODEL" ]]; then MODEL_NAME="$_PRESET_MODEL"; fi
 
 SEED="${1:?Usage: $0 SEED [ORDERING]}"
-ORDERING="${2:-${ORDERING:-fb_random0}}"
+ORDERING="${2:-${ORDERING:?ORDERING must be set (e.g. fb_high_exposure, fb_random0)}}"
 MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 case "$MODEL_NAME" in
     *gpt-j*|*gptj*|*EleutherAI*) HPARAMS_FNAME="EleutherAI_gpt-j-6B.json" ;;
@@ -115,6 +115,7 @@ fi
 python3 -c "import nltk; [nltk.download(pkg, quiet=True) for pkg in ('punkt', 'punkt_tab')]" 2>/dev/null || true
 
 export CUDA_VISIBLE_DEVICES="$DEVICE"
+export SKIP_MEGA_BATCH_EVAL=1
 export PYTHONHASHSEED="$SEED"
 export TOKENIZERS_PARALLELISM=false
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"

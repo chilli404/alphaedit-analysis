@@ -156,7 +156,7 @@ def eval_at_1k_checkpoint(seed: int, ckpt_base: Path, output_dir: Path, model_na
         param_dict = dict(model.named_parameters())
         for name, tensor in weights.items():
             if name in param_dict:
-                param_dict[name].data.copy_(tensor.cuda().half())
+                param_dict[name].data.copy_(tensor.cuda().to(param_dict[name].dtype))
         del weights
         torch.cuda.empty_cache()
 

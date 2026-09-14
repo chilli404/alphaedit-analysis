@@ -71,7 +71,7 @@ uv run python src/polykernel/polykernel_seqreg_runner.py \
     --cache_strategy all \
     --cache_max none \
     --save_interval 10 \
-    --eval_at_checkpoints_only \
+    $(if [[ -n "${EVAL_AT_END_ONLY:-}" ]]; then echo "--eval_at_end_only"; else echo "--eval_at_checkpoints_only"; fi) \
     --revive \
     --revive_tau "$REVIVE_THRESH"
 

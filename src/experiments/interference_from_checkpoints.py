@@ -593,7 +593,7 @@ def run_percase_eval(
         param_dict = dict(model.named_parameters())
         for name, tensor in weights.items():
             if name in param_dict:
-                param_dict[name].data.copy_(tensor.cuda().half())
+                param_dict[name].data.copy_(tensor.cuda().to(param_dict[name].dtype))
         del weights
         torch.cuda.empty_cache()
 

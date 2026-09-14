@@ -54,6 +54,11 @@ def seqreg_hooks(
         return lhs
 
     def post_solve(layer_idx, upd_matrix, adj_k, layer_ks, weight_name, state):
+        # Phase 2 call (layer_idx=None): skip logging and caching, just pass through.
+        # SeqReg only needs Phase 1 for key caching; REVIVE handles Phase 2 filtering.
+        if layer_idx is None:
+            return upd_matrix
+
         upd_norm = torch.linalg.norm(upd_matrix).item()
         state["mechanism_log"].append({
             "batch": state["batch_idx"][0],

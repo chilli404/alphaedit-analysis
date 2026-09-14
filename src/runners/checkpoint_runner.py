@@ -186,12 +186,8 @@ def run(args: argparse.Namespace) -> None:
     print(f"  Started:         {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print(f"{'=' * 70}")
 
-    # Load model + tokenizer
-    # AlphaEdit vendor code does float32 matmul (P @ layer_ks). Loading in float16
-    # causes dtype mismatch. Use float32 for AlphaEdit, float16 for MEMIT.
-    import torch
-    _dtype = torch.float32 if "AlphaEdit" in args.alg_name else None
-    model, tok = load_model_and_tok(args.model_name, dtype=_dtype)
+    # Load model + tokenizer (no dtype override — use model config, bfloat16 for Llama-3)
+    model, tok = load_model_and_tok(args.model_name)
 
     # Load dataset
     dataset = load_dataset(

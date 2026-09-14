@@ -71,7 +71,7 @@ def resolve_model(model_name: str) -> str:
     return resolve_model_path(model_name)
 
 
-def load_base_model(model_name: str, dtype=torch.float16):
+def load_base_model(model_name: str, dtype=None):
     """Load base model without any checkpoint."""
     token = os.environ.get("HF_TOKEN")
     path = resolve_model(model_name)
@@ -84,7 +84,7 @@ def load_base_model(model_name: str, dtype=torch.float16):
     return model, tok
 
 
-def load_lightweight_checkpoint(model_name: str, ckpt_dir: Path, dtype=torch.float16):
+def load_lightweight_checkpoint(model_name: str, ckpt_dir: Path, dtype=None):
     """Load base model + apply lightweight layer-weight checkpoint."""
     model, tok = load_base_model(model_name, dtype)
     weights_file = ckpt_dir / "model_weights.pt"
@@ -96,7 +96,7 @@ def load_lightweight_checkpoint(model_name: str, ckpt_dir: Path, dtype=torch.flo
     loaded = 0
     for name, tensor in weights.items():
         if name in param_dict:
-            param_dict[name].data.copy_(tensor.to(dtype).cuda())
+            param_dict[name].data.copy_(tensor.cuda().to(param_dict[name].dtype))
             loaded += 1
     del weights
     torch.cuda.empty_cache()
@@ -104,7 +104,7 @@ def load_lightweight_checkpoint(model_name: str, ckpt_dir: Path, dtype=torch.flo
     return model, tok
 
 
-def load_hf_checkpoint(ckpt_dir: Path, dtype=torch.float16):
+def load_hf_checkpoint(ckpt_dir: Path, dtype=None):
     """Load a full HuggingFace-format checkpoint."""
     token = os.environ.get("HF_TOKEN")
     print(f"Loading HF checkpoint: {ckpt_dir}")

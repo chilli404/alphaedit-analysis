@@ -18,7 +18,7 @@ fi
 if [[ -n "$_PRESET_MODEL" ]]; then MODEL_NAME="$_PRESET_MODEL"; fi
 
 SEED="${1:?Usage: ALG_NAME=... $0 SEED [ORDERING]}"
-ORDERING="${2:-${ORDERING:-fb_random0}}"
+ORDERING="${2:-${ORDERING:?ORDERING must be set (e.g. fb_high_exposure, fb_random0)}}"
 ALG_NAME="${ALG_NAME:?ALG_NAME must be set}"
 MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 case "$MODEL_NAME" in
@@ -74,6 +74,7 @@ export CUDA_VISIBLE_DEVICES="$DEVICE"
 export PYTHONHASHSEED="$SEED"
 export TOKENIZERS_PARALLELISM=false
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
+export SKIP_MEGA_BATCH_EVAL=1
 
 # Patch checkpoint save for S3 FUSE compatibility
 # Patches applied by scripts/patches/apply_all.py at cluster startup

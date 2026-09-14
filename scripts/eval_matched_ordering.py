@@ -65,10 +65,12 @@ def load_model_from_checkpoint(model_name: str, ckpt_path: Path):
 
     token = os.environ.get("HF_TOKEN")
     model_path = resolve_model_path(model_name)
-    print(f"  Loading base model: {model_path} (float16)")
+    print(f"  Loading base model: {model_path} (dtype=model_config)")
     model = AutoModelForCausalLM.from_pretrained(
-        model_path, torch_dtype=torch.float16, token=token,
+        model_path, token=token,
     ).cuda()
+    model_dtype = next(model.parameters()).dtype
+    print(f"  Model dtype: {model_dtype}")
     tok = AutoTokenizer.from_pretrained(model_path, token=token)
     tok.pad_token = tok.eos_token
     tok.padding_side = "left"
@@ -83,7 +85,7 @@ def load_model_from_checkpoint(model_name: str, ckpt_path: Path):
     loaded = 0
     for name, tensor in weights.items():
         if name in param_dict:
-            param_dict[name].data.copy_(tensor.cuda().half())
+            param_dict[name].data.copy_(tensor.cuda().to(param_dict[name].dtype))
             loaded += 1
     del weights
     torch.cuda.empty_cache()
@@ -411,7 +413,7 @@ def evaluate_checkpoint(
         param_dict = dict(model.named_parameters())
         for name, tensor in weights.items():
             if name in param_dict:
-                param_dict[name].data.copy_(tensor.cuda().half())
+                param_dict[name].data.copy_(tensor.cuda().to(param_dict[name].dtype))
         del weights
         torch.cuda.empty_cache()
     else:
@@ -580,11 +582,29 @@ def main():
             sys.exit(1)
     print(f"  Checkpoints verified: {[str(resolve_ckpt_path(ckpt_dir, b, args.num_edits).name) for b in args.checkpoints]}")
 
-    # Load dataset
+    # Load dataset — use ordering stream if specified, otherwise default MCF
     if args.dataset_path:
         ds_path = Path(args.dataset_path)
+    elif args.ordering:
+        # Ordering runs edit specific records in a specific order.
+        # The eval MUST use the same stream to check the correct records.
+        result_root = Path(os.environ.get("RESULT_ROOT", str(PROJECT_ROOT / "results")))
+        stream_candidates = [
+            result_root / "matched_ordering" / "orderings" / f"{args.ordering}_seed{args.seed}.json",
+            PROJECT_ROOT / "results" / "matched_ordering" / "orderings" / f"{args.ordering}_seed{args.seed}.json",
+        ]
+        ds_path = None
+        for c in stream_candidates:
+            if c.exists():
+                ds_path = c
+                break
+        if ds_path is None:
+            print(f"ERROR: Ordering stream not found for {args.ordering}_seed{args.seed}")
+            print(f"  Tried: {[str(c) for c in stream_candidates]}")
+            sys.exit(1)
+        print(f"  Using ordering stream (records may differ from default MCF first-10K)")
     else:
-        # Auto-detect: check vendor data dir, then S3 mount
+        # No ordering — use default MCF (first N records in file order)
         data_root = Path(os.environ.get("DATA_ROOT", "data/dsets"))
         candidates = [
             PROJECT_ROOT / "vendor" / "AlphaEdit" / "data" / "multi_counterfact.json",
@@ -606,6 +626,24 @@ def main():
     with open(ds_path) as f:
         all_records = json.load(f)
     print(f"  Total records in dataset: {len(all_records)}")
+
+    # Config summary
+    ds_type = "ordering stream" if args.ordering else "default MCF"
+    if args.dataset_path:
+        ds_type = "explicit --dataset_path"
+    print(f"\n{'=' * 70}")
+    print(f"  Eval Configuration")
+    print(f"{'=' * 70}")
+    print(f"  Algorithm:    {args.alg_name or '(auto-detect)'}")
+    print(f"  Seed:         {args.seed}")
+    print(f"  Ordering:     {args.ordering or '(none — paper replication)'}")
+    print(f"  Dataset type: {ds_type}")
+    print(f"  Dataset path: {ds_path}")
+    print(f"  Records:      {len(all_records)}")
+    print(f"  Checkpoints:  {args.checkpoints}")
+    print(f"  Model:        {args.model_name}")
+    print(f"  Eval mode:    {'fast (first-token)' if args.fast else 'full (multi-token)'}")
+    print(f"{'=' * 70}\n")
 
     # Evaluate each checkpoint (reuse model across checkpoints)
     all_summaries = {}

@@ -109,7 +109,7 @@ num_shards = $NUM_SHARDS
 cache_out = Path('$CACHE_OUT')
 
 print(f'Loading {resolved}...')
-model = AutoModelForCausalLM.from_pretrained(resolved, torch_dtype=torch.float16).cuda()
+model = AutoModelForCausalLM.from_pretrained(resolved).cuda()  # no dtype override — use model config (bfloat16 for Llama-3)
 tok = AutoTokenizer.from_pretrained(resolved)
 tok.pad_token = tok.eos_token
 
@@ -180,3 +180,21 @@ print(f'Done shard {shard}. cached={cached} computed={computed} errors={errors} 
 "
 
 echo "Cache build shard $SHARD complete."
+
+# Upload tar to S3 so other clusters can use it
+if [[ -d "$_NSE_CACHE_S3" ]]; then
+    if [[ "$NUM_SHARDS" -gt 1 ]]; then
+        _TAR_NAME="${_MODEL_TAG}_nse_cache_shard${SHARD}.tar"
+    else
+        _TAR_NAME="${_MODEL_TAG}_nse_cache.tar"
+    fi
+    _LOCAL_DIR="$_NSE_CACHE_LOCAL/${_MODEL_TAG}_NSE"
+    _CACHE_COUNT=$(find "$_LOCAL_DIR" -name '*.npz' 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$_CACHE_COUNT" -gt 0 ]]; then
+        echo "Uploading cache tar to S3 (${_CACHE_COUNT} files)..."
+        tar cf "/tmp/${_TAR_NAME}" -C "$_NSE_CACHE_LOCAL" "${_MODEL_TAG}_NSE"
+        cp "/tmp/${_TAR_NAME}" "$_NSE_CACHE_S3/${_TAR_NAME}"
+        rm -f "/tmp/${_TAR_NAME}"
+        echo "  Uploaded: ${_NSE_CACHE_S3}/${_TAR_NAME}"
+    fi
+fi

@@ -140,6 +140,7 @@ MODEL_LOAD_ANCHOR = '        model = AutoModelForCausalLM.from_pretrained(model_
 MODEL_LOAD_FP32 = (
     '        _load_dtype = torch.float32 if "qwen" in model_name.lower() else None\n'
     '        model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=_load_dtype).cuda()\n'
+    '        print(f"  [PATCH] Model dtype: {next(model.parameters()).dtype}")\n'
     '        if _load_dtype: print(f"  [PATCH] Loaded {model_name} in {_load_dtype} (compute_z stability)")'
 )
 

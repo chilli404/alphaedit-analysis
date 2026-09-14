@@ -69,6 +69,11 @@ def apply_memit_with_hooks(
             upd_matrix = key_mat @ val_mat.T
             w = nethook.get_parameter(model, w_name)
             upd_matrix = _match_shape(upd_matrix, w.shape)
+            # Apply post_solve hooks in Phase 2 (e.g. REVIVE spectral filter).
+            # Phase 1 stores unfiltered (adj_k, resid) deltas; the filter must
+            # run here on the reconstructed update to match the reference impl.
+            if hooks.post_solve is not None:
+                upd_matrix = hooks.post_solve(None, upd_matrix, None, None, w_name, state)
             if return_orig_weights and w_name not in weights_copy:
                 weights_copy[w_name] = w.detach().clone()
             w[...] += upd_matrix.float()

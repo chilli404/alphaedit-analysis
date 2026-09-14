@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run MEMIT+REVIVE baseline on fixed-batch orderings.
+# Run REVIVE baseline on fixed-batch orderings.
 # REVIVE is a plugin that projects ΔW to remove components in the dominant
-# singular directions of the current weights W. Applied post-hoc to MEMIT deltas.
+# singular directions of the current weights W. Applied post-hoc to base method deltas.
 #
-# Two modes:
-#   LAMBDA_PREV=0 LAMBDA_DELTA=0  → Plain MEMIT + REVIVE (matches REVIVE paper)
-#   LAMBDA_PREV=1 LAMBDA_DELTA=0  → MEMIT-Seq + REVIVE (history-aware + spectral)
+# Default: plain base method + REVIVE (matches REVIVE paper).
+# For history-aware variant, explicitly pass LAMBDA_PREV=1:
+#   LAMBDA_PREV=1 bash scripts/run_revive_baseline.sh 42 fb_high_exposure
 #
 # Usage:
 #   bash scripts/run_revive_baseline.sh SEED [ORDERING]
-#   LAMBDA_PREV=0 LAMBDA_DELTA=0 bash scripts/run_revive_baseline.sh 42 fb_high_exposure
+#   BASE_ALG=AlphaEdit bash scripts/run_revive_baseline.sh 42 fb_high_exposure
+#   BASE_ALG=NSE bash scripts/run_revive_baseline.sh 42 fb_random0
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -23,7 +24,7 @@ fi
 if [[ -n "$_PRESET_MODEL" ]]; then MODEL_NAME="$_PRESET_MODEL"; fi
 
 SEED="${1:?Usage: $0 SEED [ORDERING]}"
-ORDERING="${2:-${ORDERING:-fb_random0}}"
+ORDERING="${2:-${ORDERING:?ORDERING must be set (e.g. fb_high_exposure, fb_random0)}}"
 MODEL_NAME="${MODEL_NAME:-meta-llama/Meta-Llama-3-8B-Instruct}"
 case "$MODEL_NAME" in
     *gpt-j*|*gptj*|*EleutherAI*) HPARAMS_FNAME="EleutherAI_gpt-j-6B.json" ;;
@@ -35,7 +36,7 @@ DEVICE="${CUDA_DEVICE:-0}"
 RESULT_ROOT="${RESULT_ROOT:-$PROJECT_DIR/results}"
 CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-${HOME}/.cache/alphaedit_checkpoints}"
 REVIVE_THRESH="${REVIVE_THRESH:-0.1}"
-LAMBDA_PREV="${LAMBDA_PREV:-1.0}"
+LAMBDA_PREV="${LAMBDA_PREV:-0.0}"
 LAMBDA_DELTA="${LAMBDA_DELTA:-0.0}"
 BASE_ALG="${BASE_ALG:?ERROR: BASE_ALG must be set (MEMIT or AlphaEdit)}"
 
@@ -124,10 +125,10 @@ uv run python src/polykernel/polykernel_seqreg_runner.py \
     --kernel_degree 1 \
     --cache_strategy all \
     --cache_max none \
-    --save_interval 10 \
+    --save_interval "${SAVE_INTERVAL:-10}" \
     --ordering "$ORDERING" \
     --dataset_override "$STREAM_PATH" \
-    --eval_at_checkpoints_only \
+    $(if [[ -n "${EVAL_AT_END_ONLY:-}" ]]; then echo "--eval_at_end_only"; else echo "--eval_at_checkpoints_only"; fi) \
     --base_alg "$BASE_ALG" \
     --revive \
     --revive_tau "$REVIVE_THRESH"

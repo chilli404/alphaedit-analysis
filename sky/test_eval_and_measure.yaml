@@ -42,4 +42,8 @@ run: |
       -v --tb=short
 
   echo ""
+  echo "=== GPU: Helper function correctness (context templates, covariance, shape, dataset) ==="
+  uv run pytest tests/test_gpu_helpers.py -v --tb=short
+
+  echo ""
   echo "=== All eval and measurement tests passed ==="
