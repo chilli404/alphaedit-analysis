@@ -298,6 +298,38 @@ class TestRectErrMemoryPatch:
         assert "cov.shape" not in source, \
             "cov is freed after solve — cov.shape references cause UnboundLocalError"
 
+    def test_no_bare_cov_reference_after_del(self):
+        """After 'del cov', no bare cov references should appear (UnboundLocalError).
+        References before del (cov = get_cov, _lhs = ... * cov.double()) are fine."""
+        source = _read_rect_err()
+        exec_start = source.find("def execute_memit(")
+        exec_end = source.find("\ndef get_cov(", exec_start)
+        if exec_end < 0:
+            exec_end = len(source)
+        exec_body = source[exec_start:exec_end]
+        import re
+        lines = exec_body.splitlines()
+        # Find the 'del cov' line
+        del_cov_line = None
+        for i, line in enumerate(lines):
+            if "del cov" in line:
+                del_cov_line = i
+                break
+        assert del_cov_line is not None, "Patch must contain 'del cov'"
+        # Check lines AFTER del cov for bare cov references
+        bare_cov_refs = []
+        for i, line in enumerate(lines[del_cov_line + 1:], del_cov_line + 2):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            matches = re.findall(r'(?<![_a-zA-Z])cov(?![_A-Z])', stripped)
+            if matches:
+                bare_cov_refs.append((i, stripped))
+        assert len(bare_cov_refs) == 0, \
+            f"Found {len(bare_cov_refs)} bare 'cov' references AFTER 'del cov' " \
+            f"(would cause UnboundLocalError):\n" + \
+            "\n".join(f"  line {n}: {l}" for n, l in bare_cov_refs[:5])
+
     def test_err_lhs_rebuilt_for_error_computation(self):
         """Error computation must rebuild LHS from get_cov (cov freed after solve)."""
         source = _read_rect_err()
