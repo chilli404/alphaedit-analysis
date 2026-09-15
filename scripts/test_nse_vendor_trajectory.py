@@ -24,10 +24,8 @@ sys.path.insert(0, str(PROJECT / "src" / "util"))
 
 from model_resolve import resolve_model_path
 from dsets import MultiCounterFactDataset
-from nse.nse_main import apply_nse_to_model, get_context_templates
+from nse.nse_main import apply_nse_to_model
 from nse import NSEHyperParams
-from nse.compute_z import compute_z
-from nse.compute_ks import compute_ks
 from util import nethook
 
 MODEL_NAME = "meta-llama/Meta-Llama-3-8B-Instruct"
@@ -65,40 +63,67 @@ ds = MultiCounterFactDataset(str(PROJECT / "vendor" / "AlphaEdit" / "data"), tok
 all_records = list(ds)
 print(f"  Dataset: {len(all_records)} records")
 
-# Pre-cache ALL v_star from unedited model (matching reference evaluate.py protocol)
+# Use existing v_star cache from S3 tars or baselines KVs dir
+# (dtype comparison test confirmed fp32 vs bf16 cache doesn't affect results)
 print(f"\n{'='*70}")
-print("PRE-CACHING v_star from unedited model (this is what the reference does)")
+print("LOADING EXISTING v_star CACHE")
 print(f"{'='*70}")
 
 z_layer = hparams.layers[-1]
-context_templates = get_context_templates(model, tok)
-cache_dir = RESULT_DIR / "vstar_cache"
-cache_dir.mkdir(parents=True, exist_ok=True)
 
-t0 = time.time()
-for i, record in enumerate(all_records):
-    req = {"case_id": record["case_id"], **record["requested_rewrite"]}
-    if req["target_new"]["str"][0] != " ":
-        req["target_new"]["str"] = " " + req["target_new"]["str"]
+# Find cache — check S3 tar extraction first, then baselines kvs dir
+_kvs_candidates = [
+    PROJECT / "baselines" / "EvoEdit" / "share" / "projects" / "rewriting-knowledge" / "kvs",
+    Path("/s3-data/continual-learning/alphaedit/nse_kv_cache"),
+]
+cache_dir = None
+for _kvs_dir in _kvs_candidates:
+    for _model_tag in [
+        MODEL_NAME.replace("/", "_") + "_NSE",
+        "meta-llama_Meta-Llama-3-8B-Instruct_NSE",
+        "NousResearch_Meta-Llama-3-8B-Instruct_NSE",
+    ]:
+        _candidate = _kvs_dir / _model_tag
+        if _candidate.exists() and len(list(_candidate.glob("*.npz"))) > 100:
+            cache_dir = _candidate
+            break
+    if cache_dir:
+        break
 
-    fname = f"mcf_layer_{z_layer}_clamp_{hparams.clamp_norm_factor}_case_{req['case_id']}.npz"
-    fpath = cache_dir / fname
+# If no extracted cache, extract from S3 tars
+if cache_dir is None:
+    _tar_dir = Path("/s3-data/continual-learning/alphaedit/nse_kv_cache")
+    _extract_to = PROJECT / "baselines" / "EvoEdit" / "share" / "projects" / "rewriting-knowledge" / "kvs"
+    if _tar_dir.exists():
+        import tarfile
+        _extract_to.mkdir(parents=True, exist_ok=True)
+        for _tar in sorted(_tar_dir.glob("*.tar")):
+            print(f"  Extracting {_tar.name}...")
+            with tarfile.open(str(_tar), "r") as tf:
+                tf.extractall(str(_extract_to))
+        # Find the extracted dir
+        for _model_tag in [
+            MODEL_NAME.replace("/", "_") + "_NSE",
+            "meta-llama_Meta-Llama-3-8B-Instruct_NSE",
+            "NousResearch_Meta-Llama-3-8B-Instruct_NSE",
+        ]:
+            _candidate = _extract_to / _model_tag
+            if _candidate.exists():
+                cache_dir = _candidate
+                break
 
-    if fpath.exists():
-        continue
+if cache_dir is None:
+    print("  ERROR: No v_star cache found. Cannot continue.")
+    sys.exit(1)
 
-    cur_z = compute_z(model, tok, req, hparams, z_layer, context_templates)
-    np.savez(fpath, v_star=cur_z.detach().cpu().numpy())
-
-    if (i + 1) % 100 == 0:
-        elapsed = time.time() - t0
-        rate = (i + 1) / elapsed
-        remaining = (len(all_records) - i - 1) / rate
-        print(f"  [{i+1}/{len(all_records)}] {elapsed:.0f}s elapsed, ~{remaining:.0f}s remaining")
-
-cache_time = time.time() - t0
 n_cached = len(list(cache_dir.glob("*.npz")))
-print(f"  Pre-cached {n_cached} v_star in {cache_time:.0f}s")
+print(f"  Cache dir: {cache_dir}")
+print(f"  Cached files: {n_cached}")
+
+# Verify a sample v_star
+_sample = next(cache_dir.glob("*.npz"))
+_sample_data = np.load(_sample)["v_star"]
+print(f"  Sample v_star: shape={_sample_data.shape}, dtype={_sample_data.dtype}, norm={np.linalg.norm(_sample_data):.4f}")
 
 cache_template = str(cache_dir / f"mcf_layer_{{}}_clamp_{{}}_case_{{}}.npz")
 
