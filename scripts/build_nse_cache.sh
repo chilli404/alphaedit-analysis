@@ -109,7 +109,7 @@ num_shards = $NUM_SHARDS
 cache_out = Path('$CACHE_OUT')
 
 print(f'Loading {resolved}...')
-model = AutoModelForCausalLM.from_pretrained(resolved).cuda()  # no dtype override — use model config (bfloat16 for Llama-3)
+model = AutoModelForCausalLM.from_pretrained(resolved, torch_dtype=torch.float32).cuda()
 tok = AutoTokenizer.from_pretrained(resolved)
 tok.pad_token = tok.eos_token
 
