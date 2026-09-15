@@ -696,10 +696,18 @@ def main():
                 break
 
     result_root = Path(os.environ.get("RESULT_ROOT", str(PROJECT_ROOT / "results")))
-    if ordering:
-        out_dir = result_root / "matched_ordering" / variant_name / ordering / f"seed{args.seed}"
+
+    # Model-specific subdirectory for non-default models (e.g. GPT-J)
+    _mn = (args.model_name or "").lower()
+    if "gpt-j" in _mn or "gptj" in _mn or "eleutherai" in _mn:
+        _ordering_dir = "matched_ordering_gptj"
     else:
-        out_dir = result_root / "matched_ordering" / variant_name / f"seed{args.seed}"
+        _ordering_dir = "matched_ordering"
+
+    if ordering:
+        out_dir = result_root / _ordering_dir / variant_name / ordering / f"seed{args.seed}"
+    else:
+        out_dir = result_root / "paper_replication" / variant_name / f"seed{args.seed}"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"full_eval_seed{args.seed}_v2.json"
     with open(str(out_path), "w") as f:
