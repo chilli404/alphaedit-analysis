@@ -32,6 +32,18 @@ class TestLlamaWithOrdering:
         out = resolve_eval_output_dir(tmp_path, "MEMIT_seq_rect", "fb_low_exposure", 42, "")
         assert out == tmp_path / "matched_ordering" / "MEMIT_seq_rect" / "fb_low_exposure" / "seed42"
 
+    def test_rect_err_with_ordering(self, tmp_path):
+        out = resolve_eval_output_dir(
+            tmp_path, "MEMIT_seq_rect_err", "fb_random0", 42,
+            "meta-llama/Meta-Llama-3-8B-Instruct",
+        )
+        assert out == tmp_path / "matched_ordering" / "MEMIT_seq_rect_err" / "fb_random0" / "seed42"
+
+    def test_rect_err_distinct_from_rect(self, tmp_path):
+        old = resolve_eval_output_dir(tmp_path, "MEMIT_seq_rect", "fb_random0", 42, "")
+        new = resolve_eval_output_dir(tmp_path, "MEMIT_seq_rect_err", "fb_random0", 42, "")
+        assert old != new, "RECT-Err must produce a distinct output path from old RECT"
+
     def test_qwen_model(self, tmp_path):
         out = resolve_eval_output_dir(
             tmp_path, "AlphaEdit", "fb_random0", 137,
@@ -57,6 +69,10 @@ class TestLlamaNoOrdering:
     def test_no_ordering_rect(self, tmp_path):
         out = resolve_eval_output_dir(tmp_path, "MEMIT_seq_rect", None, 42, "")
         assert out == tmp_path / "matched_ordering" / "MEMIT_seq_rect" / "first_10k" / "seed42"
+
+    def test_no_ordering_rect_err(self, tmp_path):
+        out = resolve_eval_output_dir(tmp_path, "MEMIT_seq_rect_err", None, 42, "")
+        assert out == tmp_path / "matched_ordering" / "MEMIT_seq_rect_err" / "first_10k" / "seed42"
 
     def test_no_ordering_uses_matched_ordering_not_paper_replication(self, tmp_path):
         out = resolve_eval_output_dir(tmp_path, "AlphaEdit", None, 42, None)
