@@ -102,6 +102,11 @@ def apply_all(vendor: bool = True, baselines: bool = True):
                 _rect_err_code = _rect_err_code.replace(_err_anchor_1, _err_replace_1, 1)
                 _rect_err_code = _rect_err_code.replace(_err_anchor_2, _err_replace_2, 1)
                 _rect_err_code = _rect_err_code.replace(_err_block_anchor, _err_block_patched, 1)
+                # Fix shape check that references deleted cov — use _err_lhs instead
+                _rect_err_code = _rect_err_code.replace(
+                    'if upd_matrix_temp.shape[1] == cov.shape[0]:',
+                    'if upd_matrix_temp.shape[1] == _err_lhs.shape[0]:'
+                )
                 _rect_err_dst.write_text(_rect_err_code)
                 print(f"  [rect-err] Copied + memory-patched solve for L40S (from vendor/OTE-SE-Alignment)")
             else:

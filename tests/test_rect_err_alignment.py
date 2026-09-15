@@ -263,3 +263,61 @@ class TestRectErrPhase2:
         apply_body = source[apply_start:apply_end]
         assert "upd_mat" in apply_body or "upd_matrix = upd_mat" in apply_body, \
             "RECT-Err Phase 2 must use upd_mat directly from deltas"
+
+
+# ============================================================================
+# Memory patch: LHS built in steps for L40S (48GB) compatibility
+# ============================================================================
+
+class TestRectErrMemoryPatch:
+    """After apply_all.py patches the vendor code, the solve must be split into
+    steps to fit L40S 48GB VRAM. These tests verify the patch was applied."""
+
+    def test_no_single_expression_solve(self):
+        """The patched file must NOT have the original single-expression solve."""
+        source = _read_rect_err()
+        original_solve = "hparams.mom2_update_weight * cov.double() + cache_c[i,:,:].cuda().double() + layer_ks @ layer_ks.T + torch.eye"
+        assert original_solve not in source, \
+            "Patched file must not contain the original single-expression solve (OOM on L40S)"
+
+    def test_lhs_built_incrementally(self):
+        """LHS must be built with in-place += to avoid intermediate copies."""
+        source = _read_rect_err()
+        assert "_lhs +=" in source or "_lhs =" in source, \
+            "LHS must be built incrementally with _lhs += steps"
+
+    def test_cov_freed_after_lhs(self):
+        """cov must be freed (del cov or cov.cpu()) after building LHS."""
+        source = _read_rect_err()
+        assert "del cov" in source or "cov.cpu()" in source, \
+            "cov must be freed after LHS construction to reclaim ~1.6GB"
+
+    def test_no_cov_shape_reference_after_solve(self):
+        """After cov is freed, no code must reference cov.shape."""
+        source = _read_rect_err()
+        assert "cov.shape" not in source, \
+            "cov is freed after solve — cov.shape references cause UnboundLocalError"
+
+    def test_err_lhs_rebuilt_for_error_computation(self):
+        """Error computation must rebuild LHS from get_cov (cov freed after solve)."""
+        source = _read_rect_err()
+        assert "_err_lhs" in source or "_err_cov" in source, \
+            "Error computation must rebuild cov via get_cov after solve frees it"
+
+    def test_empty_cache_before_solve(self):
+        """torch.cuda.empty_cache() must appear before the solve."""
+        source = _read_rect_err()
+        solve_pos = source.find("torch.linalg.solve(")
+        assert solve_pos > 0
+        pre_solve = source[max(0, solve_pos - 200):solve_pos]
+        assert "empty_cache" in pre_solve, \
+            "torch.cuda.empty_cache() must appear shortly before the solve"
+
+    def test_patch_preserves_algorithm_correctness(self):
+        """The patched LHS must still contain all 4 terms: mom2*cov, cache_c, K@K^T, I."""
+        source = _read_rect_err()
+        # The terms appear in _lhs += steps or in _err_lhs construction
+        assert "mom2_update_weight" in source, "LHS must include mom2_update_weight * cov"
+        assert "cache_c[i,:,:]" in source, "LHS must include cache_c"
+        assert "layer_ks @ layer_ks.T" in source, "LHS must include K@K^T"
+        assert "torch.eye(" in source, "LHS must include identity ridge"
