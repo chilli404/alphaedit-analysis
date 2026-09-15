@@ -44,6 +44,7 @@ BASELINES_TARGETS = [
     ("memit/memit_seq_main.py", "apply_memit_seq_to_model"),
     ("memit/memit_rect_main.py", "apply_memit_rect_to_model"),
     ("memit/memit_seq_rect_main.py", "apply_memit_seq_rect_to_model"),
+    ("memit/memit_seq_rect_err_main.py", "apply_memit_seq_rect_err_to_model"),
     ("AlphaEdit/AlphaEdit_main.py", "apply_AlphaEdit_to_model"),
 ]
 

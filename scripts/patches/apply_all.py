@@ -49,13 +49,13 @@ def apply_all(vendor: bool = True, baselines: bool = True):
 
     if baselines_root:
         print("\nBaseline patches (baselines/EvoEdit/):")
-        # Copy bundled RECT-Err implementation (baselines/ is gitignored, not in workdir sync)
-        _rect_err_src = PROJECT_ROOT / "scripts" / "patches" / "baselines_memit_seq_rect_err.py"
+        # Copy RECT-Err from vendor submodule (baselines/ is gitignored, not in workdir sync)
+        _rect_err_src = PROJECT_ROOT / "vendor" / "OTE-SE-Alignment" / "memit" / "memit_seq_rect_err_main.py"
         _rect_err_dst = baselines_root / "memit" / "memit_seq_rect_err_main.py"
         if _rect_err_src.exists() and _rect_err_dst.parent.exists():
             import shutil
             shutil.copy2(str(_rect_err_src), str(_rect_err_dst))
-            print(f"  [rect-err] Copied bundled memit_seq_rect_err_main.py")
+            print(f"  [rect-err] Copied memit_seq_rect_err_main.py from vendor/OTE-SE-Alignment")
         total += patch_kwargs.apply(baselines_root=baselines_root)
         total += patch_mega_batch_eval.apply(baselines_root)
         total += patch_s3_checkpoint.apply(baselines_root)
