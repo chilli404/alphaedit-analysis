@@ -68,6 +68,9 @@ def apply_all(vendor: bool = True, baselines: bool = True):
             )
             _solve_patched = (
                 '        # [PATCH] Build LHS/RHS in steps to fit L40S 48GB (vendor used A100 80GB)\n'
+                '        # Detach to drop autograd graph (~12GB on Llama-3-8B)\n'
+                '        layer_ks = layer_ks.detach()\n'
+                '        resid = resid.detach()\n'
                 '        torch.cuda.empty_cache()\n'
                 '        _lhs = hparams.mom2_update_weight * cov.double()\n'
                 '        cov.cpu(); del cov\n'
