@@ -55,7 +55,16 @@ def apply_all(vendor: bool = True, baselines: bool = True):
         if _rect_err_src.exists() and _rect_err_dst.parent.exists():
             import shutil
             shutil.copy2(str(_rect_err_src), str(_rect_err_dst))
-            print(f"  [rect-err] Copied memit_seq_rect_err_main.py from vendor/OTE-SE-Alignment")
+            # Patch: add torch.cuda.empty_cache() at top of layer loop to prevent OOM on L40S (48GB).
+            # The vendor code was developed on A100 (80GB) and doesn't free memory between layers.
+            _rect_err_code = _rect_err_dst.read_text()
+            _layer_loop_anchor = '    for i, layer in enumerate(hparams.layers):\n        print(f"\\n\\nLAYER {layer}\\n")'
+            _layer_loop_patched = '    for i, layer in enumerate(hparams.layers):\n        torch.cuda.empty_cache()\n        print(f"\\n\\nLAYER {layer}\\n")'
+            if _layer_loop_anchor in _rect_err_code and _layer_loop_patched not in _rect_err_code:
+                _rect_err_dst.write_text(_rect_err_code.replace(_layer_loop_anchor, _layer_loop_patched, 1))
+                print(f"  [rect-err] Copied + patched empty_cache() for L40S memory (from vendor/OTE-SE-Alignment)")
+            else:
+                print(f"  [rect-err] Copied memit_seq_rect_err_main.py from vendor/OTE-SE-Alignment")
         total += patch_kwargs.apply(baselines_root=baselines_root)
         total += patch_mega_batch_eval.apply(baselines_root)
         total += patch_s3_checkpoint.apply(baselines_root)
