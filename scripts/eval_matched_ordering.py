@@ -51,6 +51,30 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src" / "util"))
 
 
+def resolve_eval_output_dir(
+    result_root: Path,
+    variant_name: str,
+    ordering: Optional[str],
+    seed: int,
+    model_name: Optional[str] = None,
+) -> Path:
+    """Build the output directory for eval results.
+
+    - GPT-J models → matched_ordering_gptj/{alg}/{ordering}/seed{N}/
+    - No ordering (first 10K default) → {ordering_dir}/{alg}/first_10k/seed{N}/
+    - Default (Llama + ordering) → matched_ordering/{alg}/{ordering}/seed{N}/
+    """
+    _mn = (model_name or "").lower()
+    if "gpt-j" in _mn or "gptj" in _mn or "eleutherai" in _mn:
+        ordering_dir = "matched_ordering_gptj"
+    else:
+        ordering_dir = "matched_ordering"
+
+    if ordering:
+        return result_root / ordering_dir / variant_name / ordering / f"seed{seed}"
+    return result_root / ordering_dir / variant_name / "first_10k" / f"seed{seed}"
+
+
 def resolve_checkpoint_dir(seed: int, lambda_prev: float, lambda_delta: float) -> Path:
     """Resolve checkpoint directory for MEMIT+SeqReg."""
     base = Path.home() / ".cache" / "memit_seqreg_checkpoints"
@@ -696,18 +720,9 @@ def main():
                 break
 
     result_root = Path(os.environ.get("RESULT_ROOT", str(PROJECT_ROOT / "results")))
-
-    # Model-specific subdirectory for non-default models (e.g. GPT-J)
-    _mn = (args.model_name or "").lower()
-    if "gpt-j" in _mn or "gptj" in _mn or "eleutherai" in _mn:
-        _ordering_dir = "matched_ordering_gptj"
-    else:
-        _ordering_dir = "matched_ordering"
-
-    if ordering:
-        out_dir = result_root / _ordering_dir / variant_name / ordering / f"seed{args.seed}"
-    else:
-        out_dir = result_root / "paper_replication" / variant_name / f"seed{args.seed}"
+    out_dir = resolve_eval_output_dir(
+        result_root, variant_name, ordering, args.seed, args.model_name,
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"full_eval_seed{args.seed}_v2.json"
     with open(str(out_path), "w") as f:
