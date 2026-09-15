@@ -107,10 +107,14 @@ def apply_all(vendor: bool = True, baselines: bool = True):
                     'if upd_matrix_temp.shape[1] == cov.shape[0]:',
                     'if upd_matrix_temp.shape[1] == _err_lhs.shape[0]:'
                 )
-                # Fix cleanup block that references deleted cov
+                # Fix cleanup block: remove cov.cpu() (already freed) and add _err_lhs cleanup
                 _rect_err_code = _rect_err_code.replace(
-                    '        cov.cpu()\n        for x in [layer_ks, cur_zs, targets]:',
-                    '        for x in [layer_ks, cur_zs, targets]:'
+                    '        cov.cpu()\n        for x in [layer_ks, cur_zs, targets]:\n            x.cpu()\n            del x\n        torch.cuda.empty_cache()',
+                    '        del _err_lhs\n'
+                    '        for x in [layer_ks, cur_zs, targets, upd_matrix, upd_matrix_temp, small_delta, error_temp]:\n'
+                    '            if x is not None: x.cpu()\n'
+                    '            del x\n'
+                    '        torch.cuda.empty_cache()'
                 )
                 _rect_err_dst.write_text(_rect_err_code)
                 print(f"  [rect-err] Copied + memory-patched solve for L40S (from vendor/OTE-SE-Alignment)")
