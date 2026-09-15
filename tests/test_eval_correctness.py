@@ -212,10 +212,14 @@ class TestOutputPath:
     def test_no_ordering_output_omits_ordering(self):
         """Without ordering, output must NOT have an ordering subdir."""
         source = EVAL_SCRIPT.read_text()
-        else_start = source.find("else:", source.find("if ordering:"))
-        no_ordering_section = source[else_start:else_start + 200]
-        assert "variant_name" in no_ordering_section
-        assert "seed" in no_ordering_section
+        # The no-ordering path is the fallback return after "if ordering: return ..."
+        if_pos = source.find("if ordering:")
+        # Get the block from if ordering: to the next blank line or def
+        block_end = source.find("\n\n", if_pos)
+        path_block = source[if_pos:block_end]
+        assert "variant_name" in path_block
+        assert "seed" in path_block
+        assert "first_10k" in path_block, "No-ordering path should use first_10k subdir"
 
     def test_output_filename_is_v2(self):
         """Output filename must be full_eval_seed{N}_v2.json."""
