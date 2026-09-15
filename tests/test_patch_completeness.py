@@ -56,6 +56,7 @@ class TestBaselinesKwargsPatched:
         ("baselines/EvoEdit/memit/memit_seq_main.py", "apply_memit_seq_to_model"),
         ("baselines/EvoEdit/memit/memit_rect_main.py", "apply_memit_rect_to_model"),
         ("baselines/EvoEdit/memit/memit_seq_rect_main.py", "apply_memit_seq_rect_to_model"),
+        ("baselines/EvoEdit/memit/memit_seq_rect_err_main.py", "apply_memit_seq_rect_err_to_model"),
         ("baselines/EvoEdit/AlphaEdit/AlphaEdit_main.py", "apply_AlphaEdit_to_model"),
     ])
     def test_baselines_has_kwargs(self, relpath, func_name):

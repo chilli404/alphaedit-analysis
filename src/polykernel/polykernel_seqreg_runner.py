@@ -227,7 +227,7 @@ def run(args: argparse.Namespace) -> None:
     elif args.base_alg == "NSE":
         from nse import NSEHyperParams as HParams
         alg_for_hparams = "NSE"
-    elif args.base_alg == "MEMIT_rect":
+    elif args.base_alg in ("MEMIT_rect", "MEMIT_rect_err"):
         from memit import MEMITHyperParams as HParams
         alg_for_hparams = "MEMIT"
     else:
@@ -264,14 +264,76 @@ def run(args: argparse.Namespace) -> None:
     algo_hooks = compose_hooks(*hook_list)
     algo_state = algo_hooks.get_state()
 
-    # Load checkpoint if resuming
+    # Select apply function based on base_alg
+    if args.base_alg == "MEMIT":
+        base_apply = apply_memit_with_hooks
+    elif args.base_alg == "AlphaEdit":
+        base_apply = apply_alphaedit_with_hooks
+    elif args.base_alg == "NSE":
+        from nse.nse_main import apply_nse_to_model
+        base_apply = apply_nse_to_model
+    elif args.base_alg == "MEMIT_rect":
+        baselines_root = str(get_project_root() / "baselines" / "EvoEdit")
+        old_memit = sys.modules.pop("memit", None)
+        sys.path.insert(0, baselines_root)
+        from memit.memit_seq_rect_main import apply_memit_seq_rect_to_model
+        base_apply = apply_memit_seq_rect_to_model
+        sys.path.remove(baselines_root)
+        if old_memit is not None:
+            sys.modules["memit"] = old_memit
+    elif args.base_alg == "MEMIT_rect_err":
+        baselines_root = str(get_project_root() / "baselines" / "EvoEdit")
+        old_memit = sys.modules.pop("memit", None)
+        sys.path.insert(0, baselines_root)
+        from memit.memit_seq_rect_err_main import apply_memit_seq_rect_err_to_model
+        base_apply = apply_memit_seq_rect_err_to_model
+        sys.path.remove(baselines_root)
+        if old_memit is not None:
+            sys.modules["memit"] = old_memit
+    else:
+        raise ValueError(f"Unknown base_alg: {args.base_alg}")
+
+    # Initialize cache_c, P, error_cache to defaults BEFORE checkpoint load
     cache_c = None
+    P = None
     error_cache = None
+    n_layers = len(hparams.layers)
+
+    if args.base_alg == "AlphaEdit":
+        p_path = alphaedit_root / "null_space_project.pt"
+        if p_path.exists():
+            P = torch.load(str(p_path), map_location="cpu")
+            print(f"  [AlphaEdit] Loaded P matrix from {p_path} (shape: {P.shape})")
+            d = P.shape[-1]
+            cache_c = torch.zeros(n_layers, d, d)
+        else:
+            raise FileNotFoundError(
+                f"P matrix not found at {p_path}. Run link_stats.sh first."
+            )
+
+    elif args.base_alg == "NSE":
+        sample_layer = hparams.layers[0]
+        weight_name = f"{hparams.rewrite_module_tmp.format(sample_layer)}.weight"
+        d = dict(model.named_parameters())[weight_name].shape[1]
+        cache_c = torch.zeros(n_layers, d, d)
+        print(f"  [NSE] Initialized cache_c: ({n_layers}, {d}, {d})")
+
+    elif args.base_alg in ("MEMIT_rect", "MEMIT_rect_err"):
+        sample_layer = hparams.layers[0]
+        weight_name = f"{hparams.rewrite_module_tmp.format(sample_layer)}.weight"
+        w = dict(model.named_parameters())[weight_name]
+        d_in = w.shape[1]
+        cache_c = torch.zeros(n_layers, d_in, d_in)
+        error_cache = torch.zeros(n_layers, w.shape[0], w.shape[1])
+        print(f"  [RECT] Initialized cache_c: ({n_layers}, {d_in}, {d_in}), "
+              f"error_cache: ({n_layers}, {w.shape[0]}, {w.shape[1]})")
+
+    # Load checkpoint if resuming (overwrites defaults initialized above)
     if start_from_batch > 0:
         extra_keys = ["prev_cache.pt", "mechanism_log.jsonl"]
-        if args.base_alg in ("AlphaEdit", "MEMIT"):
+        if args.base_alg in ("AlphaEdit", "MEMIT", "MEMIT_rect", "MEMIT_rect_err"):
             extra_keys.append("cache_c.pt")
-        if args.base_alg == "MEMIT_rect":
+        if args.base_alg in ("MEMIT_rect", "MEMIT_rect_err"):
             extra_keys.append("error_cache.pt")
         ckpt_result = load_checkpoint(
             model, hparams, str(ckpt_dir), start_from_batch - 1,
@@ -292,74 +354,8 @@ def run(args: argparse.Namespace) -> None:
             print(f"  [CHECKPOINT] Loaded error_cache (shape: {error_cache.shape})")
         algo_state["batch_idx"] = [start_from_batch]
 
-    # Select apply function based on base_alg
-    if args.base_alg == "MEMIT":
-        base_apply = apply_memit_with_hooks
-    elif args.base_alg == "AlphaEdit":
-        base_apply = apply_alphaedit_with_hooks
-    elif args.base_alg == "NSE":
-        from nse.nse_main import apply_nse_to_model
-        base_apply = apply_nse_to_model
-    elif args.base_alg == "MEMIT_rect":
-        # RECT module uses relative imports (from .compute_ks) so we must import
-        # it as part of the baselines memit package, not standalone
-        baselines_root = str(get_project_root() / "baselines" / "EvoEdit")
-        old_memit = sys.modules.pop("memit", None)
-        sys.path.insert(0, baselines_root)
-        from memit.memit_seq_rect_main import apply_memit_seq_rect_to_model
-        base_apply = apply_memit_seq_rect_to_model
-        sys.path.remove(baselines_root)
-        if old_memit is not None:
-            sys.modules["memit"] = old_memit
-    else:
-        raise ValueError(f"Unknown base_alg: {args.base_alg}")
-
-    # Initialize cache_c and P for algorithms that need them
-    cache_c = None
-    P = None
-    error_cache = None
-    n_layers = len(hparams.layers)
-
-    if args.base_alg == "AlphaEdit":
-        # AlphaEdit needs both P (null-space projection) and cache_c.
-        # link_stats.sh copies P to alphaedit_root/null_space_project.pt (local, not S3).
-        p_path = alphaedit_root / "null_space_project.pt"
-        if p_path.exists():
-            P = torch.load(str(p_path), map_location="cpu")
-            print(f"  [AlphaEdit] Loaded P matrix from {p_path} (shape: {P.shape})")
-            d = P.shape[-1]
-            cache_c = torch.zeros(n_layers, d, d)
-        else:
-            raise FileNotFoundError(
-                f"P matrix not found at {p_path}. Run link_stats.sh first."
-            )
-
-    elif args.base_alg == "NSE":
-        # NSE needs cache_c but NOT P. NSE indexes cache_c with neuron indices
-        # which correspond to the INPUT dimension of down_proj (shape[1]), not output (shape[0])
-        sample_layer = hparams.layers[0]
-        weight_name = f"{hparams.rewrite_module_tmp.format(sample_layer)}.weight"
-        d = dict(model.named_parameters())[weight_name].shape[1]  # INPUT dim for NSE
-        cache_c = torch.zeros(n_layers, d, d)
-        print(f"  [NSE] Initialized cache_c: ({n_layers}, {d}, {d})")
-
-    elif args.base_alg == "MEMIT_rect":
-        # RECT's execute_memit adds cache_c and error_cache to cov + K@K^T.
-        # Both cov and K are in the INPUT dimension of down_proj.
-        sample_layer = hparams.layers[0]
-        weight_name = f"{hparams.rewrite_module_tmp.format(sample_layer)}.weight"
-        w = dict(model.named_parameters())[weight_name]
-        d_in = w.shape[1]  # INPUT dim for cache_c (cov + K@K^T space)
-        cache_c = torch.zeros(n_layers, d_in, d_in)
-        # error_cache accumulates rectification residuals — same shape as upd_matrix
-        # upd_matrix shape depends on weight shape: [d_out, d_in] or [d_in, d_out]
-        error_cache = torch.zeros(n_layers, w.shape[0], w.shape[1])
-        print(f"  [RECT] Initialized cache_c: ({n_layers}, {d_in}, {d_in}), "
-              f"error_cache: ({n_layers}, {w.shape[0]}, {w.shape[1]})")
-
     # MEMIT and AlphaEdit accept hooks= kwarg and call post_solve internally.
     # NSE and RECT are vendor functions that silently ignore hooks via **_kwargs.
-    # For REVIVE on NSE/RECT, we apply the spectral filter post-hoc on weight deltas.
     _hooks_aware = args.base_alg in ("MEMIT", "AlphaEdit")
 
     # NSE uses precomputed v_star from W₀. Without these, compute_z does 25 gradient
@@ -442,7 +438,7 @@ def run(args: argparse.Namespace) -> None:
         result = base_apply(model, tok, requests, hparams, **extra, **kwargs)
 
         # RECT returns (model, cache_c, error_cache) — capture error_cache
-        if args.base_alg == "MEMIT_rect" and isinstance(result, tuple) and len(result) >= 3:
+        if args.base_alg in ("MEMIT_rect", "MEMIT_rect_err") and isinstance(result, tuple) and len(result) >= 3:
             error_cache = result[2]
             result = (result[0], result[1])  # normalize to 2-tuple for harness
 
@@ -477,7 +473,7 @@ def run(args: argparse.Namespace) -> None:
         algo_state["batch_idx"] = [batch_idx + 1]
 
         # AlphaEdit, NSE, and RECT all return cache_c — capture the updated value
-        if edit_extra is not None and args.base_alg in ("AlphaEdit", "NSE", "MEMIT_rect"):
+        if edit_extra is not None and args.base_alg in ("AlphaEdit", "NSE", "MEMIT_rect", "MEMIT_rect_err"):
             cache_c = edit_extra
 
         if should_save(batch_idx, args.save_interval):
@@ -614,7 +610,7 @@ def main():
     parser.add_argument("--conserve_memory", action="store_true", default=True)
 
     # Base algorithm
-    parser.add_argument("--base_alg", default="MEMIT", choices=["MEMIT", "AlphaEdit", "NSE", "MEMIT_rect"],
+    parser.add_argument("--base_alg", default="MEMIT", choices=["MEMIT", "AlphaEdit", "NSE", "MEMIT_rect", "MEMIT_rect_err"],
                         help="Base editing algorithm (default: MEMIT)")
 
     # SeqReg parameters

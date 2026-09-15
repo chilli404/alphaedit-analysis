@@ -81,7 +81,7 @@ echo "  Resolved model: $MODEL_NAME"
 uv run python "$PROJECT_DIR/scripts/patches/apply_all.py" --baselines-only 2>/dev/null || true
 
 PYTHONPATH=. uv run python experiments/evaluate.py \
-    --alg_name MEMIT_seq_rect \
+    --alg_name MEMIT_seq_rect_err \
     --model_name "$MODEL_NAME" \
     --hparams_fname "$HPARAMS_FNAME" \
     --ds_name mcf \

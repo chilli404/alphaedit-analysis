@@ -2183,8 +2183,7 @@ class TestRECTCacheCInCheckpoint:
 
     def test_cache_c_loaded_from_checkpoint(self):
         source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
-        load_section = source[source.find("load_checkpoint"):source.find("# Select apply function")]
-        assert "cache_c" in load_section, (
+        assert 'cache_c = ckpt_result["cache_c.pt"]' in source or "cache_c = ckpt_result.get(" in source, (
             "Checkpoint load must restore cache_c for algorithms that use it."
         )
 
@@ -2889,7 +2888,6 @@ class TestRECTErrorCachePreserved:
     def test_rect_error_cache_loaded_from_checkpoint(self):
         """Checkpoint load must restore error_cache for RECT."""
         source = (PROJECT_ROOT / "src" / "polykernel" / "polykernel_seqreg_runner.py").read_text()
-        load_section = source[source.find("load_checkpoint"):source.find("# Select apply function")]
-        assert "error_cache" in load_section, (
+        assert 'error_cache = ckpt_result["error_cache.pt"]' in source or "error_cache = ckpt_result.get(" in source, (
             "Checkpoint load must restore error_cache for RECT."
         )

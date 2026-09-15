@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Add MEMIT_seq_rect (RECT-Aligned) support to baselines evaluate.py.
+"""Add MEMIT_seq_rect and MEMIT_seq_rect_err (RECT-Aligned) support to baselines evaluate.py.
 
 Adds:
-1. Import for apply_memit_seq_rect_to_model
-2. ALG_DICT entry for MEMIT_seq_rect
+1. Import for apply_memit_seq_rect_to_model and apply_memit_seq_rect_err_to_model
+2. ALG_DICT entries for MEMIT_seq_rect and MEMIT_seq_rect_err
 3. error_cache initialization for rect algorithms
 4. error_cache passing to apply_algo
 5. 3-tuple result unpacking (model, cache_c, error_cache)
-6. MEMIT_seq_rect in all alg_name check lists
+6. MEMIT_seq_rect / MEMIT_seq_rect_err in all alg_name check lists
 
 Idempotent — returns 0 patches if already applied.
 """
@@ -23,7 +23,8 @@ def apply(baselines_root: Path):
     source = eval_path.read_text()
 
     # Check if FULLY patched (not just partially — old manual edits may have ALG_DICT but not choices)
-    if "MEMIT_seq_rect" in source and "MEMIT_seq_rect" in source[source.find("choices="):source.find("choices=")+200]:
+    choices_region = source[source.find("choices="):source.find("choices=")+300] if "choices=" in source else ""
+    if "MEMIT_seq_rect_err" in source and "MEMIT_seq_rect_err" in choices_region:
         print("  [rect-aligned] Already patched")
         return 0
     # If partially patched (MEMIT_seq_rect in ALG_DICT but not choices), we can't re-apply
@@ -33,51 +34,53 @@ def apply(baselines_root: Path):
 
     patched = source
 
-    # 1. Add import
+    # 1. Add imports
     patched = patched.replace(
         "from memit.memit_rect_main import apply_memit_rect_to_model",
         "from memit.memit_rect_main import apply_memit_rect_to_model\n"
-        "from memit.memit_seq_rect_main import apply_memit_seq_rect_to_model",
+        "from memit.memit_seq_rect_main import apply_memit_seq_rect_to_model\n"
+        "from memit.memit_seq_rect_err_main import apply_memit_seq_rect_err_to_model",
     )
 
-    # 2. Add ALG_DICT entry
+    # 2. Add ALG_DICT entries
     patched = patched.replace(
         '    "MEMIT_rect": (MEMITHyperParams, apply_memit_rect_to_model),',
         '    "MEMIT_rect": (MEMITHyperParams, apply_memit_rect_to_model),\n'
-        '    "MEMIT_seq_rect": (MEMITHyperParams, apply_memit_seq_rect_to_model),',
+        '    "MEMIT_seq_rect": (MEMITHyperParams, apply_memit_seq_rect_to_model),\n'
+        '    "MEMIT_seq_rect_err": (MEMITHyperParams, apply_memit_seq_rect_err_to_model),',
     )
 
-    # 3. Add MEMIT_seq_rect to argparse choices (handle with/without space after comma)
+    # 3. Add MEMIT_seq_rect and MEMIT_seq_rect_err to argparse choices
     patched = patched.replace(
         '"MEMIT_seq","MEMIT_prune"',
-        '"MEMIT_seq", "MEMIT_seq_rect","MEMIT_prune"',
+        '"MEMIT_seq", "MEMIT_seq_rect", "MEMIT_seq_rect_err","MEMIT_prune"',
     )
 
-    # 4. Add MEMIT_seq_rect to all alg_name check lists
+    # 4. Add MEMIT_seq_rect and MEMIT_seq_rect_err to all alg_name check lists
     # cache_template check
     patched = patched.replace(
         '"MEMIT","AlphaEdit", "EvoEdit", "MEMIT_seq", "MEMIT_prune", "MEMIT_rect"',
-        '"MEMIT","AlphaEdit", "EvoEdit", "MEMIT_seq", "MEMIT_seq_rect", "MEMIT_prune", "MEMIT_rect"',
+        '"MEMIT","AlphaEdit", "EvoEdit", "MEMIT_seq", "MEMIT_seq_rect", "MEMIT_seq_rect_err", "MEMIT_prune", "MEMIT_rect"',
     )
     # Sequential editing check (cache_c init)
     patched = patched.replace(
         '"EvoEdit","AlphaEdit", "MEMIT_seq", "MEMIT_prune", "NSE"',
-        '"EvoEdit","AlphaEdit", "MEMIT_seq", "MEMIT_seq_rect", "MEMIT_prune", "NSE"',
+        '"EvoEdit","AlphaEdit", "MEMIT_seq", "MEMIT_seq_rect", "MEMIT_seq_rect_err", "MEMIT_prune", "NSE"',
     )
     # etc_args
     patched = patched.replace(
         '"ROME", "MEMIT", "EvoEdit", "AlphaEdit", "MEMIT_seq", "MEMIT_prune", "NSE"',
-        '"ROME", "MEMIT", "EvoEdit", "AlphaEdit", "MEMIT_seq", "MEMIT_seq_rect", "MEMIT_prune", "NSE"',
+        '"ROME", "MEMIT", "EvoEdit", "AlphaEdit", "MEMIT_seq", "MEMIT_seq_rect", "MEMIT_seq_rect_err", "MEMIT_prune", "NSE"',
     )
     # seq_args
     patched = patched.replace(
         'dict(cache_c=cache_c) if any(alg in alg_name for alg in ["AlphaEdit", "EvoEdit", "MEMIT_seq", "NSE"])',
-        'dict(cache_c=cache_c) if any(alg in alg_name for alg in ["AlphaEdit", "EvoEdit", "MEMIT_seq", "MEMIT_seq_rect", "NSE"])',
+        'dict(cache_c=cache_c) if any(alg in alg_name for alg in ["AlphaEdit", "EvoEdit", "MEMIT_seq", "MEMIT_seq_rect", "MEMIT_seq_rect_err", "NSE"])',
     )
     # apply_algo dispatch
     patched = patched.replace(
         'if any(alg in alg_name for alg in ["AlphaEdit", "MEMIT_seq", "NSE", "EvoEdit"]):',
-        'if any(alg in alg_name for alg in ["AlphaEdit", "MEMIT_seq", "MEMIT_seq_rect", "NSE", "EvoEdit"]):',
+        'if any(alg in alg_name for alg in ["AlphaEdit", "MEMIT_seq", "MEMIT_seq_rect", "MEMIT_seq_rect_err", "NSE", "EvoEdit"]):',
     )
 
     # 5. Add error_cache init after cache_c init
