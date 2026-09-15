@@ -55,72 +55,21 @@ def apply_all(vendor: bool = True, baselines: bool = True):
         if _rect_err_src.exists() and _rect_err_dst.parent.exists():
             import shutil
             shutil.copy2(str(_rect_err_src), str(_rect_err_dst))
-            # Patch: break single-expression LHS/RHS into steps to prevent OOM on L40S (48GB).
-            # The vendor code builds LHS + RHS in one torch.linalg.solve() call, keeping all
-            # intermediates alive simultaneously (~14 GB in double on Llama-3-8B). On A100 (80GB)
-            # this fits; on L40S (48GB) it OOMs. We split into explicit steps with del + empty_cache.
+            # Patch: detach tensors before solve to drop autograd graph (~12GB on Llama-3-8B).
+            # The vendor's compute_ks/get_module_input_output create gradient-tracked tensors.
+            # On A100 (80GB) the autograd overhead fits; on L40S (48GB) it OOMs.
+            # detach() is zero-cost (no copy, no metric change) and frees ~12GB.
             _rect_err_code = _rect_err_dst.read_text()
-            _solve_anchor = (
-                '        adj_k = torch.linalg.solve(\n'
-                '            hparams.mom2_update_weight * cov.double() + cache_c[i,:,:].cuda().double() + layer_ks @ layer_ks.T + torch.eye(layer_ks.shape[0], dtype=torch.float,device="cuda"),\n'
-                '            layer_ks @ resid.T - error_cache[i,:,:].cuda().double().T,\n'
-                '        )'
-            )
-            _solve_patched = (
-                '        # [PATCH] Build LHS/RHS in steps to fit L40S 48GB (vendor used A100 80GB)\n'
-                '        # Detach to drop autograd graph (~12GB on Llama-3-8B)\n'
+            _detach_anchor = '        resid = targets / (len(hparams.layers) - i)  # Distribute residual across layers'
+            _detach_patched = (
+                '        resid = targets / (len(hparams.layers) - i)  # Distribute residual across layers\n'
+                '        # [PATCH] Detach to drop autograd graph (~12GB). Zero-cost, no metric change.\n'
                 '        layer_ks = layer_ks.detach()\n'
-                '        resid = resid.detach()\n'
-                '        torch.cuda.empty_cache()\n'
-                '        _lhs = hparams.mom2_update_weight * cov.double()\n'
-                '        cov.cpu(); del cov\n'
-                '        _lhs += cache_c[i,:,:].cuda().double()\n'
-                '        _lhs += layer_ks @ layer_ks.T\n'
-                '        _lhs += torch.eye(layer_ks.shape[0], dtype=torch.float, device="cuda")\n'
-                '        _rhs = layer_ks @ resid.T - error_cache[i,:,:].cuda().double().T\n'
-                '        torch.cuda.empty_cache()\n'
-                '        adj_k = torch.linalg.solve(_lhs, _rhs)\n'
-                '        del _lhs, _rhs'
+                '        resid = resid.detach()'
             )
-            if _solve_anchor in _rect_err_code:
-                _rect_err_code = _rect_err_code.replace(_solve_anchor, _solve_patched, 1)
-                # Also patch the error_temp computation (same LHS rebuilt inline)
-                _err_anchor_1 = '                    small_delta @ (hparams.mom2_update_weight * cov.double() + cache_c[i,:,:].cuda().double() + layer_ks @ layer_ks.T + torch.eye(layer_ks.shape[0], dtype=torch.float,device="cuda"))'
-                _err_anchor_2 = '                    small_delta.T @ (hparams.mom2_update_weight * cov.double() + cache_c[i,:,:].cuda().double() + layer_ks @ layer_ks.T + torch.eye(layer_ks.shape[0], dtype=torch.float,device="cuda"))'
-                # For error computation, cov is already on CPU after solve patch.
-                # Rebuild LHS from components still available (cache_c, layer_ks).
-                # Use mom2_update_weight * COV_CACHE[key] directly.
-                _err_replace_1 = '                    small_delta @ (_err_lhs)'
-                _err_replace_2 = '                    small_delta.T @ (_err_lhs)'
-                # Insert LHS rebuild before the if/else block
-                _err_block_anchor = '            mask_ = apply_rect(weights_copy[weight_name], upd_matrix.float())'
-                _err_block_patched = (
-                    '            # [PATCH] Rebuild LHS for error computation (cov freed after solve)\n'
-                    '            _err_cov = get_cov(model, tok, hparams.rewrite_module_tmp.format(layer),\n'
-                    '                hparams.mom2_dataset, hparams.mom2_n_samples, hparams.mom2_dtype)\n'
-                    '            _err_lhs = hparams.mom2_update_weight * _err_cov.double() + cache_c[i,:,:].cuda().double() + layer_ks @ layer_ks.T + torch.eye(layer_ks.shape[0], dtype=torch.float, device="cuda")\n'
-                    '            _err_cov.cpu(); del _err_cov\n'
-                    '            mask_ = apply_rect(weights_copy[weight_name], upd_matrix.float())'
-                )
-                _rect_err_code = _rect_err_code.replace(_err_anchor_1, _err_replace_1, 1)
-                _rect_err_code = _rect_err_code.replace(_err_anchor_2, _err_replace_2, 1)
-                _rect_err_code = _rect_err_code.replace(_err_block_anchor, _err_block_patched, 1)
-                # Fix shape check that references deleted cov — use _err_lhs instead
-                _rect_err_code = _rect_err_code.replace(
-                    'if upd_matrix_temp.shape[1] == cov.shape[0]:',
-                    'if upd_matrix_temp.shape[1] == _err_lhs.shape[0]:'
-                )
-                # Fix cleanup block: remove cov.cpu() (already freed) and add _err_lhs cleanup
-                _rect_err_code = _rect_err_code.replace(
-                    '        cov.cpu()\n        for x in [layer_ks, cur_zs, targets]:\n            x.cpu()\n            del x\n        torch.cuda.empty_cache()',
-                    '        del _err_lhs\n'
-                    '        for x in [layer_ks, cur_zs, targets, upd_matrix, upd_matrix_temp, small_delta, error_temp]:\n'
-                    '            if x is not None: x.cpu()\n'
-                    '            del x\n'
-                    '        torch.cuda.empty_cache()'
-                )
-                _rect_err_dst.write_text(_rect_err_code)
-                print(f"  [rect-err] Copied + memory-patched solve for L40S (from vendor/OTE-SE-Alignment)")
+            if _detach_anchor in _rect_err_code and 'layer_ks.detach()' not in _rect_err_code:
+                _rect_err_dst.write_text(_rect_err_code.replace(_detach_anchor, _detach_patched, 1))
+                print(f"  [rect-err] Copied + detach-patched for L40S (from vendor/OTE-SE-Alignment)")
             else:
                 print(f"  [rect-err] Copied memit_seq_rect_err_main.py from vendor/OTE-SE-Alignment")
         total += patch_kwargs.apply(baselines_root=baselines_root)

@@ -269,87 +269,33 @@ class TestRectErrPhase2:
 # Memory patch: LHS built in steps for L40S (48GB) compatibility
 # ============================================================================
 
-class TestRectErrMemoryPatch:
-    """After apply_all.py patches the vendor code, the solve must be split into
-    steps to fit L40S 48GB VRAM. These tests verify the patch was applied."""
+class TestRectErrDetachPatch:
+    """After apply_all.py patches the vendor code, layer_ks and resid must be
+    detached before the solve to drop the autograd graph (~12GB on Llama-3-8B).
+    This is the only patch beyond **_kwargs — the vendor algorithm is untouched."""
 
-    def test_no_single_expression_solve(self):
-        """The patched file must NOT have the original single-expression solve."""
+    def test_layer_ks_detached(self):
         source = _read_rect_err()
-        original_solve = "hparams.mom2_update_weight * cov.double() + cache_c[i,:,:].cuda().double() + layer_ks @ layer_ks.T + torch.eye"
-        assert original_solve not in source, \
-            "Patched file must not contain the original single-expression solve (OOM on L40S)"
+        assert "layer_ks = layer_ks.detach()" in source or "layer_ks.detach()" in source, \
+            "layer_ks must be detached before solve to drop autograd graph"
 
-    def test_lhs_built_incrementally(self):
-        """LHS must be built with in-place += to avoid intermediate copies."""
+    def test_resid_detached(self):
         source = _read_rect_err()
-        assert "_lhs +=" in source or "_lhs =" in source, \
-            "LHS must be built incrementally with _lhs += steps"
+        assert "resid = resid.detach()" in source or "resid.detach()" in source, \
+            "resid must be detached before solve to drop autograd graph"
 
-    def test_cov_freed_after_lhs(self):
-        """cov must be freed (del cov or cov.cpu()) after building LHS."""
+    def test_detach_before_solve(self):
+        """detach() must appear before torch.linalg.solve, not after."""
         source = _read_rect_err()
-        assert "del cov" in source or "cov.cpu()" in source, \
-            "cov must be freed after LHS construction to reclaim ~1.6GB"
-
-    def test_no_cov_shape_reference_after_solve(self):
-        """After cov is freed, no code must reference cov.shape."""
-        source = _read_rect_err()
-        assert "cov.shape" not in source, \
-            "cov is freed after solve — cov.shape references cause UnboundLocalError"
-
-    def test_no_bare_cov_reference_after_del(self):
-        """After 'del cov', no bare cov references should appear (UnboundLocalError).
-        References before del (cov = get_cov, _lhs = ... * cov.double()) are fine."""
-        source = _read_rect_err()
-        exec_start = source.find("def execute_memit(")
-        exec_end = source.find("\ndef get_cov(", exec_start)
-        if exec_end < 0:
-            exec_end = len(source)
-        exec_body = source[exec_start:exec_end]
-        import re
-        lines = exec_body.splitlines()
-        # Find the 'del cov' line
-        del_cov_line = None
-        for i, line in enumerate(lines):
-            if "del cov" in line:
-                del_cov_line = i
-                break
-        assert del_cov_line is not None, "Patch must contain 'del cov'"
-        # Check lines AFTER del cov for bare cov references
-        bare_cov_refs = []
-        for i, line in enumerate(lines[del_cov_line + 1:], del_cov_line + 2):
-            stripped = line.strip()
-            if stripped.startswith("#"):
-                continue
-            matches = re.findall(r'(?<![_a-zA-Z])cov(?![_A-Z])', stripped)
-            if matches:
-                bare_cov_refs.append((i, stripped))
-        assert len(bare_cov_refs) == 0, \
-            f"Found {len(bare_cov_refs)} bare 'cov' references AFTER 'del cov' " \
-            f"(would cause UnboundLocalError):\n" + \
-            "\n".join(f"  line {n}: {l}" for n, l in bare_cov_refs[:5])
-
-    def test_err_lhs_rebuilt_for_error_computation(self):
-        """Error computation must rebuild LHS from get_cov (cov freed after solve)."""
-        source = _read_rect_err()
-        assert "_err_lhs" in source or "_err_cov" in source, \
-            "Error computation must rebuild cov via get_cov after solve frees it"
-
-    def test_empty_cache_before_solve(self):
-        """torch.cuda.empty_cache() must appear before the solve."""
-        source = _read_rect_err()
+        detach_pos = source.find("layer_ks.detach()")
         solve_pos = source.find("torch.linalg.solve(")
-        assert solve_pos > 0
-        pre_solve = source[max(0, solve_pos - 200):solve_pos]
-        assert "empty_cache" in pre_solve, \
-            "torch.cuda.empty_cache() must appear shortly before the solve"
+        assert detach_pos > 0 and solve_pos > 0
+        assert detach_pos < solve_pos, "detach must come before the solve"
 
-    def test_patch_preserves_algorithm_correctness(self):
-        """The patched LHS must still contain all 4 terms: mom2*cov, cache_c, K@K^T, I."""
+    def test_vendor_solve_expression_preserved(self):
+        """The vendor's single-expression solve must be preserved (not split)."""
         source = _read_rect_err()
-        # The terms appear in _lhs += steps or in _err_lhs construction
-        assert "mom2_update_weight" in source, "LHS must include mom2_update_weight * cov"
-        assert "cache_c[i,:,:]" in source, "LHS must include cache_c"
-        assert "layer_ks @ layer_ks.T" in source, "LHS must include K@K^T"
-        assert "torch.eye(" in source, "LHS must include identity ridge"
+        assert "hparams.mom2_update_weight * cov.double()" in source, \
+            "Vendor solve expression must be preserved — only detach is added"
+        assert "torch.eye(" in source, "Identity ridge must be in the solve"
+        assert "error_cache[i,:,:].cuda().double().T" in source, "Error correction must be in RHS"
