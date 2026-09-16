@@ -269,33 +269,35 @@ class TestRectErrPhase2:
 # Memory patch: LHS built in steps for L40S (48GB) compatibility
 # ============================================================================
 
-class TestRectErrDetachPatch:
-    """After apply_all.py patches the vendor code, layer_ks and resid must be
-    detached before the solve to drop the autograd graph (~12GB on Llama-3-8B).
+class TestRectErrNoGradPatch:
+    """After apply_all.py patches the vendor code, gradients must be disabled
+    during the per-layer editing loop. compute_z (which needs gradients) runs
+    BEFORE this loop. The loop only does forward passes — no backprop needed.
     This is the only patch beyond **_kwargs — the vendor algorithm is untouched."""
 
-    def test_layer_ks_detached(self):
+    def test_grad_disabled_before_loop(self):
         source = _read_rect_err()
-        assert "layer_ks = layer_ks.detach()" in source or "layer_ks.detach()" in source, \
-            "layer_ks must be detached before solve to drop autograd graph"
+        assert "set_grad_enabled(False)" in source, \
+            "Gradients must be disabled before the per-layer editing loop"
 
-    def test_resid_detached(self):
+    def test_grad_reenabled_after_loop(self):
         source = _read_rect_err()
-        assert "resid = resid.detach()" in source or "resid.detach()" in source, \
-            "resid must be detached before solve to drop autograd graph"
+        disable_pos = source.find("set_grad_enabled(False)")
+        enable_pos = source.find("set_grad_enabled(True)")
+        assert enable_pos > disable_pos > 0, \
+            "Gradients must be re-enabled after the loop"
 
-    def test_detach_before_solve(self):
-        """detach() must appear before torch.linalg.solve, not after."""
+    def test_grad_disabled_before_solve(self):
         source = _read_rect_err()
-        detach_pos = source.find("layer_ks.detach()")
+        disable_pos = source.find("set_grad_enabled(False)")
         solve_pos = source.find("torch.linalg.solve(")
-        assert detach_pos > 0 and solve_pos > 0
-        assert detach_pos < solve_pos, "detach must come before the solve"
+        assert disable_pos < solve_pos, \
+            "set_grad_enabled(False) must come before the solve"
 
     def test_vendor_solve_expression_preserved(self):
         """The vendor's single-expression solve must be preserved (not split)."""
         source = _read_rect_err()
         assert "hparams.mom2_update_weight * cov.double()" in source, \
-            "Vendor solve expression must be preserved — only detach is added"
+            "Vendor solve expression must be preserved"
         assert "torch.eye(" in source, "Identity ridge must be in the solve"
         assert "error_cache[i,:,:].cuda().double().T" in source, "Error correction must be in RHS"

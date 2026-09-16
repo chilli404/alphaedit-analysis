@@ -55,21 +55,28 @@ def apply_all(vendor: bool = True, baselines: bool = True):
         if _rect_err_src.exists() and _rect_err_dst.parent.exists():
             import shutil
             shutil.copy2(str(_rect_err_src), str(_rect_err_dst))
-            # Patch: detach tensors before solve to drop autograd graph (~12GB on Llama-3-8B).
-            # The vendor's compute_ks/get_module_input_output create gradient-tracked tensors.
-            # On A100 (80GB) the autograd overhead fits; on L40S (48GB) it OOMs.
-            # detach() is zero-cost (no copy, no metric change) and frees ~12GB.
+            # Patch: disable grad before the per-layer editing loop.
+            # All compute_z calls (which need gradients for v_star optimization) are done
+            # BEFORE this loop. The loop only does forward passes (compute_ks, get_module_input_output)
+            # which don't need gradients. On A100 (80GB) the autograd overhead fits; on L40S (48GB)
+            # it OOMs at BS=100 because PyTorch caches activations for 100 forward passes.
             _rect_err_code = _rect_err_dst.read_text()
-            _detach_anchor = '        resid = targets / (len(hparams.layers) - i)  # Distribute residual across layers'
-            _detach_patched = (
-                '        resid = targets / (len(hparams.layers) - i)  # Distribute residual across layers\n'
-                '        # [PATCH] Detach to drop autograd graph (~12GB). Zero-cost, no metric change.\n'
-                '        layer_ks = layer_ks.detach()\n'
-                '        resid = resid.detach()'
+            _loop_anchor = '    # Insert\n    for i, layer in enumerate(hparams.layers):'
+            _loop_patched = (
+                '    # Insert\n'
+                '    # [PATCH] Disable grad for per-layer loop (compute_z already done above).\n'
+                '    # Prevents autograd from caching activations — saves ~12GB on Llama-3-8B.\n'
+                '    torch.set_grad_enabled(False)\n'
+                '    for i, layer in enumerate(hparams.layers):'
             )
-            if _detach_anchor in _rect_err_code and 'layer_ks.detach()' not in _rect_err_code:
-                _rect_err_dst.write_text(_rect_err_code.replace(_detach_anchor, _detach_patched, 1))
-                print(f"  [rect-err] Copied + detach-patched for L40S (from vendor/OTE-SE-Alignment)")
+            if _loop_anchor in _rect_err_code and 'set_grad_enabled' not in _rect_err_code:
+                # Also re-enable grad after the loop (before weight restore)
+                _restore_anchor = '    # Restore state of original model'
+                _restore_patched = '    torch.set_grad_enabled(True)\n    # Restore state of original model'
+                _rect_err_code = _rect_err_code.replace(_loop_anchor, _loop_patched, 1)
+                _rect_err_code = _rect_err_code.replace(_restore_anchor, _restore_patched, 1)
+                _rect_err_dst.write_text(_rect_err_code)
+                print(f"  [rect-err] Copied + no-grad-patched for L40S (from vendor/OTE-SE-Alignment)")
             else:
                 print(f"  [rect-err] Copied memit_seq_rect_err_main.py from vendor/OTE-SE-Alignment")
         total += patch_kwargs.apply(baselines_root=baselines_root)
