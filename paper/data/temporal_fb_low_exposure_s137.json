@@ -1,0 +1,3449 @@
+{
+  "1000_edits": {
+    "checkpoint": "batch_9",
+    "total_edits": 1000,
+    "n_evaluated": 1000,
+    "all_facts": {
+      "efficacy": 0.293,
+      "paraphrase": 0.1785,
+      "neighborhood": 0.2074
+    },
+    "first_1k": {
+      "efficacy": 0.293,
+      "paraphrase": 0.1785,
+      "neighborhood": 0.2074
+    },
+    "middle_cohort": {
+      "efficacy": 0.3333,
+      "paraphrase": 0.2177,
+      "neighborhood": 0.1946
+    },
+    "latest_1k": {
+      "efficacy": 0.293,
+      "paraphrase": 0.1785,
+      "neighborhood": 0.2074
+    },
+    "latest_100": {
+      "efficacy": 0.01,
+      "paraphrase": 0.01,
+      "neighborhood": 0.267
+    },
+    "retention_auc": 0.3083,
+    "cohort_metrics": {
+      "0": {
+        "edits_range": "0-100",
+        "efficacy": 0.3,
+        "paraphrase": 0.26,
+        "neighborhood": 0.24300000000000005,
+        "n_facts": 100
+      },
+      "1": {
+        "edits_range": "100-200",
+        "efficacy": 0.43,
+        "paraphrase": 0.25,
+        "neighborhood": 0.21,
+        "n_facts": 100
+      },
+      "2": {
+        "edits_range": "200-300",
+        "efficacy": 0.2,
+        "paraphrase": 0.06,
+        "neighborhood": 0.21600000000000005,
+        "n_facts": 100
+      },
+      "3": {
+        "edits_range": "300-400",
+        "efficacy": 0.28,
+        "paraphrase": 0.11,
+        "neighborhood": 0.11499999999999998,
+        "n_facts": 100
+      },
+      "4": {
+        "edits_range": "400-500",
+        "efficacy": 0.23,
+        "paraphrase": 0.13,
+        "neighborhood": 0.26,
+        "n_facts": 100
+      },
+      "5": {
+        "edits_range": "500-600",
+        "efficacy": 0.49,
+        "paraphrase": 0.35,
+        "neighborhood": 0.15999999999999998,
+        "n_facts": 100
+      },
+      "6": {
+        "edits_range": "600-700",
+        "efficacy": 0.27,
+        "paraphrase": 0.235,
+        "neighborhood": 0.244,
+        "n_facts": 100
+      },
+      "7": {
+        "edits_range": "700-800",
+        "efficacy": 0.53,
+        "paraphrase": 0.315,
+        "neighborhood": 0.17000000000000004,
+        "n_facts": 100
+      },
+      "8": {
+        "edits_range": "800-900",
+        "efficacy": 0.19,
+        "paraphrase": 0.065,
+        "neighborhood": 0.18900000000000003,
+        "n_facts": 100
+      },
+      "9": {
+        "edits_range": "900-1000",
+        "efficacy": 0.01,
+        "paraphrase": 0.01,
+        "neighborhood": 0.267,
+        "n_facts": 100
+      }
+    }
+  },
+  "2000_edits": {
+    "checkpoint": "batch_19",
+    "total_edits": 2000,
+    "n_evaluated": 2000,
+    "all_facts": {
+      "efficacy": 0.297,
+      "paraphrase": 0.173,
+      "neighborhood": 0.1983
+    },
+    "first_1k": {
+      "efficacy": 0.311,
+      "paraphrase": 0.1875,
+      "neighborhood": 0.1943
+    },
+    "middle_cohort": {
+      "efficacy": 0.283,
+      "paraphrase": 0.1585,
+      "neighborhood": 0.2024
+    },
+    "latest_1k": {
+      "efficacy": 0.283,
+      "paraphrase": 0.1585,
+      "neighborhood": 0.2024
+    },
+    "latest_100": {
+      "efficacy": 0.3,
+      "paraphrase": 0.225,
+      "neighborhood": 0.249
+    },
+    "retention_auc": 0.2971,
+    "cohort_metrics": {
+      "0": {
+        "edits_range": "0-100",
+        "efficacy": 0.29,
+        "paraphrase": 0.265,
+        "neighborhood": 0.18700000000000006,
+        "n_facts": 100
+      },
+      "1": {
+        "edits_range": "100-200",
+        "efficacy": 0.43,
+        "paraphrase": 0.25,
+        "neighborhood": 0.24100000000000002,
+        "n_facts": 100
+      },
+      "2": {
+        "edits_range": "200-300",
+        "efficacy": 0.2,
+        "paraphrase": 0.065,
+        "neighborhood": 0.26499999999999996,
+        "n_facts": 100
+      },
+      "3": {
+        "edits_range": "300-400",
+        "efficacy": 0.31,
+        "paraphrase": 0.115,
+        "neighborhood": 0.117,
+        "n_facts": 100
+      },
+      "4": {
+        "edits_range": "400-500",
+        "efficacy": 0.26,
+        "paraphrase": 0.16,
+        "neighborhood": 0.22200000000000003,
+        "n_facts": 100
+      },
+      "5": {
+        "edits_range": "500-600",
+        "efficacy": 0.5,
+        "paraphrase": 0.34,
+        "neighborhood": 0.153,
+        "n_facts": 100
+      },
+      "6": {
+        "edits_range": "600-700",
+        "efficacy": 0.27,
+        "paraphrase": 0.195,
+        "neighborhood": 0.18700000000000003,
+        "n_facts": 100
+      },
+      "7": {
+        "edits_range": "700-800",
+        "efficacy": 0.5,
+        "paraphrase": 0.32,
+        "neighborhood": 0.169,
+        "n_facts": 100
+      },
+      "8": {
+        "edits_range": "800-900",
+        "efficacy": 0.33,
+        "paraphrase": 0.145,
+        "neighborhood": 0.163,
+        "n_facts": 100
+      },
+      "9": {
+        "edits_range": "900-1000",
+        "efficacy": 0.02,
+        "paraphrase": 0.02,
+        "neighborhood": 0.23900000000000002,
+        "n_facts": 100
+      },
+      "10": {
+        "edits_range": "1000-1100",
+        "efficacy": 0.33,
+        "paraphrase": 0.14,
+        "neighborhood": 0.157,
+        "n_facts": 100
+      },
+      "11": {
+        "edits_range": "1100-1200",
+        "efficacy": 0.33,
+        "paraphrase": 0.19,
+        "neighborhood": 0.23500000000000004,
+        "n_facts": 100
+      },
+      "12": {
+        "edits_range": "1200-1300",
+        "efficacy": 0.3,
+        "paraphrase": 0.105,
+        "neighborhood": 0.161,
+        "n_facts": 100
+      },
+      "13": {
+        "edits_range": "1300-1400",
+        "efficacy": 0.17,
+        "paraphrase": 0.095,
+        "neighborhood": 0.22200000000000003,
+        "n_facts": 100
+      },
+      "14": {
+        "edits_range": "1400-1500",
+        "efficacy": 0.35,
+        "paraphrase": 0.275,
+        "neighborhood": 0.15500000000000003,
+        "n_facts": 100
+      },
+      "15": {
+        "edits_range": "1500-1600",
+        "efficacy": 0.29,
+        "paraphrase": 0.09,
+        "neighborhood": 0.21999999999999997,
+        "n_facts": 100
+      },
+      "16": {
+        "edits_range": "1600-1700",
+        "efficacy": 0.33,
+        "paraphrase": 0.285,
+        "neighborhood": 0.182,
+        "n_facts": 100
+      },
+      "17": {
+        "edits_range": "1700-1800",
+        "efficacy": 0.29,
+        "paraphrase": 0.085,
+        "neighborhood": 0.237,
+        "n_facts": 100
+      },
+      "18": {
+        "edits_range": "1800-1900",
+        "efficacy": 0.14,
+        "paraphrase": 0.095,
+        "neighborhood": 0.206,
+        "n_facts": 100
+      },
+      "19": {
+        "edits_range": "1900-2000",
+        "efficacy": 0.3,
+        "paraphrase": 0.225,
+        "neighborhood": 0.24900000000000005,
+        "n_facts": 100
+      }
+    }
+  },
+  "3000_edits": {
+    "checkpoint": "batch_29",
+    "total_edits": 3000,
+    "n_evaluated": 3000,
+    "all_facts": {
+      "efficacy": 0.3403,
+      "paraphrase": 0.215,
+      "neighborhood": 0.1845
+    },
+    "first_1k": {
+      "efficacy": 0.342,
+      "paraphrase": 0.199,
+      "neighborhood": 0.1591
+    },
+    "middle_cohort": {
+      "efficacy": 0.348,
+      "paraphrase": 0.1905,
+      "neighborhood": 0.1855
+    },
+    "latest_1k": {
+      "efficacy": 0.331,
+      "paraphrase": 0.2555,
+      "neighborhood": 0.2088
+    },
+    "latest_100": {
+      "efficacy": 0.37,
+      "paraphrase": 0.29,
+      "neighborhood": 0.18
+    },
+    "retention_auc": 0.3405,
+    "cohort_metrics": {
+      "0": {
+        "edits_range": "0-100",
+        "efficacy": 0.3,
+        "paraphrase": 0.265,
+        "neighborhood": 0.133,
+        "n_facts": 100
+      },
+      "1": {
+        "edits_range": "100-200",
+        "efficacy": 0.4,
+        "paraphrase": 0.195,
+        "neighborhood": 0.187,
+        "n_facts": 100
+      },
+      "2": {
+        "edits_range": "200-300",
+        "efficacy": 0.2,
+        "paraphrase": 0.07,
+        "neighborhood": 0.275,
+        "n_facts": 100
+      },
+      "3": {
+        "edits_range": "300-400",
+        "efficacy": 0.32,
+        "paraphrase": 0.13,
+        "neighborhood": 0.105,
+        "n_facts": 100
+      },
+      "4": {
+        "edits_range": "400-500",
+        "efficacy": 0.29,
+        "paraphrase": 0.18,
+        "neighborhood": 0.196,
+        "n_facts": 100
+      },
+      "5": {
+        "edits_range": "500-600",
+        "efficacy": 0.54,
+        "paraphrase": 0.37,
+        "neighborhood": 0.099,
+        "n_facts": 100
+      },
+      "6": {
+        "edits_range": "600-700",
+        "efficacy": 0.26,
+        "paraphrase": 0.2,
+        "neighborhood": 0.14200000000000002,
+        "n_facts": 100
+      },
+      "7": {
+        "edits_range": "700-800",
+        "efficacy": 0.53,
+        "paraphrase": 0.315,
+        "neighborhood": 0.11,
+        "n_facts": 100
+      },
+      "8": {
+        "edits_range": "800-900",
+        "efficacy": 0.33,
+        "paraphrase": 0.13,
+        "neighborhood": 0.16,
+        "n_facts": 100
+      },
+      "9": {
+        "edits_range": "900-1000",
+        "efficacy": 0.25,
+        "paraphrase": 0.135,
+        "neighborhood": 0.184,
+        "n_facts": 100
+      },
+      "10": {
+        "edits_range": "1000-1100",
+        "efficacy": 0.31,
+        "paraphrase": 0.145,
+        "neighborhood": 0.14,
+        "n_facts": 100
+      },
+      "11": {
+        "edits_range": "1100-1200",
+        "efficacy": 0.35,
+        "paraphrase": 0.19,
+        "neighborhood": 0.18600000000000003,
+        "n_facts": 100
+      },
+      "12": {
+        "edits_range": "1200-1300",
+        "efficacy": 0.3,
+        "paraphrase": 0.11,
+        "neighborhood": 0.152,
+        "n_facts": 100
+      },
+      "13": {
+        "edits_range": "1300-1400",
+        "efficacy": 0.26,
+        "paraphrase": 0.13,
+        "neighborhood": 0.184,
+        "n_facts": 100
+      },
+      "14": {
+        "edits_range": "1400-1500",
+        "efficacy": 0.5,
+        "paraphrase": 0.395,
+        "neighborhood": 0.16599999999999998,
+        "n_facts": 100
+      },
+      "15": {
+        "edits_range": "1500-1600",
+        "efficacy": 0.4,
+        "paraphrase": 0.095,
+        "neighborhood": 0.18199999999999997,
+        "n_facts": 100
+      },
+      "16": {
+        "edits_range": "1600-1700",
+        "efficacy": 0.44,
+        "paraphrase": 0.375,
+        "neighborhood": 0.166,
+        "n_facts": 100
+      },
+      "17": {
+        "edits_range": "1700-1800",
+        "efficacy": 0.38,
+        "paraphrase": 0.11,
+        "neighborhood": 0.21599999999999997,
+        "n_facts": 100
+      },
+      "18": {
+        "edits_range": "1800-1900",
+        "efficacy": 0.17,
+        "paraphrase": 0.12,
+        "neighborhood": 0.20200000000000007,
+        "n_facts": 100
+      },
+      "19": {
+        "edits_range": "1900-2000",
+        "efficacy": 0.37,
+        "paraphrase": 0.235,
+        "neighborhood": 0.26100000000000007,
+        "n_facts": 100
+      },
+      "20": {
+        "edits_range": "2000-2100",
+        "efficacy": 0.13,
+        "paraphrase": 0.11,
+        "neighborhood": 0.158,
+        "n_facts": 100
+      },
+      "21": {
+        "edits_range": "2100-2200",
+        "efficacy": 0.26,
+        "paraphrase": 0.235,
+        "neighborhood": 0.26100000000000007,
+        "n_facts": 100
+      },
+      "22": {
+        "edits_range": "2200-2300",
+        "efficacy": 0.33,
+        "paraphrase": 0.21,
+        "neighborhood": 0.205,
+        "n_facts": 100
+      },
+      "23": {
+        "edits_range": "2300-2400",
+        "efficacy": 0.34,
+        "paraphrase": 0.295,
+        "neighborhood": 0.19599999999999998,
+        "n_facts": 100
+      },
+      "24": {
+        "edits_range": "2400-2500",
+        "efficacy": 0.24,
+        "paraphrase": 0.18,
+        "neighborhood": 0.14699999999999996,
+        "n_facts": 100
+      },
+      "25": {
+        "edits_range": "2500-2600",
+        "efficacy": 0.5,
+        "paraphrase": 0.405,
+        "neighborhood": 0.4260000000000001,
+        "n_facts": 100
+      },
+      "26": {
+        "edits_range": "2600-2700",
+        "efficacy": 0.29,
+        "paraphrase": 0.24,
+        "neighborhood": 0.21799999999999997,
+        "n_facts": 100
+      },
+      "27": {
+        "edits_range": "2700-2800",
+        "efficacy": 0.38,
+        "paraphrase": 0.29,
+        "neighborhood": 0.14200000000000002,
+        "n_facts": 100
+      },
+      "28": {
+        "edits_range": "2800-2900",
+        "efficacy": 0.47,
+        "paraphrase": 0.3,
+        "neighborhood": 0.15500000000000003,
+        "n_facts": 100
+      },
+      "29": {
+        "edits_range": "2900-3000",
+        "efficacy": 0.37,
+        "paraphrase": 0.29,
+        "neighborhood": 0.18000000000000008,
+        "n_facts": 100
+      }
+    }
+  },
+  "4000_edits": {
+    "checkpoint": "batch_39",
+    "total_edits": 4000,
+    "n_evaluated": 4000,
+    "all_facts": {
+      "efficacy": 0.4145,
+      "paraphrase": 0.2706,
+      "neighborhood": 0.16
+    },
+    "first_1k": {
+      "efficacy": 0.41,
+      "paraphrase": 0.252,
+      "neighborhood": 0.1357
+    },
+    "middle_cohort": {
+      "efficacy": 0.459,
+      "paraphrase": 0.2445,
+      "neighborhood": 0.1782
+    },
+    "latest_1k": {
+      "efficacy": 0.39,
+      "paraphrase": 0.283,
+      "neighborhood": 0.1491
+    },
+    "latest_100": {
+      "efficacy": 0.42,
+      "paraphrase": 0.345,
+      "neighborhood": 0.153
+    },
+    "retention_auc": 0.4133,
+    "cohort_metrics": {
+      "0": {
+        "edits_range": "0-100",
+        "efficacy": 0.5,
+        "paraphrase": 0.445,
+        "neighborhood": 0.053999999999999986,
+        "n_facts": 100
+      },
+      "1": {
+        "edits_range": "100-200",
+        "efficacy": 0.38,
+        "paraphrase": 0.205,
+        "neighborhood": 0.16500000000000004,
+        "n_facts": 100
+      },
+      "2": {
+        "edits_range": "200-300",
+        "efficacy": 0.21,
+        "paraphrase": 0.05,
+        "neighborhood": 0.266,
+        "n_facts": 100
+      },
+      "3": {
+        "edits_range": "300-400",
+        "efficacy": 0.34,
+        "paraphrase": 0.15,
+        "neighborhood": 0.092,
+        "n_facts": 100
+      },
+      "4": {
+        "edits_range": "400-500",
+        "efficacy": 0.46,
+        "paraphrase": 0.285,
+        "neighborhood": 0.17300000000000004,
+        "n_facts": 100
+      },
+      "5": {
+        "edits_range": "500-600",
+        "efficacy": 0.51,
+        "paraphrase": 0.34,
+        "neighborhood": 0.13,
+        "n_facts": 100
+      },
+      "6": {
+        "edits_range": "600-700",
+        "efficacy": 0.4,
+        "paraphrase": 0.31,
+        "neighborhood": 0.05800000000000001,
+        "n_facts": 100
+      },
+      "7": {
+        "edits_range": "700-800",
+        "efficacy": 0.5,
+        "paraphrase": 0.295,
+        "neighborhood": 0.132,
+        "n_facts": 100
+      },
+      "8": {
+        "edits_range": "800-900",
+        "efficacy": 0.49,
+        "paraphrase": 0.29,
+        "neighborhood": 0.11199999999999999,
+        "n_facts": 100
+      },
+      "9": {
+        "edits_range": "900-1000",
+        "efficacy": 0.31,
+        "paraphrase": 0.15,
+        "neighborhood": 0.175,
+        "n_facts": 100
+      },
+      "10": {
+        "edits_range": "1000-1100",
+        "efficacy": 0.63,
+        "paraphrase": 0.23,
+        "neighborhood": 0.127,
+        "n_facts": 100
+      },
+      "11": {
+        "edits_range": "1100-1200",
+        "efficacy": 0.4,
+        "paraphrase": 0.195,
+        "neighborhood": 0.195,
+        "n_facts": 100
+      },
+      "12": {
+        "edits_range": "1200-1300",
+        "efficacy": 0.64,
+        "paraphrase": 0.275,
+        "neighborhood": 0.12,
+        "n_facts": 100
+      },
+      "13": {
+        "edits_range": "1300-1400",
+        "efficacy": 0.25,
+        "paraphrase": 0.14,
+        "neighborhood": 0.16599999999999998,
+        "n_facts": 100
+      },
+      "14": {
+        "edits_range": "1400-1500",
+        "efficacy": 0.51,
+        "paraphrase": 0.375,
+        "neighborhood": 0.138,
+        "n_facts": 100
+      },
+      "15": {
+        "edits_range": "1500-1600",
+        "efficacy": 0.4,
+        "paraphrase": 0.1,
+        "neighborhood": 0.196,
+        "n_facts": 100
+      },
+      "16": {
+        "edits_range": "1600-1700",
+        "efficacy": 0.44,
+        "paraphrase": 0.365,
+        "neighborhood": 0.14800000000000002,
+        "n_facts": 100
+      },
+      "17": {
+        "edits_range": "1700-1800",
+        "efficacy": 0.39,
+        "paraphrase": 0.105,
+        "neighborhood": 0.22899999999999998,
+        "n_facts": 100
+      },
+      "18": {
+        "edits_range": "1800-1900",
+        "efficacy": 0.41,
+        "paraphrase": 0.29,
+        "neighborhood": 0.169,
+        "n_facts": 100
+      },
+      "19": {
+        "edits_range": "1900-2000",
+        "efficacy": 0.52,
+        "paraphrase": 0.37,
+        "neighborhood": 0.29400000000000004,
+        "n_facts": 100
+      },
+      "20": {
+        "edits_range": "2000-2100",
+        "efficacy": 0.24,
+        "paraphrase": 0.175,
+        "neighborhood": 0.14300000000000002,
+        "n_facts": 100
+      },
+      "21": {
+        "edits_range": "2100-2200",
+        "efficacy": 0.32,
+        "paraphrase": 0.275,
+        "neighborhood": 0.20800000000000002,
+        "n_facts": 100
+      },
+      "22": {
+        "edits_range": "2200-2300",
+        "efficacy": 0.39,
+        "paraphrase": 0.27,
+        "neighborhood": 0.172,
+        "n_facts": 100
+      },
+      "23": {
+        "edits_range": "2300-2400",
+        "efficacy": 0.41,
+        "paraphrase": 0.345,
+        "neighborhood": 0.151,
+        "n_facts": 100
+      },
+      "24": {
+        "edits_range": "2400-2500",
+        "efficacy": 0.34,
+        "paraphrase": 0.205,
+        "neighborhood": 0.13,
+        "n_facts": 100
+      },
+      "25": {
+        "edits_range": "2500-2600",
+        "efficacy": 0.49,
+        "paraphrase": 0.405,
+        "neighborhood": 0.3960000000000001,
+        "n_facts": 100
+      },
+      "26": {
+        "edits_range": "2600-2700",
+        "efficacy": 0.31,
+        "paraphrase": 0.27,
+        "neighborhood": 0.17600000000000005,
+        "n_facts": 100
+      },
+      "27": {
+        "edits_range": "2700-2800",
+        "efficacy": 0.53,
+        "paraphrase": 0.415,
+        "neighborhood": 0.07799999999999999,
+        "n_facts": 100
+      },
+      "28": {
+        "edits_range": "2800-2900",
+        "efficacy": 0.47,
+        "paraphrase": 0.325,
+        "neighborhood": 0.137,
+        "n_facts": 100
+      },
+      "29": {
+        "edits_range": "2900-3000",
+        "efficacy": 0.49,
+        "paraphrase": 0.345,
+        "neighborhood": 0.17700000000000007,
+        "n_facts": 100
+      },
+      "30": {
+        "edits_range": "3000-3100",
+        "efficacy": 0.38,
+        "paraphrase": 0.24,
+        "neighborhood": 0.148,
+        "n_facts": 100
+      },
+      "31": {
+        "edits_range": "3100-3200",
+        "efficacy": 0.41,
+        "paraphrase": 0.28,
+        "neighborhood": 0.17700000000000002,
+        "n_facts": 100
+      },
+      "32": {
+        "edits_range": "3200-3300",
+        "efficacy": 0.46,
+        "paraphrase": 0.375,
+        "neighborhood": 0.17400000000000002,
+        "n_facts": 100
+      },
+      "33": {
+        "edits_range": "3300-3400",
+        "efficacy": 0.42,
+        "paraphrase": 0.305,
+        "neighborhood": 0.122,
+        "n_facts": 100
+      },
+      "34": {
+        "edits_range": "3400-3500",
+        "efficacy": 0.27,
+        "paraphrase": 0.18,
+        "neighborhood": 0.158,
+        "n_facts": 100
+      },
+      "35": {
+        "edits_range": "3500-3600",
+        "efficacy": 0.38,
+        "paraphrase": 0.235,
+        "neighborhood": 0.10300000000000001,
+        "n_facts": 100
+      },
+      "36": {
+        "edits_range": "3600-3700",
+        "efficacy": 0.39,
+        "paraphrase": 0.305,
+        "neighborhood": 0.16399999999999998,
+        "n_facts": 100
+      },
+      "37": {
+        "edits_range": "3700-3800",
+        "efficacy": 0.39,
+        "paraphrase": 0.265,
+        "neighborhood": 0.135,
+        "n_facts": 100
+      },
+      "38": {
+        "edits_range": "3800-3900",
+        "efficacy": 0.38,
+        "paraphrase": 0.3,
+        "neighborhood": 0.157,
+        "n_facts": 100
+      },
+      "39": {
+        "edits_range": "3900-4000",
+        "efficacy": 0.42,
+        "paraphrase": 0.345,
+        "neighborhood": 0.153,
+        "n_facts": 100
+      }
+    }
+  },
+  "5000_edits": {
+    "checkpoint": "batch_49",
+    "total_edits": 5000,
+    "n_evaluated": 5000,
+    "all_facts": {
+      "efficacy": 0.4794,
+      "paraphrase": 0.3212,
+      "neighborhood": 0.1569
+    },
+    "first_1k": {
+      "efficacy": 0.446,
+      "paraphrase": 0.269,
+      "neighborhood": 0.1212
+    },
+    "middle_cohort": {
+      "efficacy": 0.486,
+      "paraphrase": 0.2695,
+      "neighborhood": 0.1652
+    },
+    "latest_1k": {
+      "efficacy": 0.497,
+      "paraphrase": 0.338,
+      "neighborhood": 0.1931
+    },
+    "latest_100": {
+      "efficacy": 0.57,
+      "paraphrase": 0.41,
+      "neighborhood": 0.13
+    },
+    "retention_auc": 0.4782,
+    "cohort_metrics": {
+      "0": {
+        "edits_range": "0-100",
+        "efficacy": 0.51,
+        "paraphrase": 0.4,
+        "neighborhood": 0.053999999999999986,
+        "n_facts": 100
+      },
+      "1": {
+        "edits_range": "100-200",
+        "efficacy": 0.35,
+        "paraphrase": 0.18,
+        "neighborhood": 0.142,
+        "n_facts": 100
+      },
+      "2": {
+        "edits_range": "200-300",
+        "efficacy": 0.59,
+        "paraphrase": 0.325,
+        "neighborhood": 0.19000000000000003,
+        "n_facts": 100
+      },
+      "3": {
+        "edits_range": "300-400",
+        "efficacy": 0.3,
+        "paraphrase": 0.15,
+        "neighborhood": 0.094,
+        "n_facts": 100
+      },
+      "4": {
+        "edits_range": "400-500",
+        "efficacy": 0.44,
+        "paraphrase": 0.285,
+        "neighborhood": 0.16699999999999998,
+        "n_facts": 100
+      },
+      "5": {
+        "edits_range": "500-600",
+        "efficacy": 0.47,
+        "paraphrase": 0.305,
+        "neighborhood": 0.10400000000000001,
+        "n_facts": 100
+      },
+      "6": {
+        "edits_range": "600-700",
+        "efficacy": 0.41,
+        "paraphrase": 0.31,
+        "neighborhood": 0.063,
+        "n_facts": 100
+      },
+      "7": {
+        "edits_range": "700-800",
+        "efficacy": 0.49,
+        "paraphrase": 0.26,
+        "neighborhood": 0.11100000000000002,
+        "n_facts": 100
+      },
+      "8": {
+        "edits_range": "800-900",
+        "efficacy": 0.5,
+        "paraphrase": 0.27,
+        "neighborhood": 0.11999999999999998,
+        "n_facts": 100
+      },
+      "9": {
+        "edits_range": "900-1000",
+        "efficacy": 0.4,
+        "paraphrase": 0.205,
+        "neighborhood": 0.16700000000000004,
+        "n_facts": 100
+      },
+      "10": {
+        "edits_range": "1000-1100",
+        "efficacy": 0.6,
+        "paraphrase": 0.25,
+        "neighborhood": 0.13299999999999998,
+        "n_facts": 100
+      },
+      "11": {
+        "edits_range": "1100-1200",
+        "efficacy": 0.42,
+        "paraphrase": 0.205,
+        "neighborhood": 0.149,
+        "n_facts": 100
+      },
+      "12": {
+        "edits_range": "1200-1300",
+        "efficacy": 0.6,
+        "paraphrase": 0.25,
+        "neighborhood": 0.124,
+        "n_facts": 100
+      },
+      "13": {
+        "edits_range": "1300-1400",
+        "efficacy": 0.33,
+        "paraphrase": 0.2,
+        "neighborhood": 0.13,
+        "n_facts": 100
+      },
+      "14": {
+        "edits_range": "1400-1500",
+        "efficacy": 0.53,
+        "paraphrase": 0.375,
+        "neighborhood": 0.14700000000000002,
+        "n_facts": 100
+      },
+      "15": {
+        "edits_range": "1500-1600",
+        "efficacy": 0.45,
+        "paraphrase": 0.135,
+        "neighborhood": 0.19799999999999998,
+        "n_facts": 100
+      },
+      "16": {
+        "edits_range": "1600-1700",
+        "efficacy": 0.46,
+        "paraphrase": 0.415,
+        "neighborhood": 0.138,
+        "n_facts": 100
+      },
+      "17": {
+        "edits_range": "1700-1800",
+        "efficacy": 0.44,
+        "paraphrase": 0.105,
+        "neighborhood": 0.20199999999999999,
+        "n_facts": 100
+      },
+      "18": {
+        "edits_range": "1800-1900",
+        "efficacy": 0.52,
+        "paraphrase": 0.38,
+        "neighborhood": 0.177,
+        "n_facts": 100
+      },
+      "19": {
+        "edits_range": "1900-2000",
+        "efficacy": 0.51,
+        "paraphrase": 0.38,
+        "neighborhood": 0.254,
+        "n_facts": 100
+      },
+      "20": {
+        "edits_range": "2000-2100",
+        "efficacy": 0.44,
+        "paraphrase": 0.31,
+        "neighborhood": 0.14600000000000002,
+        "n_facts": 100
+      },
+      "21": {
+        "edits_range": "2100-2200",
+        "efficacy": 0.48,
+        "paraphrase": 0.4,
+        "neighborhood": 0.18800000000000006,
+        "n_facts": 100
+      },
+      "22": {
+        "edits_range": "2200-2300",
+        "efficacy": 0.55,
+        "paraphrase": 0.395,
+        "neighborhood": 0.155,
+        "n_facts": 100
+      },
+      "23": {
+        "edits_range": "2300-2400",
+        "efficacy": 0.56,
+        "paraphrase": 0.505,
+        "neighborhood": 0.15100000000000002,
+        "n_facts": 100
+      },
+      "24": {
+        "edits_range": "2400-2500",
+        "efficacy": 0.46,
+        "paraphrase": 0.3,
+        "neighborhood": 0.13599999999999998,
+        "n_facts": 100
+      },
+      "25": {
+        "edits_range": "2500-2600",
+        "efficacy": 0.51,
+        "paraphrase": 0.425,
+        "neighborhood": 0.3450000000000001,
+        "n_facts": 100
+      },
+      "26": {
+        "edits_range": "2600-2700",
+        "efficacy": 0.45,
+        "paraphrase": 0.395,
+        "neighborhood": 0.15000000000000002,
+        "n_facts": 100
+      },
+      "27": {
+        "edits_range": "2700-2800",
+        "efficacy": 0.49,
+        "paraphrase": 0.395,
+        "neighborhood": 0.08499999999999998,
+        "n_facts": 100
+      },
+      "28": {
+        "edits_range": "2800-2900",
+        "efficacy": 0.47,
+        "paraphrase": 0.325,
+        "neighborhood": 0.144,
+        "n_facts": 100
+      },
+      "29": {
+        "edits_range": "2900-3000",
+        "efficacy": 0.48,
+        "paraphrase": 0.375,
+        "neighborhood": 0.15699999999999997,
+        "n_facts": 100
+      },
+      "30": {
+        "edits_range": "3000-3100",
+        "efficacy": 0.44,
+        "paraphrase": 0.28,
+        "neighborhood": 0.135,
+        "n_facts": 100
+      },
+      "31": {
+        "edits_range": "3100-3200",
+        "efficacy": 0.44,
+        "paraphrase": 0.29,
+        "neighborhood": 0.15700000000000003,
+        "n_facts": 100
+      },
+      "32": {
+        "edits_range": "3200-3300",
+        "efficacy": 0.51,
+        "paraphrase": 0.395,
+        "neighborhood": 0.161,
+        "n_facts": 100
+      },
+      "33": {
+        "edits_range": "3300-3400",
+        "efficacy": 0.45,
+        "paraphrase": 0.36,
+        "neighborhood": 0.107,
+        "n_facts": 100
+      },
+      "34": {
+        "edits_range": "3400-3500",
+        "efficacy": 0.43,
+        "paraphrase": 0.32,
+        "neighborhood": 0.132,
+        "n_facts": 100
+      },
+      "35": {
+        "edits_range": "3500-3600",
+        "efficacy": 0.55,
+        "paraphrase": 0.37,
+        "neighborhood": 0.11100000000000002,
+        "n_facts": 100
+      },
+      "36": {
+        "edits_range": "3600-3700",
+        "efficacy": 0.41,
+        "paraphrase": 0.32,
+        "neighborhood": 0.149,
+        "n_facts": 100
+      },
+      "37": {
+        "edits_range": "3700-3800",
+        "efficacy": 0.51,
+        "paraphrase": 0.37,
+        "neighborhood": 0.154,
+        "n_facts": 100
+      },
+      "38": {
+        "edits_range": "3800-3900",
+        "efficacy": 0.53,
+        "paraphrase": 0.37,
+        "neighborhood": 0.13499999999999998,
+        "n_facts": 100
+      },
+      "39": {
+        "edits_range": "3900-4000",
+        "efficacy": 0.52,
+        "paraphrase": 0.395,
+        "neighborhood": 0.15,
+        "n_facts": 100
+      },
+      "40": {
+        "edits_range": "4000-4100",
+        "efficacy": 0.43,
+        "paraphrase": 0.26,
+        "neighborhood": 0.182,
+        "n_facts": 100
+      },
+      "41": {
+        "edits_range": "4100-4200",
+        "efficacy": 0.54,
+        "paraphrase": 0.385,
+        "neighborhood": 0.132,
+        "n_facts": 100
+      },
+      "42": {
+        "edits_range": "4200-4300",
+        "efficacy": 0.49,
+        "paraphrase": 0.385,
+        "neighborhood": 0.23900000000000002,
+        "n_facts": 100
+      },
+      "43": {
+        "edits_range": "4300-4400",
+        "efficacy": 0.58,
+        "paraphrase": 0.21,
+        "neighborhood": 0.188,
+        "n_facts": 100
+      },
+      "44": {
+        "edits_range": "4400-4500",
+        "efficacy": 0.52,
+        "paraphrase": 0.46,
+        "neighborhood": 0.306,
+        "n_facts": 100
+      },
+      "45": {
+        "edits_range": "4500-4600",
+        "efficacy": 0.49,
+        "paraphrase": 0.3,
+        "neighborhood": 0.13699999999999998,
+        "n_facts": 100
+      },
+      "46": {
+        "edits_range": "4600-4700",
+        "efficacy": 0.36,
+        "paraphrase": 0.245,
+        "neighborhood": 0.20500000000000004,
+        "n_facts": 100
+      },
+      "47": {
+        "edits_range": "4700-4800",
+        "efficacy": 0.52,
+        "paraphrase": 0.365,
+        "neighborhood": 0.143,
+        "n_facts": 100
+      },
+      "48": {
+        "edits_range": "4800-4900",
+        "efficacy": 0.47,
+        "paraphrase": 0.36,
+        "neighborhood": 0.26899999999999996,
+        "n_facts": 100
+      },
+      "49": {
+        "edits_range": "4900-5000",
+        "efficacy": 0.57,
+        "paraphrase": 0.41,
+        "neighborhood": 0.13,
+        "n_facts": 100
+      }
+    }
+  },
+  "6000_edits": {
+    "checkpoint": "batch_59",
+    "total_edits": 6000,
+    "n_evaluated": 6000,
+    "all_facts": {
+      "efficacy": 0.5582,
+      "paraphrase": 0.3874,
+      "neighborhood": 0.1529
+    },
+    "first_1k": {
+      "efficacy": 0.422,
+      "paraphrase": 0.2615,
+      "neighborhood": 0.1214
+    },
+    "middle_cohort": {
+      "efficacy": 0.485,
+      "paraphrase": 0.275,
+      "neighborhood": 0.1607
+    },
+    "latest_1k": {
+      "efficacy": 0.992,
+      "paraphrase": 0.739,
+      "neighborhood": 0.1429
+    },
+    "latest_100": {
+      "efficacy": 1.0,
+      "paraphrase": 0.705,
+      "neighborhood": 0.151
+    },
+    "retention_auc": 0.5553,
+    "cohort_metrics": {
+      "0": {
+        "edits_range": "0-100",
+        "efficacy": 0.46,
+        "paraphrase": 0.385,
+        "neighborhood": 0.057999999999999996,
+        "n_facts": 100
+      },
+      "1": {
+        "edits_range": "100-200",
+        "efficacy": 0.35,
+        "paraphrase": 0.175,
+        "neighborhood": 0.138,
+        "n_facts": 100
+      },
+      "2": {
+        "edits_range": "200-300",
+        "efficacy": 0.55,
+        "paraphrase": 0.34,
+        "neighborhood": 0.19500000000000003,
+        "n_facts": 100
+      },
+      "3": {
+        "edits_range": "300-400",
+        "efficacy": 0.28,
+        "paraphrase": 0.155,
+        "neighborhood": 0.09899999999999999,
+        "n_facts": 100
+      },
+      "4": {
+        "edits_range": "400-500",
+        "efficacy": 0.44,
+        "paraphrase": 0.25,
+        "neighborhood": 0.16699999999999998,
+        "n_facts": 100
+      },
+      "5": {
+        "edits_range": "500-600",
+        "efficacy": 0.46,
+        "paraphrase": 0.315,
+        "neighborhood": 0.098,
+        "n_facts": 100
+      },
+      "6": {
+        "edits_range": "600-700",
+        "efficacy": 0.33,
+        "paraphrase": 0.29,
+        "neighborhood": 0.06899999999999999,
+        "n_facts": 100
+      },
+      "7": {
+        "edits_range": "700-800",
+        "efficacy": 0.47,
+        "paraphrase": 0.27,
+        "neighborhood": 0.103,
+        "n_facts": 100
+      },
+      "8": {
+        "edits_range": "800-900",
+        "efficacy": 0.49,
+        "paraphrase": 0.235,
+        "neighborhood": 0.126,
+        "n_facts": 100
+      },
+      "9": {
+        "edits_range": "900-1000",
+        "efficacy": 0.39,
+        "paraphrase": 0.2,
+        "neighborhood": 0.161,
+        "n_facts": 100
+      },
+      "10": {
+        "edits_range": "1000-1100",
+        "efficacy": 0.57,
+        "paraphrase": 0.24,
+        "neighborhood": 0.127,
+        "n_facts": 100
+      },
+      "11": {
+        "edits_range": "1100-1200",
+        "efficacy": 0.41,
+        "paraphrase": 0.215,
+        "neighborhood": 0.14300000000000002,
+        "n_facts": 100
+      },
+      "12": {
+        "edits_range": "1200-1300",
+        "efficacy": 0.6,
+        "paraphrase": 0.27,
+        "neighborhood": 0.11999999999999998,
+        "n_facts": 100
+      },
+      "13": {
+        "edits_range": "1300-1400",
+        "efficacy": 0.34,
+        "paraphrase": 0.22,
+        "neighborhood": 0.12300000000000001,
+        "n_facts": 100
+      },
+      "14": {
+        "edits_range": "1400-1500",
+        "efficacy": 0.54,
+        "paraphrase": 0.37,
+        "neighborhood": 0.141,
+        "n_facts": 100
+      },
+      "15": {
+        "edits_range": "1500-1600",
+        "efficacy": 0.46,
+        "paraphrase": 0.14,
+        "neighborhood": 0.18500000000000003,
+        "n_facts": 100
+      },
+      "16": {
+        "edits_range": "1600-1700",
+        "efficacy": 0.47,
+        "paraphrase": 0.405,
+        "neighborhood": 0.14300000000000002,
+        "n_facts": 100
+      },
+      "17": {
+        "edits_range": "1700-1800",
+        "efficacy": 0.41,
+        "paraphrase": 0.125,
+        "neighborhood": 0.20399999999999996,
+        "n_facts": 100
+      },
+      "18": {
+        "edits_range": "1800-1900",
+        "efficacy": 0.52,
+        "paraphrase": 0.36,
+        "neighborhood": 0.17700000000000002,
+        "n_facts": 100
+      },
+      "19": {
+        "edits_range": "1900-2000",
+        "efficacy": 0.53,
+        "paraphrase": 0.405,
+        "neighborhood": 0.24400000000000002,
+        "n_facts": 100
+      },
+      "20": {
+        "edits_range": "2000-2100",
+        "efficacy": 0.43,
+        "paraphrase": 0.32,
+        "neighborhood": 0.15100000000000002,
+        "n_facts": 100
+      },
+      "21": {
+        "edits_range": "2100-2200",
+        "efficacy": 0.47,
+        "paraphrase": 0.375,
+        "neighborhood": 0.19300000000000003,
+        "n_facts": 100
+      },
+      "22": {
+        "edits_range": "2200-2300",
+        "efficacy": 0.54,
+        "paraphrase": 0.38,
+        "neighborhood": 0.17299999999999996,
+        "n_facts": 100
+      },
+      "23": {
+        "edits_range": "2300-2400",
+        "efficacy": 0.54,
+        "paraphrase": 0.495,
+        "neighborhood": 0.149,
+        "n_facts": 100
+      },
+      "24": {
+        "edits_range": "2400-2500",
+        "efficacy": 0.48,
+        "paraphrase": 0.285,
+        "neighborhood": 0.136,
+        "n_facts": 100
+      },
+      "25": {
+        "edits_range": "2500-2600",
+        "efficacy": 0.52,
+        "paraphrase": 0.425,
+        "neighborhood": 0.32600000000000007,
+        "n_facts": 100
+      },
+      "26": {
+        "edits_range": "2600-2700",
+        "efficacy": 0.43,
+        "paraphrase": 0.385,
+        "neighborhood": 0.16700000000000004,
+        "n_facts": 100
+      },
+      "27": {
+        "edits_range": "2700-2800",
+        "efficacy": 0.46,
+        "paraphrase": 0.36,
+        "neighborhood": 0.08199999999999999,
+        "n_facts": 100
+      },
+      "28": {
+        "edits_range": "2800-2900",
+        "efficacy": 0.47,
+        "paraphrase": 0.33,
+        "neighborhood": 0.13699999999999998,
+        "n_facts": 100
+      },
+      "29": {
+        "edits_range": "2900-3000",
+        "efficacy": 0.48,
+        "paraphrase": 0.385,
+        "neighborhood": 0.162,
+        "n_facts": 100
+      },
+      "30": {
+        "edits_range": "3000-3100",
+        "efficacy": 0.43,
+        "paraphrase": 0.28,
+        "neighborhood": 0.13799999999999998,
+        "n_facts": 100
+      },
+      "31": {
+        "edits_range": "3100-3200",
+        "efficacy": 0.41,
+        "paraphrase": 0.285,
+        "neighborhood": 0.156,
+        "n_facts": 100
+      },
+      "32": {
+        "edits_range": "3200-3300",
+        "efficacy": 0.52,
+        "paraphrase": 0.395,
+        "neighborhood": 0.16200000000000003,
+        "n_facts": 100
+      },
+      "33": {
+        "edits_range": "3300-3400",
+        "efficacy": 0.47,
+        "paraphrase": 0.37,
+        "neighborhood": 0.111,
+        "n_facts": 100
+      },
+      "34": {
+        "edits_range": "3400-3500",
+        "efficacy": 0.42,
+        "paraphrase": 0.32,
+        "neighborhood": 0.135,
+        "n_facts": 100
+      },
+      "35": {
+        "edits_range": "3500-3600",
+        "efficacy": 0.54,
+        "paraphrase": 0.36,
+        "neighborhood": 0.107,
+        "n_facts": 100
+      },
+      "36": {
+        "edits_range": "3600-3700",
+        "efficacy": 0.41,
+        "paraphrase": 0.305,
+        "neighborhood": 0.14500000000000002,
+        "n_facts": 100
+      },
+      "37": {
+        "edits_range": "3700-3800",
+        "efficacy": 0.52,
+        "paraphrase": 0.36,
+        "neighborhood": 0.148,
+        "n_facts": 100
+      },
+      "38": {
+        "edits_range": "3800-3900",
+        "efficacy": 0.53,
+        "paraphrase": 0.39,
+        "neighborhood": 0.13599999999999998,
+        "n_facts": 100
+      },
+      "39": {
+        "edits_range": "3900-4000",
+        "efficacy": 0.51,
+        "paraphrase": 0.38,
+        "neighborhood": 0.141,
+        "n_facts": 100
+      },
+      "40": {
+        "edits_range": "4000-4100",
+        "efficacy": 0.42,
+        "paraphrase": 0.24,
+        "neighborhood": 0.169,
+        "n_facts": 100
+      },
+      "41": {
+        "edits_range": "4100-4200",
+        "efficacy": 0.53,
+        "paraphrase": 0.4,
+        "neighborhood": 0.136,
+        "n_facts": 100
+      },
+      "42": {
+        "edits_range": "4200-4300",
+        "efficacy": 0.49,
+        "paraphrase": 0.38,
+        "neighborhood": 0.22900000000000006,
+        "n_facts": 100
+      },
+      "43": {
+        "edits_range": "4300-4400",
+        "efficacy": 0.56,
+        "paraphrase": 0.195,
+        "neighborhood": 0.17800000000000002,
+        "n_facts": 100
+      },
+      "44": {
+        "edits_range": "4400-4500",
+        "efficacy": 0.53,
+        "paraphrase": 0.46,
+        "neighborhood": 0.298,
+        "n_facts": 100
+      },
+      "45": {
+        "edits_range": "4500-4600",
+        "efficacy": 0.48,
+        "paraphrase": 0.29,
+        "neighborhood": 0.138,
+        "n_facts": 100
+      },
+      "46": {
+        "edits_range": "4600-4700",
+        "efficacy": 0.35,
+        "paraphrase": 0.225,
+        "neighborhood": 0.20199999999999999,
+        "n_facts": 100
+      },
+      "47": {
+        "edits_range": "4700-4800",
+        "efficacy": 0.52,
+        "paraphrase": 0.34,
+        "neighborhood": 0.137,
+        "n_facts": 100
+      },
+      "48": {
+        "edits_range": "4800-4900",
+        "efficacy": 0.47,
+        "paraphrase": 0.36,
+        "neighborhood": 0.245,
+        "n_facts": 100
+      },
+      "49": {
+        "edits_range": "4900-5000",
+        "efficacy": 0.57,
+        "paraphrase": 0.415,
+        "neighborhood": 0.137,
+        "n_facts": 100
+      },
+      "50": {
+        "edits_range": "5000-5100",
+        "efficacy": 0.96,
+        "paraphrase": 0.68,
+        "neighborhood": 0.09,
+        "n_facts": 100
+      },
+      "51": {
+        "edits_range": "5100-5200",
+        "efficacy": 1.0,
+        "paraphrase": 0.775,
+        "neighborhood": 0.155,
+        "n_facts": 100
+      },
+      "52": {
+        "edits_range": "5200-5300",
+        "efficacy": 0.99,
+        "paraphrase": 0.69,
+        "neighborhood": 0.149,
+        "n_facts": 100
+      },
+      "53": {
+        "edits_range": "5300-5400",
+        "efficacy": 0.99,
+        "paraphrase": 0.68,
+        "neighborhood": 0.133,
+        "n_facts": 100
+      },
+      "54": {
+        "edits_range": "5400-5500",
+        "efficacy": 0.99,
+        "paraphrase": 0.77,
+        "neighborhood": 0.19800000000000004,
+        "n_facts": 100
+      },
+      "55": {
+        "edits_range": "5500-5600",
+        "efficacy": 0.99,
+        "paraphrase": 0.75,
+        "neighborhood": 0.145,
+        "n_facts": 100
+      },
+      "56": {
+        "edits_range": "5600-5700",
+        "efficacy": 1.0,
+        "paraphrase": 0.84,
+        "neighborhood": 0.18600000000000003,
+        "n_facts": 100
+      },
+      "57": {
+        "edits_range": "5700-5800",
+        "efficacy": 1.0,
+        "paraphrase": 0.755,
+        "neighborhood": 0.148,
+        "n_facts": 100
+      },
+      "58": {
+        "edits_range": "5800-5900",
+        "efficacy": 1.0,
+        "paraphrase": 0.745,
+        "neighborhood": 0.07400000000000001,
+        "n_facts": 100
+      },
+      "59": {
+        "edits_range": "5900-6000",
+        "efficacy": 1.0,
+        "paraphrase": 0.705,
+        "neighborhood": 0.151,
+        "n_facts": 100
+      }
+    }
+  },
+  "7000_edits": {
+    "checkpoint": "batch_69",
+    "total_edits": 7000,
+    "n_evaluated": 7000,
+    "all_facts": {
+      "efficacy": 0.6101,
+      "paraphrase": 0.4296,
+      "neighborhood": 0.155
+    },
+    "first_1k": {
+      "efficacy": 0.413,
+      "paraphrase": 0.2515,
+      "neighborhood": 0.1199
+    },
+    "middle_cohort": {
+      "efficacy": 0.458,
+      "paraphrase": 0.262,
+      "neighborhood": 0.1672
+    },
+    "latest_1k": {
+      "efficacy": 0.996,
+      "paraphrase": 0.7685,
+      "neighborhood": 0.1639
+    },
+    "latest_100": {
+      "efficacy": 0.98,
+      "paraphrase": 0.575,
+      "neighborhood": 0.152
+    },
+    "retention_auc": 0.6086,
+    "cohort_metrics": {
+      "0": {
+        "edits_range": "0-100",
+        "efficacy": 0.45,
+        "paraphrase": 0.38,
+        "neighborhood": 0.06299999999999999,
+        "n_facts": 100
+      },
+      "1": {
+        "edits_range": "100-200",
+        "efficacy": 0.37,
+        "paraphrase": 0.17,
+        "neighborhood": 0.13699999999999998,
+        "n_facts": 100
+      },
+      "2": {
+        "edits_range": "200-300",
+        "efficacy": 0.55,
+        "paraphrase": 0.31,
+        "neighborhood": 0.18200000000000002,
+        "n_facts": 100
+      },
+      "3": {
+        "edits_range": "300-400",
+        "efficacy": 0.26,
+        "paraphrase": 0.14,
+        "neighborhood": 0.10000000000000002,
+        "n_facts": 100
+      },
+      "4": {
+        "edits_range": "400-500",
+        "efficacy": 0.42,
+        "paraphrase": 0.25,
+        "neighborhood": 0.16400000000000003,
+        "n_facts": 100
+      },
+      "5": {
+        "edits_range": "500-600",
+        "efficacy": 0.46,
+        "paraphrase": 0.31,
+        "neighborhood": 0.09200000000000001,
+        "n_facts": 100
+      },
+      "6": {
+        "edits_range": "600-700",
+        "efficacy": 0.29,
+        "paraphrase": 0.28,
+        "neighborhood": 0.066,
+        "n_facts": 100
+      },
+      "7": {
+        "edits_range": "700-800",
+        "efficacy": 0.48,
+        "paraphrase": 0.28,
+        "neighborhood": 0.10300000000000001,
+        "n_facts": 100
+      },
+      "8": {
+        "edits_range": "800-900",
+        "efficacy": 0.49,
+        "paraphrase": 0.205,
+        "neighborhood": 0.128,
+        "n_facts": 100
+      },
+      "9": {
+        "edits_range": "900-1000",
+        "efficacy": 0.36,
+        "paraphrase": 0.19,
+        "neighborhood": 0.16399999999999998,
+        "n_facts": 100
+      },
+      "10": {
+        "edits_range": "1000-1100",
+        "efficacy": 0.56,
+        "paraphrase": 0.25,
+        "neighborhood": 0.132,
+        "n_facts": 100
+      },
+      "11": {
+        "edits_range": "1100-1200",
+        "efficacy": 0.39,
+        "paraphrase": 0.205,
+        "neighborhood": 0.16400000000000003,
+        "n_facts": 100
+      },
+      "12": {
+        "edits_range": "1200-1300",
+        "efficacy": 0.56,
+        "paraphrase": 0.235,
+        "neighborhood": 0.118,
+        "n_facts": 100
+      },
+      "13": {
+        "edits_range": "1300-1400",
+        "efficacy": 0.31,
+        "paraphrase": 0.205,
+        "neighborhood": 0.13299999999999998,
+        "n_facts": 100
+      },
+      "14": {
+        "edits_range": "1400-1500",
+        "efficacy": 0.48,
+        "paraphrase": 0.33,
+        "neighborhood": 0.138,
+        "n_facts": 100
+      },
+      "15": {
+        "edits_range": "1500-1600",
+        "efficacy": 0.44,
+        "paraphrase": 0.135,
+        "neighborhood": 0.19800000000000004,
+        "n_facts": 100
+      },
+      "16": {
+        "edits_range": "1600-1700",
+        "efficacy": 0.45,
+        "paraphrase": 0.395,
+        "neighborhood": 0.158,
+        "n_facts": 100
+      },
+      "17": {
+        "edits_range": "1700-1800",
+        "efficacy": 0.41,
+        "paraphrase": 0.115,
+        "neighborhood": 0.20500000000000004,
+        "n_facts": 100
+      },
+      "18": {
+        "edits_range": "1800-1900",
+        "efficacy": 0.49,
+        "paraphrase": 0.37,
+        "neighborhood": 0.175,
+        "n_facts": 100
+      },
+      "19": {
+        "edits_range": "1900-2000",
+        "efficacy": 0.49,
+        "paraphrase": 0.38,
+        "neighborhood": 0.25100000000000006,
+        "n_facts": 100
+      },
+      "20": {
+        "edits_range": "2000-2100",
+        "efficacy": 0.42,
+        "paraphrase": 0.33,
+        "neighborhood": 0.14500000000000002,
+        "n_facts": 100
+      },
+      "21": {
+        "edits_range": "2100-2200",
+        "efficacy": 0.47,
+        "paraphrase": 0.35,
+        "neighborhood": 0.17800000000000002,
+        "n_facts": 100
+      },
+      "22": {
+        "edits_range": "2200-2300",
+        "efficacy": 0.53,
+        "paraphrase": 0.36,
+        "neighborhood": 0.174,
+        "n_facts": 100
+      },
+      "23": {
+        "edits_range": "2300-2400",
+        "efficacy": 0.54,
+        "paraphrase": 0.455,
+        "neighborhood": 0.13399999999999998,
+        "n_facts": 100
+      },
+      "24": {
+        "edits_range": "2400-2500",
+        "efficacy": 0.48,
+        "paraphrase": 0.265,
+        "neighborhood": 0.14,
+        "n_facts": 100
+      },
+      "25": {
+        "edits_range": "2500-2600",
+        "efficacy": 0.53,
+        "paraphrase": 0.42,
+        "neighborhood": 0.326,
+        "n_facts": 100
+      },
+      "26": {
+        "edits_range": "2600-2700",
+        "efficacy": 0.44,
+        "paraphrase": 0.375,
+        "neighborhood": 0.17600000000000002,
+        "n_facts": 100
+      },
+      "27": {
+        "edits_range": "2700-2800",
+        "efficacy": 0.41,
+        "paraphrase": 0.33,
+        "neighborhood": 0.09199999999999997,
+        "n_facts": 100
+      },
+      "28": {
+        "edits_range": "2800-2900",
+        "efficacy": 0.46,
+        "paraphrase": 0.29,
+        "neighborhood": 0.15499999999999997,
+        "n_facts": 100
+      },
+      "29": {
+        "edits_range": "2900-3000",
+        "efficacy": 0.48,
+        "paraphrase": 0.375,
+        "neighborhood": 0.154,
+        "n_facts": 100
+      },
+      "30": {
+        "edits_range": "3000-3100",
+        "efficacy": 0.45,
+        "paraphrase": 0.285,
+        "neighborhood": 0.146,
+        "n_facts": 100
+      },
+      "31": {
+        "edits_range": "3100-3200",
+        "efficacy": 0.39,
+        "paraphrase": 0.265,
+        "neighborhood": 0.15,
+        "n_facts": 100
+      },
+      "32": {
+        "edits_range": "3200-3300",
+        "efficacy": 0.49,
+        "paraphrase": 0.37,
+        "neighborhood": 0.166,
+        "n_facts": 100
+      },
+      "33": {
+        "edits_range": "3300-3400",
+        "efficacy": 0.47,
+        "paraphrase": 0.335,
+        "neighborhood": 0.11000000000000001,
+        "n_facts": 100
+      },
+      "34": {
+        "edits_range": "3400-3500",
+        "efficacy": 0.43,
+        "paraphrase": 0.305,
+        "neighborhood": 0.14200000000000002,
+        "n_facts": 100
+      },
+      "35": {
+        "edits_range": "3500-3600",
+        "efficacy": 0.54,
+        "paraphrase": 0.34,
+        "neighborhood": 0.127,
+        "n_facts": 100
+      },
+      "36": {
+        "edits_range": "3600-3700",
+        "efficacy": 0.38,
+        "paraphrase": 0.28,
+        "neighborhood": 0.15600000000000003,
+        "n_facts": 100
+      },
+      "37": {
+        "edits_range": "3700-3800",
+        "efficacy": 0.5,
+        "paraphrase": 0.34,
+        "neighborhood": 0.157,
+        "n_facts": 100
+      },
+      "38": {
+        "edits_range": "3800-3900",
+        "efficacy": 0.53,
+        "paraphrase": 0.38,
+        "neighborhood": 0.139,
+        "n_facts": 100
+      },
+      "39": {
+        "edits_range": "3900-4000",
+        "efficacy": 0.52,
+        "paraphrase": 0.385,
+        "neighborhood": 0.146,
+        "n_facts": 100
+      },
+      "40": {
+        "edits_range": "4000-4100",
+        "efficacy": 0.41,
+        "paraphrase": 0.225,
+        "neighborhood": 0.15800000000000003,
+        "n_facts": 100
+      },
+      "41": {
+        "edits_range": "4100-4200",
+        "efficacy": 0.54,
+        "paraphrase": 0.39,
+        "neighborhood": 0.14200000000000002,
+        "n_facts": 100
+      },
+      "42": {
+        "edits_range": "4200-4300",
+        "efficacy": 0.47,
+        "paraphrase": 0.37,
+        "neighborhood": 0.20300000000000004,
+        "n_facts": 100
+      },
+      "43": {
+        "edits_range": "4300-4400",
+        "efficacy": 0.54,
+        "paraphrase": 0.2,
+        "neighborhood": 0.18100000000000002,
+        "n_facts": 100
+      },
+      "44": {
+        "edits_range": "4400-4500",
+        "efficacy": 0.48,
+        "paraphrase": 0.46,
+        "neighborhood": 0.275,
+        "n_facts": 100
+      },
+      "45": {
+        "edits_range": "4500-4600",
+        "efficacy": 0.46,
+        "paraphrase": 0.28,
+        "neighborhood": 0.12999999999999998,
+        "n_facts": 100
+      },
+      "46": {
+        "edits_range": "4600-4700",
+        "efficacy": 0.32,
+        "paraphrase": 0.215,
+        "neighborhood": 0.201,
+        "n_facts": 100
+      },
+      "47": {
+        "edits_range": "4700-4800",
+        "efficacy": 0.48,
+        "paraphrase": 0.345,
+        "neighborhood": 0.134,
+        "n_facts": 100
+      },
+      "48": {
+        "edits_range": "4800-4900",
+        "efficacy": 0.45,
+        "paraphrase": 0.35,
+        "neighborhood": 0.22499999999999998,
+        "n_facts": 100
+      },
+      "49": {
+        "edits_range": "4900-5000",
+        "efficacy": 0.55,
+        "paraphrase": 0.405,
+        "neighborhood": 0.132,
+        "n_facts": 100
+      },
+      "50": {
+        "edits_range": "5000-5100",
+        "efficacy": 0.96,
+        "paraphrase": 0.67,
+        "neighborhood": 0.086,
+        "n_facts": 100
+      },
+      "51": {
+        "edits_range": "5100-5200",
+        "efficacy": 1.0,
+        "paraphrase": 0.78,
+        "neighborhood": 0.165,
+        "n_facts": 100
+      },
+      "52": {
+        "edits_range": "5200-5300",
+        "efficacy": 0.97,
+        "paraphrase": 0.67,
+        "neighborhood": 0.15200000000000002,
+        "n_facts": 100
+      },
+      "53": {
+        "edits_range": "5300-5400",
+        "efficacy": 0.99,
+        "paraphrase": 0.63,
+        "neighborhood": 0.14100000000000001,
+        "n_facts": 100
+      },
+      "54": {
+        "edits_range": "5400-5500",
+        "efficacy": 0.99,
+        "paraphrase": 0.75,
+        "neighborhood": 0.20099999999999998,
+        "n_facts": 100
+      },
+      "55": {
+        "edits_range": "5500-5600",
+        "efficacy": 0.99,
+        "paraphrase": 0.745,
+        "neighborhood": 0.151,
+        "n_facts": 100
+      },
+      "56": {
+        "edits_range": "5600-5700",
+        "efficacy": 1.0,
+        "paraphrase": 0.805,
+        "neighborhood": 0.18200000000000002,
+        "n_facts": 100
+      },
+      "57": {
+        "edits_range": "5700-5800",
+        "efficacy": 0.99,
+        "paraphrase": 0.74,
+        "neighborhood": 0.152,
+        "n_facts": 100
+      },
+      "58": {
+        "edits_range": "5800-5900",
+        "efficacy": 0.99,
+        "paraphrase": 0.7,
+        "neighborhood": 0.064,
+        "n_facts": 100
+      },
+      "59": {
+        "edits_range": "5900-6000",
+        "efficacy": 1.0,
+        "paraphrase": 0.685,
+        "neighborhood": 0.15500000000000003,
+        "n_facts": 100
+      },
+      "60": {
+        "edits_range": "6000-6100",
+        "efficacy": 1.0,
+        "paraphrase": 0.89,
+        "neighborhood": 0.24100000000000002,
+        "n_facts": 100
+      },
+      "61": {
+        "edits_range": "6100-6200",
+        "efficacy": 0.99,
+        "paraphrase": 0.695,
+        "neighborhood": 0.138,
+        "n_facts": 100
+      },
+      "62": {
+        "edits_range": "6200-6300",
+        "efficacy": 1.0,
+        "paraphrase": 0.79,
+        "neighborhood": 0.18200000000000002,
+        "n_facts": 100
+      },
+      "63": {
+        "edits_range": "6300-6400",
+        "efficacy": 1.0,
+        "paraphrase": 0.78,
+        "neighborhood": 0.16400000000000003,
+        "n_facts": 100
+      },
+      "64": {
+        "edits_range": "6400-6500",
+        "efficacy": 1.0,
+        "paraphrase": 0.79,
+        "neighborhood": 0.18700000000000003,
+        "n_facts": 100
+      },
+      "65": {
+        "edits_range": "6500-6600",
+        "efficacy": 1.0,
+        "paraphrase": 0.78,
+        "neighborhood": 0.139,
+        "n_facts": 100
+      },
+      "66": {
+        "edits_range": "6600-6700",
+        "efficacy": 0.99,
+        "paraphrase": 0.795,
+        "neighborhood": 0.12200000000000001,
+        "n_facts": 100
+      },
+      "67": {
+        "edits_range": "6700-6800",
+        "efficacy": 1.0,
+        "paraphrase": 0.78,
+        "neighborhood": 0.166,
+        "n_facts": 100
+      },
+      "68": {
+        "edits_range": "6800-6900",
+        "efficacy": 1.0,
+        "paraphrase": 0.81,
+        "neighborhood": 0.14800000000000002,
+        "n_facts": 100
+      },
+      "69": {
+        "edits_range": "6900-7000",
+        "efficacy": 0.98,
+        "paraphrase": 0.575,
+        "neighborhood": 0.152,
+        "n_facts": 100
+      }
+    }
+  },
+  "8000_edits": {
+    "checkpoint": "batch_79",
+    "total_edits": 8000,
+    "n_evaluated": 8000,
+    "all_facts": {
+      "efficacy": 0.6478,
+      "paraphrase": 0.4584,
+      "neighborhood": 0.1589
+    },
+    "first_1k": {
+      "efficacy": 0.397,
+      "paraphrase": 0.241,
+      "neighborhood": 0.1241
+    },
+    "middle_cohort": {
+      "efficacy": 0.453,
+      "paraphrase": 0.2555,
+      "neighborhood": 0.167
+    },
+    "latest_1k": {
+      "efficacy": 0.997,
+      "paraphrase": 0.7465,
+      "neighborhood": 0.1661
+    },
+    "latest_100": {
+      "efficacy": 1.0,
+      "paraphrase": 0.79,
+      "neighborhood": 0.162
+    },
+    "retention_auc": 0.6468,
+    "cohort_metrics": {
+      "0": {
+        "edits_range": "0-100",
+        "efficacy": 0.44,
+        "paraphrase": 0.365,
+        "neighborhood": 0.081,
+        "n_facts": 100
+      },
+      "1": {
+        "edits_range": "100-200",
+        "efficacy": 0.33,
+        "paraphrase": 0.125,
+        "neighborhood": 0.11999999999999998,
+        "n_facts": 100
+      },
+      "2": {
+        "edits_range": "200-300",
+        "efficacy": 0.54,
+        "paraphrase": 0.315,
+        "neighborhood": 0.188,
+        "n_facts": 100
+      },
+      "3": {
+        "edits_range": "300-400",
+        "efficacy": 0.25,
+        "paraphrase": 0.125,
+        "neighborhood": 0.107,
+        "n_facts": 100
+      },
+      "4": {
+        "edits_range": "400-500",
+        "efficacy": 0.42,
+        "paraphrase": 0.28,
+        "neighborhood": 0.18899999999999997,
+        "n_facts": 100
+      },
+      "5": {
+        "edits_range": "500-600",
+        "efficacy": 0.43,
+        "paraphrase": 0.29,
+        "neighborhood": 0.09699999999999999,
+        "n_facts": 100
+      },
+      "6": {
+        "edits_range": "600-700",
+        "efficacy": 0.29,
+        "paraphrase": 0.275,
+        "neighborhood": 0.064,
+        "n_facts": 100
+      },
+      "7": {
+        "edits_range": "700-800",
+        "efficacy": 0.48,
+        "paraphrase": 0.26,
+        "neighborhood": 0.1,
+        "n_facts": 100
+      },
+      "8": {
+        "edits_range": "800-900",
+        "efficacy": 0.44,
+        "paraphrase": 0.21,
+        "neighborhood": 0.135,
+        "n_facts": 100
+      },
+      "9": {
+        "edits_range": "900-1000",
+        "efficacy": 0.35,
+        "paraphrase": 0.165,
+        "neighborhood": 0.16000000000000003,
+        "n_facts": 100
+      },
+      "10": {
+        "edits_range": "1000-1100",
+        "efficacy": 0.54,
+        "paraphrase": 0.265,
+        "neighborhood": 0.146,
+        "n_facts": 100
+      },
+      "11": {
+        "edits_range": "1100-1200",
+        "efficacy": 0.39,
+        "paraphrase": 0.215,
+        "neighborhood": 0.14800000000000002,
+        "n_facts": 100
+      },
+      "12": {
+        "edits_range": "1200-1300",
+        "efficacy": 0.57,
+        "paraphrase": 0.26,
+        "neighborhood": 0.11999999999999998,
+        "n_facts": 100
+      },
+      "13": {
+        "edits_range": "1300-1400",
+        "efficacy": 0.31,
+        "paraphrase": 0.175,
+        "neighborhood": 0.134,
+        "n_facts": 100
+      },
+      "14": {
+        "edits_range": "1400-1500",
+        "efficacy": 0.46,
+        "paraphrase": 0.35,
+        "neighborhood": 0.13699999999999998,
+        "n_facts": 100
+      },
+      "15": {
+        "edits_range": "1500-1600",
+        "efficacy": 0.42,
+        "paraphrase": 0.12,
+        "neighborhood": 0.18899999999999997,
+        "n_facts": 100
+      },
+      "16": {
+        "edits_range": "1600-1700",
+        "efficacy": 0.45,
+        "paraphrase": 0.365,
+        "neighborhood": 0.158,
+        "n_facts": 100
+      },
+      "17": {
+        "edits_range": "1700-1800",
+        "efficacy": 0.4,
+        "paraphrase": 0.1,
+        "neighborhood": 0.20400000000000001,
+        "n_facts": 100
+      },
+      "18": {
+        "edits_range": "1800-1900",
+        "efficacy": 0.49,
+        "paraphrase": 0.34,
+        "neighborhood": 0.17800000000000005,
+        "n_facts": 100
+      },
+      "19": {
+        "edits_range": "1900-2000",
+        "efficacy": 0.5,
+        "paraphrase": 0.365,
+        "neighborhood": 0.256,
+        "n_facts": 100
+      },
+      "20": {
+        "edits_range": "2000-2100",
+        "efficacy": 0.41,
+        "paraphrase": 0.315,
+        "neighborhood": 0.15500000000000003,
+        "n_facts": 100
+      },
+      "21": {
+        "edits_range": "2100-2200",
+        "efficacy": 0.45,
+        "paraphrase": 0.335,
+        "neighborhood": 0.19500000000000003,
+        "n_facts": 100
+      },
+      "22": {
+        "edits_range": "2200-2300",
+        "efficacy": 0.51,
+        "paraphrase": 0.35,
+        "neighborhood": 0.185,
+        "n_facts": 100
+      },
+      "23": {
+        "edits_range": "2300-2400",
+        "efficacy": 0.5,
+        "paraphrase": 0.435,
+        "neighborhood": 0.138,
+        "n_facts": 100
+      },
+      "24": {
+        "edits_range": "2400-2500",
+        "efficacy": 0.48,
+        "paraphrase": 0.28,
+        "neighborhood": 0.141,
+        "n_facts": 100
+      },
+      "25": {
+        "edits_range": "2500-2600",
+        "efficacy": 0.52,
+        "paraphrase": 0.4,
+        "neighborhood": 0.326,
+        "n_facts": 100
+      },
+      "26": {
+        "edits_range": "2600-2700",
+        "efficacy": 0.43,
+        "paraphrase": 0.37,
+        "neighborhood": 0.17900000000000002,
+        "n_facts": 100
+      },
+      "27": {
+        "edits_range": "2700-2800",
+        "efficacy": 0.39,
+        "paraphrase": 0.325,
+        "neighborhood": 0.09599999999999997,
+        "n_facts": 100
+      },
+      "28": {
+        "edits_range": "2800-2900",
+        "efficacy": 0.41,
+        "paraphrase": 0.3,
+        "neighborhood": 0.15799999999999997,
+        "n_facts": 100
+      },
+      "29": {
+        "edits_range": "2900-3000",
+        "efficacy": 0.48,
+        "paraphrase": 0.35,
+        "neighborhood": 0.15099999999999997,
+        "n_facts": 100
+      },
+      "30": {
+        "edits_range": "3000-3100",
+        "efficacy": 0.43,
+        "paraphrase": 0.26,
+        "neighborhood": 0.13599999999999998,
+        "n_facts": 100
+      },
+      "31": {
+        "edits_range": "3100-3200",
+        "efficacy": 0.39,
+        "paraphrase": 0.25,
+        "neighborhood": 0.15600000000000003,
+        "n_facts": 100
+      },
+      "32": {
+        "edits_range": "3200-3300",
+        "efficacy": 0.48,
+        "paraphrase": 0.365,
+        "neighborhood": 0.16200000000000003,
+        "n_facts": 100
+      },
+      "33": {
+        "edits_range": "3300-3400",
+        "efficacy": 0.4,
+        "paraphrase": 0.33,
+        "neighborhood": 0.11699999999999999,
+        "n_facts": 100
+      },
+      "34": {
+        "edits_range": "3400-3500",
+        "efficacy": 0.41,
+        "paraphrase": 0.295,
+        "neighborhood": 0.142,
+        "n_facts": 100
+      },
+      "35": {
+        "edits_range": "3500-3600",
+        "efficacy": 0.53,
+        "paraphrase": 0.305,
+        "neighborhood": 0.127,
+        "n_facts": 100
+      },
+      "36": {
+        "edits_range": "3600-3700",
+        "efficacy": 0.37,
+        "paraphrase": 0.275,
+        "neighborhood": 0.165,
+        "n_facts": 100
+      },
+      "37": {
+        "edits_range": "3700-3800",
+        "efficacy": 0.51,
+        "paraphrase": 0.35,
+        "neighborhood": 0.15600000000000003,
+        "n_facts": 100
+      },
+      "38": {
+        "edits_range": "3800-3900",
+        "efficacy": 0.53,
+        "paraphrase": 0.36,
+        "neighborhood": 0.14400000000000002,
+        "n_facts": 100
+      },
+      "39": {
+        "edits_range": "3900-4000",
+        "efficacy": 0.49,
+        "paraphrase": 0.36,
+        "neighborhood": 0.153,
+        "n_facts": 100
+      },
+      "40": {
+        "edits_range": "4000-4100",
+        "efficacy": 0.38,
+        "paraphrase": 0.2,
+        "neighborhood": 0.16,
+        "n_facts": 100
+      },
+      "41": {
+        "edits_range": "4100-4200",
+        "efficacy": 0.53,
+        "paraphrase": 0.38,
+        "neighborhood": 0.14200000000000002,
+        "n_facts": 100
+      },
+      "42": {
+        "edits_range": "4200-4300",
+        "efficacy": 0.48,
+        "paraphrase": 0.36,
+        "neighborhood": 0.21700000000000003,
+        "n_facts": 100
+      },
+      "43": {
+        "edits_range": "4300-4400",
+        "efficacy": 0.53,
+        "paraphrase": 0.185,
+        "neighborhood": 0.17300000000000001,
+        "n_facts": 100
+      },
+      "44": {
+        "edits_range": "4400-4500",
+        "efficacy": 0.48,
+        "paraphrase": 0.44,
+        "neighborhood": 0.29500000000000004,
+        "n_facts": 100
+      },
+      "45": {
+        "edits_range": "4500-4600",
+        "efficacy": 0.46,
+        "paraphrase": 0.275,
+        "neighborhood": 0.11399999999999999,
+        "n_facts": 100
+      },
+      "46": {
+        "edits_range": "4600-4700",
+        "efficacy": 0.29,
+        "paraphrase": 0.185,
+        "neighborhood": 0.19200000000000003,
+        "n_facts": 100
+      },
+      "47": {
+        "edits_range": "4700-4800",
+        "efficacy": 0.44,
+        "paraphrase": 0.33,
+        "neighborhood": 0.12300000000000001,
+        "n_facts": 100
+      },
+      "48": {
+        "edits_range": "4800-4900",
+        "efficacy": 0.44,
+        "paraphrase": 0.35,
+        "neighborhood": 0.22599999999999998,
+        "n_facts": 100
+      },
+      "49": {
+        "edits_range": "4900-5000",
+        "efficacy": 0.56,
+        "paraphrase": 0.37,
+        "neighborhood": 0.14700000000000002,
+        "n_facts": 100
+      },
+      "50": {
+        "edits_range": "5000-5100",
+        "efficacy": 0.95,
+        "paraphrase": 0.655,
+        "neighborhood": 0.095,
+        "n_facts": 100
+      },
+      "51": {
+        "edits_range": "5100-5200",
+        "efficacy": 0.98,
+        "paraphrase": 0.77,
+        "neighborhood": 0.169,
+        "n_facts": 100
+      },
+      "52": {
+        "edits_range": "5200-5300",
+        "efficacy": 0.95,
+        "paraphrase": 0.655,
+        "neighborhood": 0.155,
+        "n_facts": 100
+      },
+      "53": {
+        "edits_range": "5300-5400",
+        "efficacy": 0.99,
+        "paraphrase": 0.655,
+        "neighborhood": 0.16400000000000006,
+        "n_facts": 100
+      },
+      "54": {
+        "edits_range": "5400-5500",
+        "efficacy": 0.97,
+        "paraphrase": 0.705,
+        "neighborhood": 0.20000000000000004,
+        "n_facts": 100
+      },
+      "55": {
+        "edits_range": "5500-5600",
+        "efficacy": 0.95,
+        "paraphrase": 0.735,
+        "neighborhood": 0.14400000000000002,
+        "n_facts": 100
+      },
+      "56": {
+        "edits_range": "5600-5700",
+        "efficacy": 1.0,
+        "paraphrase": 0.8,
+        "neighborhood": 0.17300000000000001,
+        "n_facts": 100
+      },
+      "57": {
+        "edits_range": "5700-5800",
+        "efficacy": 0.97,
+        "paraphrase": 0.715,
+        "neighborhood": 0.148,
+        "n_facts": 100
+      },
+      "58": {
+        "edits_range": "5800-5900",
+        "efficacy": 0.94,
+        "paraphrase": 0.67,
+        "neighborhood": 0.068,
+        "n_facts": 100
+      },
+      "59": {
+        "edits_range": "5900-6000",
+        "efficacy": 1.0,
+        "paraphrase": 0.665,
+        "neighborhood": 0.165,
+        "n_facts": 100
+      },
+      "60": {
+        "edits_range": "6000-6100",
+        "efficacy": 1.0,
+        "paraphrase": 0.885,
+        "neighborhood": 0.251,
+        "n_facts": 100
+      },
+      "61": {
+        "edits_range": "6100-6200",
+        "efficacy": 0.99,
+        "paraphrase": 0.71,
+        "neighborhood": 0.14,
+        "n_facts": 100
+      },
+      "62": {
+        "edits_range": "6200-6300",
+        "efficacy": 1.0,
+        "paraphrase": 0.76,
+        "neighborhood": 0.182,
+        "n_facts": 100
+      },
+      "63": {
+        "edits_range": "6300-6400",
+        "efficacy": 1.0,
+        "paraphrase": 0.745,
+        "neighborhood": 0.171,
+        "n_facts": 100
+      },
+      "64": {
+        "edits_range": "6400-6500",
+        "efficacy": 0.99,
+        "paraphrase": 0.745,
+        "neighborhood": 0.196,
+        "n_facts": 100
+      },
+      "65": {
+        "edits_range": "6500-6600",
+        "efficacy": 1.0,
+        "paraphrase": 0.77,
+        "neighborhood": 0.14600000000000002,
+        "n_facts": 100
+      },
+      "66": {
+        "edits_range": "6600-6700",
+        "efficacy": 0.99,
+        "paraphrase": 0.785,
+        "neighborhood": 0.138,
+        "n_facts": 100
+      },
+      "67": {
+        "edits_range": "6700-6800",
+        "efficacy": 1.0,
+        "paraphrase": 0.765,
+        "neighborhood": 0.16400000000000003,
+        "n_facts": 100
+      },
+      "68": {
+        "edits_range": "6800-6900",
+        "efficacy": 1.0,
+        "paraphrase": 0.795,
+        "neighborhood": 0.147,
+        "n_facts": 100
+      },
+      "69": {
+        "edits_range": "6900-7000",
+        "efficacy": 0.97,
+        "paraphrase": 0.57,
+        "neighborhood": 0.15,
+        "n_facts": 100
+      },
+      "70": {
+        "edits_range": "7000-7100",
+        "efficacy": 1.0,
+        "paraphrase": 0.785,
+        "neighborhood": 0.15100000000000002,
+        "n_facts": 100
+      },
+      "71": {
+        "edits_range": "7100-7200",
+        "efficacy": 0.98,
+        "paraphrase": 0.64,
+        "neighborhood": 0.151,
+        "n_facts": 100
+      },
+      "72": {
+        "edits_range": "7200-7300",
+        "efficacy": 1.0,
+        "paraphrase": 0.77,
+        "neighborhood": 0.15,
+        "n_facts": 100
+      },
+      "73": {
+        "edits_range": "7300-7400",
+        "efficacy": 1.0,
+        "paraphrase": 0.775,
+        "neighborhood": 0.155,
+        "n_facts": 100
+      },
+      "74": {
+        "edits_range": "7400-7500",
+        "efficacy": 0.99,
+        "paraphrase": 0.735,
+        "neighborhood": 0.16,
+        "n_facts": 100
+      },
+      "75": {
+        "edits_range": "7500-7600",
+        "efficacy": 1.0,
+        "paraphrase": 0.76,
+        "neighborhood": 0.16800000000000004,
+        "n_facts": 100
+      },
+      "76": {
+        "edits_range": "7600-7700",
+        "efficacy": 1.0,
+        "paraphrase": 0.865,
+        "neighborhood": 0.23199999999999998,
+        "n_facts": 100
+      },
+      "77": {
+        "edits_range": "7700-7800",
+        "efficacy": 1.0,
+        "paraphrase": 0.675,
+        "neighborhood": 0.136,
+        "n_facts": 100
+      },
+      "78": {
+        "edits_range": "7800-7900",
+        "efficacy": 1.0,
+        "paraphrase": 0.67,
+        "neighborhood": 0.19600000000000006,
+        "n_facts": 100
+      },
+      "79": {
+        "edits_range": "7900-8000",
+        "efficacy": 1.0,
+        "paraphrase": 0.79,
+        "neighborhood": 0.16200000000000003,
+        "n_facts": 100
+      }
+    }
+  },
+  "9000_edits": {
+    "checkpoint": "batch_89",
+    "total_edits": 9000,
+    "n_evaluated": 9000,
+    "all_facts": {
+      "efficacy": 0.678,
+      "paraphrase": 0.4828,
+      "neighborhood": 0.1529
+    },
+    "first_1k": {
+      "efficacy": 0.389,
+      "paraphrase": 0.244,
+      "neighborhood": 0.1085
+    },
+    "middle_cohort": {
+      "efficacy": 0.44,
+      "paraphrase": 0.25,
+      "neighborhood": 0.1634
+    },
+    "latest_1k": {
+      "efficacy": 0.996,
+      "paraphrase": 0.77,
+      "neighborhood": 0.1495
+    },
+    "latest_100": {
+      "efficacy": 0.99,
+      "paraphrase": 0.8,
+      "neighborhood": 0.175
+    },
+    "retention_auc": 0.6778,
+    "cohort_metrics": {
+      "0": {
+        "edits_range": "0-100",
+        "efficacy": 0.41,
+        "paraphrase": 0.36,
+        "neighborhood": 0.08199999999999999,
+        "n_facts": 100
+      },
+      "1": {
+        "edits_range": "100-200",
+        "efficacy": 0.31,
+        "paraphrase": 0.12,
+        "neighborhood": 0.12099999999999998,
+        "n_facts": 100
+      },
+      "2": {
+        "edits_range": "200-300",
+        "efficacy": 0.53,
+        "paraphrase": 0.335,
+        "neighborhood": 0.154,
+        "n_facts": 100
+      },
+      "3": {
+        "edits_range": "300-400",
+        "efficacy": 0.25,
+        "paraphrase": 0.135,
+        "neighborhood": 0.09799999999999999,
+        "n_facts": 100
+      },
+      "4": {
+        "edits_range": "400-500",
+        "efficacy": 0.38,
+        "paraphrase": 0.275,
+        "neighborhood": 0.187,
+        "n_facts": 100
+      },
+      "5": {
+        "edits_range": "500-600",
+        "efficacy": 0.45,
+        "paraphrase": 0.3,
+        "neighborhood": 0.05399999999999999,
+        "n_facts": 100
+      },
+      "6": {
+        "edits_range": "600-700",
+        "efficacy": 0.29,
+        "paraphrase": 0.26,
+        "neighborhood": 0.064,
+        "n_facts": 100
+      },
+      "7": {
+        "edits_range": "700-800",
+        "efficacy": 0.48,
+        "paraphrase": 0.265,
+        "neighborhood": 0.046,
+        "n_facts": 100
+      },
+      "8": {
+        "edits_range": "800-900",
+        "efficacy": 0.45,
+        "paraphrase": 0.22,
+        "neighborhood": 0.11800000000000001,
+        "n_facts": 100
+      },
+      "9": {
+        "edits_range": "900-1000",
+        "efficacy": 0.34,
+        "paraphrase": 0.17,
+        "neighborhood": 0.161,
+        "n_facts": 100
+      },
+      "10": {
+        "edits_range": "1000-1100",
+        "efficacy": 0.51,
+        "paraphrase": 0.26,
+        "neighborhood": 0.14100000000000001,
+        "n_facts": 100
+      },
+      "11": {
+        "edits_range": "1100-1200",
+        "efficacy": 0.39,
+        "paraphrase": 0.19,
+        "neighborhood": 0.163,
+        "n_facts": 100
+      },
+      "12": {
+        "edits_range": "1200-1300",
+        "efficacy": 0.55,
+        "paraphrase": 0.285,
+        "neighborhood": 0.11699999999999999,
+        "n_facts": 100
+      },
+      "13": {
+        "edits_range": "1300-1400",
+        "efficacy": 0.26,
+        "paraphrase": 0.145,
+        "neighborhood": 0.129,
+        "n_facts": 100
+      },
+      "14": {
+        "edits_range": "1400-1500",
+        "efficacy": 0.43,
+        "paraphrase": 0.355,
+        "neighborhood": 0.13299999999999998,
+        "n_facts": 100
+      },
+      "15": {
+        "edits_range": "1500-1600",
+        "efficacy": 0.4,
+        "paraphrase": 0.115,
+        "neighborhood": 0.18000000000000005,
+        "n_facts": 100
+      },
+      "16": {
+        "edits_range": "1600-1700",
+        "efficacy": 0.46,
+        "paraphrase": 0.335,
+        "neighborhood": 0.161,
+        "n_facts": 100
+      },
+      "17": {
+        "edits_range": "1700-1800",
+        "efficacy": 0.39,
+        "paraphrase": 0.1,
+        "neighborhood": 0.222,
+        "n_facts": 100
+      },
+      "18": {
+        "edits_range": "1800-1900",
+        "efficacy": 0.5,
+        "paraphrase": 0.355,
+        "neighborhood": 0.17200000000000004,
+        "n_facts": 100
+      },
+      "19": {
+        "edits_range": "1900-2000",
+        "efficacy": 0.51,
+        "paraphrase": 0.36,
+        "neighborhood": 0.21600000000000003,
+        "n_facts": 100
+      },
+      "20": {
+        "edits_range": "2000-2100",
+        "efficacy": 0.39,
+        "paraphrase": 0.315,
+        "neighborhood": 0.136,
+        "n_facts": 100
+      },
+      "21": {
+        "edits_range": "2100-2200",
+        "efficacy": 0.44,
+        "paraphrase": 0.325,
+        "neighborhood": 0.18200000000000002,
+        "n_facts": 100
+      },
+      "22": {
+        "edits_range": "2200-2300",
+        "efficacy": 0.42,
+        "paraphrase": 0.31,
+        "neighborhood": 0.17500000000000004,
+        "n_facts": 100
+      },
+      "23": {
+        "edits_range": "2300-2400",
+        "efficacy": 0.5,
+        "paraphrase": 0.42,
+        "neighborhood": 0.12900000000000003,
+        "n_facts": 100
+      },
+      "24": {
+        "edits_range": "2400-2500",
+        "efficacy": 0.47,
+        "paraphrase": 0.245,
+        "neighborhood": 0.13699999999999998,
+        "n_facts": 100
+      },
+      "25": {
+        "edits_range": "2500-2600",
+        "efficacy": 0.5,
+        "paraphrase": 0.375,
+        "neighborhood": 0.32,
+        "n_facts": 100
+      },
+      "26": {
+        "edits_range": "2600-2700",
+        "efficacy": 0.42,
+        "paraphrase": 0.365,
+        "neighborhood": 0.179,
+        "n_facts": 100
+      },
+      "27": {
+        "edits_range": "2700-2800",
+        "efficacy": 0.44,
+        "paraphrase": 0.32,
+        "neighborhood": 0.08699999999999998,
+        "n_facts": 100
+      },
+      "28": {
+        "edits_range": "2800-2900",
+        "efficacy": 0.42,
+        "paraphrase": 0.3,
+        "neighborhood": 0.142,
+        "n_facts": 100
+      },
+      "29": {
+        "edits_range": "2900-3000",
+        "efficacy": 0.47,
+        "paraphrase": 0.325,
+        "neighborhood": 0.151,
+        "n_facts": 100
+      },
+      "30": {
+        "edits_range": "3000-3100",
+        "efficacy": 0.41,
+        "paraphrase": 0.25,
+        "neighborhood": 0.139,
+        "n_facts": 100
+      },
+      "31": {
+        "edits_range": "3100-3200",
+        "efficacy": 0.39,
+        "paraphrase": 0.25,
+        "neighborhood": 0.141,
+        "n_facts": 100
+      },
+      "32": {
+        "edits_range": "3200-3300",
+        "efficacy": 0.49,
+        "paraphrase": 0.34,
+        "neighborhood": 0.14800000000000002,
+        "n_facts": 100
+      },
+      "33": {
+        "edits_range": "3300-3400",
+        "efficacy": 0.4,
+        "paraphrase": 0.335,
+        "neighborhood": 0.087,
+        "n_facts": 100
+      },
+      "34": {
+        "edits_range": "3400-3500",
+        "efficacy": 0.39,
+        "paraphrase": 0.28,
+        "neighborhood": 0.14800000000000002,
+        "n_facts": 100
+      },
+      "35": {
+        "edits_range": "3500-3600",
+        "efficacy": 0.51,
+        "paraphrase": 0.325,
+        "neighborhood": 0.14799999999999996,
+        "n_facts": 100
+      },
+      "36": {
+        "edits_range": "3600-3700",
+        "efficacy": 0.36,
+        "paraphrase": 0.25,
+        "neighborhood": 0.15200000000000002,
+        "n_facts": 100
+      },
+      "37": {
+        "edits_range": "3700-3800",
+        "efficacy": 0.51,
+        "paraphrase": 0.35,
+        "neighborhood": 0.142,
+        "n_facts": 100
+      },
+      "38": {
+        "edits_range": "3800-3900",
+        "efficacy": 0.51,
+        "paraphrase": 0.33,
+        "neighborhood": 0.158,
+        "n_facts": 100
+      },
+      "39": {
+        "edits_range": "3900-4000",
+        "efficacy": 0.48,
+        "paraphrase": 0.35,
+        "neighborhood": 0.146,
+        "n_facts": 100
+      },
+      "40": {
+        "edits_range": "4000-4100",
+        "efficacy": 0.38,
+        "paraphrase": 0.2,
+        "neighborhood": 0.15400000000000003,
+        "n_facts": 100
+      },
+      "41": {
+        "edits_range": "4100-4200",
+        "efficacy": 0.54,
+        "paraphrase": 0.365,
+        "neighborhood": 0.16200000000000003,
+        "n_facts": 100
+      },
+      "42": {
+        "edits_range": "4200-4300",
+        "efficacy": 0.49,
+        "paraphrase": 0.34,
+        "neighborhood": 0.20400000000000001,
+        "n_facts": 100
+      },
+      "43": {
+        "edits_range": "4300-4400",
+        "efficacy": 0.51,
+        "paraphrase": 0.165,
+        "neighborhood": 0.17499999999999996,
+        "n_facts": 100
+      },
+      "44": {
+        "edits_range": "4400-4500",
+        "efficacy": 0.47,
+        "paraphrase": 0.425,
+        "neighborhood": 0.28500000000000003,
+        "n_facts": 100
+      },
+      "45": {
+        "edits_range": "4500-4600",
+        "efficacy": 0.45,
+        "paraphrase": 0.28,
+        "neighborhood": 0.12300000000000003,
+        "n_facts": 100
+      },
+      "46": {
+        "edits_range": "4600-4700",
+        "efficacy": 0.31,
+        "paraphrase": 0.165,
+        "neighborhood": 0.187,
+        "n_facts": 100
+      },
+      "47": {
+        "edits_range": "4700-4800",
+        "efficacy": 0.47,
+        "paraphrase": 0.31,
+        "neighborhood": 0.117,
+        "n_facts": 100
+      },
+      "48": {
+        "edits_range": "4800-4900",
+        "efficacy": 0.44,
+        "paraphrase": 0.33,
+        "neighborhood": 0.22299999999999998,
+        "n_facts": 100
+      },
+      "49": {
+        "edits_range": "4900-5000",
+        "efficacy": 0.46,
+        "paraphrase": 0.365,
+        "neighborhood": 0.15,
+        "n_facts": 100
+      },
+      "50": {
+        "edits_range": "5000-5100",
+        "efficacy": 0.93,
+        "paraphrase": 0.63,
+        "neighborhood": 0.076,
+        "n_facts": 100
+      },
+      "51": {
+        "edits_range": "5100-5200",
+        "efficacy": 0.98,
+        "paraphrase": 0.78,
+        "neighborhood": 0.163,
+        "n_facts": 100
+      },
+      "52": {
+        "edits_range": "5200-5300",
+        "efficacy": 0.95,
+        "paraphrase": 0.595,
+        "neighborhood": 0.163,
+        "n_facts": 100
+      },
+      "53": {
+        "edits_range": "5300-5400",
+        "efficacy": 0.98,
+        "paraphrase": 0.63,
+        "neighborhood": 0.15999999999999998,
+        "n_facts": 100
+      },
+      "54": {
+        "edits_range": "5400-5500",
+        "efficacy": 0.98,
+        "paraphrase": 0.685,
+        "neighborhood": 0.198,
+        "n_facts": 100
+      },
+      "55": {
+        "edits_range": "5500-5600",
+        "efficacy": 0.95,
+        "paraphrase": 0.71,
+        "neighborhood": 0.14400000000000002,
+        "n_facts": 100
+      },
+      "56": {
+        "edits_range": "5600-5700",
+        "efficacy": 1.0,
+        "paraphrase": 0.745,
+        "neighborhood": 0.18499999999999997,
+        "n_facts": 100
+      },
+      "57": {
+        "edits_range": "5700-5800",
+        "efficacy": 0.95,
+        "paraphrase": 0.7,
+        "neighborhood": 0.13299999999999998,
+        "n_facts": 100
+      },
+      "58": {
+        "edits_range": "5800-5900",
+        "efficacy": 0.92,
+        "paraphrase": 0.625,
+        "neighborhood": 0.07800000000000001,
+        "n_facts": 100
+      },
+      "59": {
+        "edits_range": "5900-6000",
+        "efficacy": 0.98,
+        "paraphrase": 0.64,
+        "neighborhood": 0.153,
+        "n_facts": 100
+      },
+      "60": {
+        "edits_range": "6000-6100",
+        "efficacy": 1.0,
+        "paraphrase": 0.875,
+        "neighborhood": 0.23500000000000004,
+        "n_facts": 100
+      },
+      "61": {
+        "edits_range": "6100-6200",
+        "efficacy": 0.97,
+        "paraphrase": 0.72,
+        "neighborhood": 0.127,
+        "n_facts": 100
+      },
+      "62": {
+        "edits_range": "6200-6300",
+        "efficacy": 0.97,
+        "paraphrase": 0.725,
+        "neighborhood": 0.17800000000000005,
+        "n_facts": 100
+      },
+      "63": {
+        "edits_range": "6300-6400",
+        "efficacy": 0.96,
+        "paraphrase": 0.72,
+        "neighborhood": 0.16400000000000003,
+        "n_facts": 100
+      },
+      "64": {
+        "edits_range": "6400-6500",
+        "efficacy": 0.98,
+        "paraphrase": 0.73,
+        "neighborhood": 0.18600000000000003,
+        "n_facts": 100
+      },
+      "65": {
+        "edits_range": "6500-6600",
+        "efficacy": 1.0,
+        "paraphrase": 0.75,
+        "neighborhood": 0.14,
+        "n_facts": 100
+      },
+      "66": {
+        "edits_range": "6600-6700",
+        "efficacy": 0.99,
+        "paraphrase": 0.765,
+        "neighborhood": 0.134,
+        "n_facts": 100
+      },
+      "67": {
+        "edits_range": "6700-6800",
+        "efficacy": 0.97,
+        "paraphrase": 0.775,
+        "neighborhood": 0.15700000000000003,
+        "n_facts": 100
+      },
+      "68": {
+        "edits_range": "6800-6900",
+        "efficacy": 0.99,
+        "paraphrase": 0.78,
+        "neighborhood": 0.145,
+        "n_facts": 100
+      },
+      "69": {
+        "edits_range": "6900-7000",
+        "efficacy": 0.95,
+        "paraphrase": 0.56,
+        "neighborhood": 0.14400000000000002,
+        "n_facts": 100
+      },
+      "70": {
+        "edits_range": "7000-7100",
+        "efficacy": 0.99,
+        "paraphrase": 0.78,
+        "neighborhood": 0.16800000000000004,
+        "n_facts": 100
+      },
+      "71": {
+        "edits_range": "7100-7200",
+        "efficacy": 0.97,
+        "paraphrase": 0.6,
+        "neighborhood": 0.15600000000000003,
+        "n_facts": 100
+      },
+      "72": {
+        "edits_range": "7200-7300",
+        "efficacy": 1.0,
+        "paraphrase": 0.81,
+        "neighborhood": 0.14,
+        "n_facts": 100
+      },
+      "73": {
+        "edits_range": "7300-7400",
+        "efficacy": 1.0,
+        "paraphrase": 0.75,
+        "neighborhood": 0.15,
+        "n_facts": 100
+      },
+      "74": {
+        "edits_range": "7400-7500",
+        "efficacy": 0.99,
+        "paraphrase": 0.735,
+        "neighborhood": 0.154,
+        "n_facts": 100
+      },
+      "75": {
+        "edits_range": "7500-7600",
+        "efficacy": 0.99,
+        "paraphrase": 0.76,
+        "neighborhood": 0.17200000000000007,
+        "n_facts": 100
+      },
+      "76": {
+        "edits_range": "7600-7700",
+        "efficacy": 1.0,
+        "paraphrase": 0.85,
+        "neighborhood": 0.231,
+        "n_facts": 100
+      },
+      "77": {
+        "edits_range": "7700-7800",
+        "efficacy": 0.99,
+        "paraphrase": 0.645,
+        "neighborhood": 0.127,
+        "n_facts": 100
+      },
+      "78": {
+        "edits_range": "7800-7900",
+        "efficacy": 1.0,
+        "paraphrase": 0.66,
+        "neighborhood": 0.19099999999999998,
+        "n_facts": 100
+      },
+      "79": {
+        "edits_range": "7900-8000",
+        "efficacy": 1.0,
+        "paraphrase": 0.775,
+        "neighborhood": 0.16400000000000003,
+        "n_facts": 100
+      },
+      "80": {
+        "edits_range": "8000-8100",
+        "efficacy": 1.0,
+        "paraphrase": 0.855,
+        "neighborhood": 0.19,
+        "n_facts": 100
+      },
+      "81": {
+        "edits_range": "8100-8200",
+        "efficacy": 1.0,
+        "paraphrase": 0.745,
+        "neighborhood": 0.10899999999999999,
+        "n_facts": 100
+      },
+      "82": {
+        "edits_range": "8200-8300",
+        "efficacy": 0.99,
+        "paraphrase": 0.76,
+        "neighborhood": 0.16500000000000004,
+        "n_facts": 100
+      },
+      "83": {
+        "edits_range": "8300-8400",
+        "efficacy": 0.99,
+        "paraphrase": 0.82,
+        "neighborhood": 0.172,
+        "n_facts": 100
+      },
+      "84": {
+        "edits_range": "8400-8500",
+        "efficacy": 1.0,
+        "paraphrase": 0.74,
+        "neighborhood": 0.149,
+        "n_facts": 100
+      },
+      "85": {
+        "edits_range": "8500-8600",
+        "efficacy": 0.99,
+        "paraphrase": 0.7,
+        "neighborhood": 0.11299999999999999,
+        "n_facts": 100
+      },
+      "86": {
+        "edits_range": "8600-8700",
+        "efficacy": 1.0,
+        "paraphrase": 0.81,
+        "neighborhood": 0.17299999999999996,
+        "n_facts": 100
+      },
+      "87": {
+        "edits_range": "8700-8800",
+        "efficacy": 1.0,
+        "paraphrase": 0.77,
+        "neighborhood": 0.135,
+        "n_facts": 100
+      },
+      "88": {
+        "edits_range": "8800-8900",
+        "efficacy": 1.0,
+        "paraphrase": 0.7,
+        "neighborhood": 0.114,
+        "n_facts": 100
+      },
+      "89": {
+        "edits_range": "8900-9000",
+        "efficacy": 0.99,
+        "paraphrase": 0.8,
+        "neighborhood": 0.175,
+        "n_facts": 100
+      }
+    }
+  }
+}

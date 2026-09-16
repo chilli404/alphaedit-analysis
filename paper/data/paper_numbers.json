@@ -1,0 +1,628 @@
+{
+  "age_selective": {
+    "mcf": {
+      "42": {
+        "n_cases": 10000,
+        "overall": 0.315,
+        "first_1k": 0.109,
+        "latest_1k": 0.813,
+        "gap": 0.704
+      },
+      "2024": {
+        "n_cases": 10000,
+        "overall": 0.161,
+        "first_1k": 0.048,
+        "latest_1k": 0.677,
+        "gap": 0.629
+      },
+      "137": {
+        "n_cases": 10000,
+        "overall": 0.17,
+        "first_1k": 0.057,
+        "latest_1k": 0.656,
+        "gap": 0.599
+      },
+      "mean": {
+        "overall": 0.215,
+        "first_1k": 0.071,
+        "latest_1k": 0.715,
+        "gap": 0.644
+      }
+    },
+    "zsre": {
+      "seed42": {
+        "n_cases": 10000,
+        "overall": 0.932,
+        "first_1k": 0.805,
+        "latest_1k": 0.993,
+        "gap": 0.188
+      }
+    },
+    "gptj": "See earlier analysis: oldest=0.522, newest=0.968, gap=0.446"
+  },
+  "fixed_batch_dose_response": {
+    "42": {
+      "fb_low_exposure": {
+        "all": 0.851,
+        "first_1k": 0.539,
+        "latest_1k": 0.991
+      },
+      "fb_random0": {
+        "all": 0.879,
+        "first_1k": 0.661,
+        "latest_1k": 0.981
+      },
+      "fb_high_exposure": {
+        "all": 0.325,
+        "first_1k": 0.075,
+        "latest_1k": 0.799
+      }
+    },
+    "2024": {
+      "fb_low_exposure": {
+        "all": 0.861,
+        "first_1k": 0.566,
+        "latest_1k": 0.996
+      },
+      "fb_random0": {
+        "all": 0.876,
+        "first_1k": 0.649,
+        "latest_1k": 0.974
+      },
+      "fb_high_exposure": {
+        "all": 0.294,
+        "first_1k": 0.112,
+        "latest_1k": 0.644
+      }
+    },
+    "137": {
+      "fb_low_exposure": {
+        "all": 0.697,
+        "first_1k": 0.381,
+        "latest_1k": 0.997
+      },
+      "fb_random0": {
+        "all": 0.819,
+        "first_1k": 0.522,
+        "latest_1k": 0.982
+      },
+      "fb_high_exposure": {
+        "all": 0.676,
+        "first_1k": 0.385,
+        "latest_1k": 0.948
+      }
+    },
+    "mean": {
+      "fb_low_exposure": {
+        "all": 0.803,
+        "first_1k": 0.495,
+        "latest_1k": 0.995
+      },
+      "fb_random0": {
+        "all": 0.858,
+        "first_1k": 0.611,
+        "latest_1k": 0.979
+      },
+      "fb_high_exposure": {
+        "all": 0.432,
+        "first_1k": 0.191,
+        "latest_1k": 0.797
+      }
+    }
+  },
+  "logit_damage_ab": {
+    "42": {
+      "n_trials": 10,
+      "n_focal": 1000,
+      "mean_delta": -0.0066,
+      "sign_hi_worse": 9
+    },
+    "2024": {
+      "n_trials": 10,
+      "n_focal": 1000,
+      "mean_delta": -0.0046,
+      "sign_hi_worse": 8
+    },
+    "137": {
+      "n_trials": 10,
+      "n_focal": 1000,
+      "mean_delta": -0.0034,
+      "sign_hi_worse": 9
+    },
+    "corrected": {
+      "seed_clustered_p": 0.036,
+      "cohens_d": -0.88,
+      "bootstrap_ci": [
+        -0.0073267692798004115,
+        -0.0026215329577249594
+      ],
+      "bootstrap_mean": -0.004831066575206138,
+      "sign_flip_p": 0.125,
+      "note": "seed-clustered p=0.036 is the honest p-value. Sign-flip p=0.125 is the floor with k=3 seeds."
+    }
+  },
+  "same_fact": {
+    "42": {
+      "n_trials": 10,
+      "mean_delta": -0.0025,
+      "sign_hi_worse": 7
+    },
+    "137": {
+      "n_trials": 10,
+      "mean_delta": -0.0012,
+      "sign_hi_worse": 6
+    },
+    "2024": {
+      "n_trials": 10,
+      "mean_delta": -0.0024,
+      "sign_hi_worse": 8
+    },
+    "pooled": {
+      "n_trials": 30,
+      "sign_hi_worse": 21,
+      "sign_test_p": 0.0214,
+      "mean_delta": -0.002,
+      "note": "3 seeds, 10 trials each"
+    }
+  },
+  "first_failure_survival": [
+    {
+      "model": "M1_baseline",
+      "label": "Age + checkpoint",
+      "n_obs": 36588,
+      "aic": 34729.3910747554,
+      "loo_auc_mean": 0.8381259071227758,
+      "loo_auc_per_seed": {
+        "42": 0.8393045728817563,
+        "137": 0.8305067181814986,
+        "2024": 0.8445664303050725
+      }
+    },
+    {
+      "model": "M4_geometry",
+      "label": "+ cosine + interference + margin",
+      "n_obs": 36580,
+      "aic": 24227.839790245525,
+      "loo_auc_mean": 0.9174025872878842,
+      "loo_auc_per_seed": {
+        "42": 0.9201752385317234,
+        "137": 0.9064317223657848,
+        "2024": 0.925600800966144
+      },
+      "OR_per_0.1": 0.8356384590290394,
+      "CI_per_0.1": [
+        0.8156626475787582,
+        0.856103483813144
+      ],
+      "pval": 6.244007699970464e-48,
+      "beta": -1.7955922471378112,
+      "loo_OR_per_0.1_per_seed": {
+        "42": 0.8584214490553767,
+        "137": 0.7794501500122757,
+        "2024": 0.8329396605537791
+      }
+    },
+    {
+      "model": "M5_within_rel",
+      "label": "+ relation fixed effects",
+      "n_obs": 36580,
+      "aic": 22563.550580702853,
+      "loo_auc_mean": 0.9318648187266513,
+      "loo_auc_per_seed": {
+        "42": 0.9331577921443877,
+        "137": 0.9248062825442858,
+        "2024": 0.9376303814912803
+      },
+      "OR_per_0.1": 0.8816820949644664,
+      "CI_per_0.1": [
+        0.8574807018248971,
+        0.9065665442108956
+      ],
+      "pval": 7.485721419823115e-19,
+      "beta": -1.259237244964353,
+      "loo_OR_per_0.1_per_seed": {
+        "42": 0.8989755854498106,
+        "137": 0.8321010976667081,
+        "2024": 0.872109015051716
+      }
+    },
+    {
+      "model": "M7a_direct_only",
+      "label": "Direct damage (no cosine)",
+      "n_obs": 36580,
+      "aic": 2525.3818979587068,
+      "loo_auc_mean": null,
+      "loo_auc_per_seed": {},
+      "direct_damage_pval": 0.006924192506811679,
+      "update_norm_pval": 0.08657733022847644
+    },
+    {
+      "model": "M7b_direct_plus_cos",
+      "label": "Direct damage + cosine",
+      "n_obs": 36580,
+      "aic": 2463.9291554118463,
+      "loo_auc_mean": null,
+      "loo_auc_per_seed": {},
+      "OR_per_0.1": 0.7123960938504762,
+      "CI_per_0.1": [
+        0.6554218423741451,
+        0.7743229805937826
+      ],
+      "pval": 1.5373084038577464e-15,
+      "beta": -3.3912121066633953,
+      "direct_damage_pval": 0.0032819743706611585,
+      "update_norm_pval": 0.13058155249231726
+    },
+    {
+      "model": "M7_LR_test",
+      "label": "Cosine adds to direct damage?",
+      "m7a_aic": 2525.3818979587068,
+      "m7b_aic": 2463.9291554118463,
+      "aic_improvement": 61.45274254686046
+    }
+  ],
+  "competing_predictors": {
+    "m7a_aic": 3042.40143549601,
+    "m7b_aic": 2941.2462373725607,
+    "aic_improvement": 101.15519812344928,
+    "lr_test_stat": 105.15519812344928,
+    "lr_test_pval": 1.465004152796524e-23,
+    "cosine_pval_in_m7b": 3.3142710905867435e-22,
+    "direct_damage_pval": 0.004774086928534176
+  },
+  "interference_kernel": {
+    "M_baseline": {
+      "AIC": 4013.308465991221,
+      "AUC": 0.8322666947691992
+    },
+    "M_cosine": {
+      "AIC": 3971.4720001792803,
+      "AUC": 0.8450563828744553,
+      "cosine_coef": -1.9065656439378602,
+      "cosine_pval": 5.794345206866319e-09
+    },
+    "M_kernel": {
+      "AIC": 4010.366448241164,
+      "AUC": 0.8345864547527542,
+      "eta_coef": -0.10038536199215034,
+      "eta_pval": 0.025456018505012685
+    },
+    "M_both": {
+      "AIC": 3967.779675052874,
+      "AUC": 0.8457240348644876,
+      "cosine_coef": -1.901789358977882,
+      "cosine_pval": 6.218217838340314e-09,
+      "eta_coef": -0.1082938557753565,
+      "eta_pval": 0.01646344180623965
+    },
+    "LR_cosine_adds_to_kernel": {
+      "stat": 46.58677318828995,
+      "pval": 7.652630376386522e-11
+    },
+    "LR_kernel_adds_to_cosine": {
+      "stat": 5.692325126406104,
+      "pval": 0.01703926355907441
+    }
+  },
+  "scheduler": {
+    "sched_balanced": {
+      "42": {
+        "all": 0.828,
+        "first_1k": 0.509
+      },
+      "2024": {
+        "all": 0.877,
+        "first_1k": 0.633
+      },
+      "137": {
+        "all": 0.833,
+        "first_1k": 0.603
+      },
+      "mean": {
+        "all": 0.846,
+        "first_1k": 0.582
+      }
+    },
+    "sched_exposure_only": {
+      "42": {
+        "all": 0.841,
+        "first_1k": 0.577
+      },
+      "2024": {
+        "all": 0.852,
+        "first_1k": 0.549
+      },
+      "137": {
+        "all": 0.811,
+        "first_1k": 0.574
+      },
+      "mean": {
+        "all": 0.835,
+        "first_1k": 0.567
+      }
+    },
+    "sched_conditioning_only": {
+      "42": {
+        "all": 0.835,
+        "first_1k": 0.584
+      },
+      "2024": {
+        "all": 0.849,
+        "first_1k": 0.587
+      },
+      "137": {
+        "all": 0.825,
+        "first_1k": 0.59
+      },
+      "mean": {
+        "all": 0.836,
+        "first_1k": 0.587
+      }
+    },
+    "fb_high_exposure": {
+      "42": {
+        "all": 0.325,
+        "first_1k": 0.075
+      },
+      "2024": {
+        "all": 0.294,
+        "first_1k": 0.112
+      },
+      "137": {
+        "all": 0.676,
+        "first_1k": 0.385
+      },
+      "mean": {
+        "all": 0.432,
+        "first_1k": 0.191
+      }
+    },
+    "fb_low_exposure": {
+      "42": {
+        "all": 0.851,
+        "first_1k": 0.539
+      },
+      "2024": {
+        "all": 0.861,
+        "first_1k": 0.566
+      },
+      "137": {
+        "all": 0.697,
+        "first_1k": 0.381
+      },
+      "mean": {
+        "all": 0.803,
+        "first_1k": 0.495
+      }
+    },
+    "fb_random0": {
+      "42": {
+        "all": 0.879,
+        "first_1k": 0.661
+      },
+      "2024": {
+        "all": 0.876,
+        "first_1k": 0.649
+      },
+      "137": {
+        "all": 0.819,
+        "first_1k": 0.522
+      },
+      "mean": {
+        "all": 0.858,
+        "first_1k": 0.611
+      }
+    }
+  },
+  "memit_seq_reduction": {
+    "AlphaEdit": {
+      "key_clustered_seed42": {
+        "all": 0.922,
+        "first_1k": 0.801
+      },
+      "key_clustered_seed2024": {
+        "all": 0.947,
+        "first_1k": 0.875
+      },
+      "key_dispersed_seed42": {
+        "all": 0.901,
+        "first_1k": 0.71
+      },
+      "key_dispersed_seed2024": {
+        "all": 0.846,
+        "first_1k": 0.599
+      }
+    },
+    "MEMIT-Seq-lp1.0-ld0.0-cache0": {
+      "key_clustered_seed42": {
+        "all": 0.974,
+        "first_1k": 0.952
+      },
+      "key_clustered_seed2024": {
+        "all": 0.98,
+        "first_1k": 0.973
+      },
+      "key_dispersed_seed42": {
+        "all": 0.967,
+        "first_1k": 0.905
+      },
+      "key_dispersed_seed2024": {
+        "all": 0.965,
+        "first_1k": 0.898
+      }
+    }
+  },
+  "zsre_ordering": {
+    "key_clustered": {
+      "checkpoint": "10000_edits",
+      "all": 0.704,
+      "first_1k": 0.182,
+      "latest_1k": 0.852
+    },
+    "key_dispersed": {
+      "checkpoint": "10000_edits",
+      "all": 0.729,
+      "first_1k": 0.308,
+      "latest_1k": 0.959
+    }
+  },
+  "numerical_reconciliation": {
+    "issue": "Paper claims 'latest 1K > 90%' but cross-seed analysis reports 'newest 1K = 59.1%'",
+    "resolution": {
+      "the_90_percent_claim": "Comes from failure curve at 5K (latest_1K = 99.0%) or matched ordering at 10K (latest_1K = 92.8%). Both are valid but describe different scales.",
+      "the_59_percent_number": "Is the 3-seed MEAN of failure curve latest_1K at 10K: seeds 42 (71.9%), 2024 (51.6%), 137 (53.8%). The discrepancy is from averaging across seeds with different degradation levels.",
+      "why_matched_ordering_is_higher": "eval_matched_ordering.py uses a DIFFERENT evaluation approach (mega-batch with fp16 model) than the failure curve's vendor evaluate.py. Also uses key_clustered ordering which may interact differently with cache_c. The matched ordering stream has unique-subject records only.",
+      "key_confusion": "The paper likely conflates: (1) latest-1K at 5K edits (~99%), (2) latest-1K at 10K edits (59-72% depending on seed), and (3) latest-100 at 10K (80-83%). These are three different quantities."
+    },
+    "reconciliation_table": {
+      "failure_curve_seed42_5K": {
+        "latest_1k": 0.99,
+        "latest_100": 1.0,
+        "first_1k": 0.7,
+        "overall": "~0.88",
+        "source": "failure_curve_checkpointed/seed42/5000edits, vendor evaluate.py"
+      },
+      "failure_curve_seed42_10K": {
+        "latest_1k": 0.719,
+        "latest_100": 0.826,
+        "first_1k": 0.11,
+        "overall": 0.287,
+        "source": "failure_curve_checkpointed/seed42/10000edits, vendor evaluate.py"
+      },
+      "failure_curve_3seed_mean_10K": {
+        "latest_1k": 0.591,
+        "note": "The '59.1%' number \u2014 average of seeds 42 (71.9%), 2024 (51.6%), 137 (53.8%)",
+        "source": "failure_curve_checkpointed, all 3 seeds"
+      },
+      "matched_ordering_key_clustered_seed42_5K": {
+        "latest_1k": 0.964,
+        "latest_100": 1.0,
+        "first_1k": 0.801,
+        "overall": 0.9216,
+        "source": "eval_matched_ordering.py on key_clustered stream"
+      },
+      "matched_ordering_key_clustered_seed42_10K": {
+        "latest_1k": 0.928,
+        "latest_100": 0.8,
+        "first_1k": 0.551,
+        "overall": 0.8223,
+        "source": "eval_matched_ordering.py on key_clustered stream"
+      }
+    },
+    "recommendation": {
+      "local_plasticity": "Support 'local plasticity' with IMMEDIATE INSTALLATION efficacy, not latest-1K at the final checkpoint. Latest-1K at 10K includes edits that have already experienced up to 999 subsequent edits \u2014 not pure plasticity.",
+      "three_quantities_to_report": {
+        "1_immediate_install": "Efficacy of each batch right after installation (from mechanism logs)",
+        "2_latest_100_at_checkpoint": "Latest-100 at each checkpoint (closest to 'still plastic')",
+        "3_latest_1K_at_checkpoint": "Latest-1K at each checkpoint (broader cohort measure)"
+      },
+      "paper_language": "Do NOT say 'latest 1K remains above 90%' at 10K edits. It does not. SAY: 'At 5K edits, the newest cohort retains >99% efficacy while the oldest drops to 70%. At 10K edits, even the newest 1K cohort degrades to 59% (3-seed mean), but the age gradient remains steep \u2014 the oldest cohort falls to 7%.'"
+    }
+  },
+  "signed_displacement": {
+    "fb_high_exposure": {
+      "seed42": {
+        "mean_unsigned_damage": 1.302688,
+        "mean_signed_damage": 0.212125,
+        "cancellation_factor": 0.162836,
+        "frac_opposing": 1.0,
+        "mean_cos_alignment": -0.158145
+      },
+      "seed137": {
+        "mean_unsigned_damage": 1.038804,
+        "mean_signed_damage": 0.093262,
+        "cancellation_factor": 0.089778,
+        "frac_opposing": 0.979,
+        "mean_cos_alignment": -0.092549
+      }
+    },
+    "interpretation": "Seed 42 converts 16.3% of unsigned displacement to net destructive damage; seed 137 only 9.0%. Both have >97% opposing alignment, but seed 137 has more cancellation and lower total magnitude."
+  },
+  "signed_survival": {
+    "models": {
+      "M4_cosine": {
+        "formula": "survived ~ C(checkpoint_f) + C(age_bin_f) + max_cosine_subsequent + cumulative_interference + target_margin",
+        "n_obs": 36580,
+        "loo_auc_mean": 0.9174025872878842,
+        "loo_auc_per_seed": {
+          "42": 0.9201752385317234,
+          "137": 0.9064317223657848,
+          "2024": 0.925600800966144
+        },
+        "loo_logloss_mean": 0.35419594202671334,
+        "loo_logloss_per_seed": {
+          "42": 0.31668527203596286,
+          "137": 0.39399519025702523,
+          "2024": 0.35190736378715204
+        },
+        "loo_coefs": {
+          "42": {
+            "max_cosine_subsequent": {
+              "beta": -1.526601007278516,
+              "pval": 1.0833471190462384e-27,
+              "OR_per_0.1": 0.8584214490553767
+            }
+          },
+          "137": {
+            "max_cosine_subsequent": {
+              "beta": -2.4916654376432694,
+              "pval": 2.8567341453452166e-38,
+              "OR_per_0.1": 0.7794501500122757
+            }
+          },
+          "2024": {
+            "max_cosine_subsequent": {
+              "beta": -1.8279407574891964,
+              "pval": 1.1293191446307117e-39,
+              "OR_per_0.1": 0.8329396605537791
+            }
+          }
+        },
+        "aic": 24227.839790245525,
+        "full_coefs": {
+          "Intercept": {
+            "beta": -2.2184035315898583,
+            "pval": 7.340663244557291e-273,
+            "se": 0.06285554206520304
+          },
+          "max_cosine_subsequent": {
+            "beta": -1.7955922471378112,
+            "pval": 6.244007699970464e-48,
+            "se": 0.12344720138953529
+          },
+          "cumulative_interference": {
+            "beta": 0.004373557951839429,
+            "pval": 7.318735345232061e-07,
+            "se": 0.0008830637708998413
+          },
+          "target_margin": {
+            "beta": 0.40195711958707364,
+            "pval": 0.0,
+            "se": 0.005241561574335177
+          }
+        }
+      }
+    },
+    "n_ff_rows": 36588,
+    "interpretation": "Signed damage subsumes cosine (p=0.033) \u2014 in combined model cosine becomes marginal (p=0.07) while signed stays significant. AIC improvement of 2.7 over cosine-only model.",
+    "note": "Computed on seed 42 only. Cross-seed trajectory-level validation from fb_high cancellation factor comparison."
+  },
+  "pooled_ab": {
+    "different_batch": {
+      "n_trials": 30,
+      "sign_hi_worse": 26,
+      "mean_delta": -0.0048
+    },
+    "same_fact": {
+      "n_trials": 30,
+      "sign_hi_worse": 21,
+      "mean_delta": -0.002
+    },
+    "combined": {
+      "n_trials": 60,
+      "sign_hi_worse": 47,
+      "sign_test_p": 6e-06
+    },
+    "note": "50-trial version (without seed 2024 same-fact) had 39/50, p=0.0001. 60-trial (all data) has 47/60, p=0.000006."
+  }
+}

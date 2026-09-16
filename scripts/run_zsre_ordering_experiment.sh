@@ -208,10 +208,10 @@ else
 fi
 
 # Sync to S3 if on cluster
-if [[ -n "${RESULT_ROOT:-}" ]] && [[ "$RESULT_ROOT" != "results" ]]; then
-    _SYNC_DIR="${RESULT_ROOT}/matched_ordering_zsre/${ALG}/${ORDERING}/seed${SEED}"
-    mkdir -p "$_SYNC_DIR"
-    cp -r "$RESULTS_DIR"/* "$_SYNC_DIR/" 2>/dev/null || true
+if [[ -d "/s3-data/continual-learning/alphaedit" ]]; then
+    S3_RESULTS="/s3-data/continual-learning/alphaedit/results/matched_ordering_zsre/${ALG}/${ORDERING}/seed${SEED}"
+    mkdir -p "$S3_RESULTS"
+    cp -r "$RESULTS_DIR"/* "$S3_RESULTS/" 2>/dev/null || true
 fi
 
 echo ""

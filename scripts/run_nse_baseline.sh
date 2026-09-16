@@ -51,20 +51,20 @@ fi
 
 # Load NSE kv cache from S3 tar archives. Without these, compute_z does 25
 # gradient steps per edit (~1.5s each on L40S) → 750s for 20 edits.
-_NSE_CACHE_EXT="${NSE_CACHE_DIR:-}"
+_NSE_CACHE_S3="/s3-data/continual-learning/alphaedit/nse_kv_cache"
 _NSE_CACHE_LOCAL="$EVOEDIT_DIR/share/projects/rewriting-knowledge/kvs"
 
-if [ -n "$_NSE_CACHE_EXT" ] && [ -d "$_NSE_CACHE_EXT" ]; then
+if [ -d "$_NSE_CACHE_S3" ]; then
     mkdir -p "$_NSE_CACHE_LOCAL"
     _found_tar=0
-    for _tar in "$_NSE_CACHE_EXT"/*.tar; do
+    for _tar in "$_NSE_CACHE_S3"/*.tar; do
         [ -f "$_tar" ] || continue
         echo "  Extracting NSE kv cache from $(basename $_tar)..."
         tar xf "$_tar" -C "$_NSE_CACHE_LOCAL/"
         _found_tar=1
     done
     if [ "$_found_tar" -eq 0 ]; then
-        echo "ERROR: No .tar files found at $_NSE_CACHE_EXT"
+        echo "ERROR: No .tar files found at $_NSE_CACHE_S3"
         echo "  Upload caches with: bash scripts/build_nse_cache.sh --upload"
         exit 1
     fi
@@ -85,9 +85,9 @@ if [ -n "$_NSE_CACHE_EXT" ] && [ -d "$_NSE_CACHE_EXT" ]; then
         exit 1
     fi
 else
-    echo "ERROR: NSE kv cache not found."
-    echo "  Set NSE_CACHE_DIR to a directory containing the tar archives,"
-    echo "  or run: bash scripts/build_nse_cache.sh"
+    echo "ERROR: S3 NSE kv cache not found at $_NSE_CACHE_S3"
+    echo "  On SkyPilot clusters, /s3-data must be mounted."
+    echo "  Locally, run: bash scripts/build_nse_cache.sh"
     exit 1
 fi
 

@@ -7,13 +7,9 @@ dist/
 build/
 .venv/
 
-# Data
+# Data (top-level only — paper/data/ is tracked)
 /data
 /logs
-paper/data/
-
-# Tests (large, regenerated from code)
-tests/
 
 # Results (large, tracked separately)
 /results
@@ -48,20 +44,8 @@ vendor/AlphaEdit/null_space_project.pt
 # SkyPilot (cloud orchestration, not for public release)
 sky/
 
-# Grainger-specific infrastructure (S3 buckets, Artifactory URLs)
+# Grainger-specific infrastructure
 install-agent.sh
-scripts/remote_setup.sh
-scripts/sync_results_from_s3.sh
-scripts/sync_and_rescore.sh
-scripts/download_datasets.sh
-scripts/download_wikitext.py
-scripts/download_mmlu.py
-scripts/link_stats.sh
-scripts/link_dsets.sh
-scripts/patches/patch_s3_checkpoint.py
-scripts/test_nse_validation.py
-scripts/test_nse_vendor_trajectory.py
-scripts/test_nse_dtype_comparison.py
 
 # Project-specific docs (not for sharing)
 claude.md

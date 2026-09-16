@@ -255,7 +255,15 @@ validate_log() {
             log "  ✓ NSE: algorithm invoked"
             ;;
         *RECT*OTE*BS100*)
-            # BS100 is handled separately (inline memory probe, not run_and_check)
+            if ! grep -q "error_cache\|error_temp_norm" "$logfile"; then
+                log "  ❌ RECT-Aligned (OTE) BS100 error correction not active"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: RECT-Err BS100 not invoked"; return 1
+            fi
+            if grep -qi "OutOfMemory\|OOM\|CUDA out of memory" "$logfile"; then
+                log "  ❌ RECT-Aligned (OTE) BS100 OOM at production batch size"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: OOM at BS=100"; return 1
+            fi
+            log "  ✓ RECT-Aligned (OTE) BS100: no OOM at production batch size"
             ;;
         *RECT*OTE*)
             if ! grep -q "error_cache\|error_temp_norm\|small_delta\|memit seq rect with error correction" "$logfile"; then
@@ -413,57 +421,16 @@ run_and_check "RECT-Aligned (OTE)" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT_rec
     --save_interval 1 --base_alg MEMIT_rect_err \
     --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
-# OOM probe: test RECT-Err solve at production shapes (BS=100) with dummy tensors.
-# The actual editing takes 5+ min (compute_z × 100); we only need the solve (~10s).
-should_run "RECT-Aligned (OTE) BS100" || true
-if should_run "RECT-Aligned (OTE) BS100"; then
-    log "───────────────────────────────────────────"
-    log "START [9/13]: RECT-Aligned (OTE) BS100 — memory probe"
-    local _bs100_log="$RESULT_ROOT/_smoke_RECT_BS100.log"
-    local _t0=$(date +%s)
-    PYTHONUNBUFFERED=1 timeout 120 uv run python -c "
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import sys; sys.path.insert(0, 'src/util')
-from model_resolve import resolve_model_path
-
-model_path = resolve_model_path('meta-llama/Meta-Llama-3-8B-Instruct')
-print('Loading model...')
-model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float32).cuda()
-print(f'Model loaded: {torch.cuda.memory_allocated()/1e9:.1f} GB')
-
-# Simulate RECT-Err solve at production shapes (BS=100, 5 layers)
-d_in, d_out, n_req = 14336, 4096, 100
-torch.set_grad_enabled(False)
-for layer_idx in range(5):
-    print(f'Layer {layer_idx}: ', end='', flush=True)
-    cov = torch.randn(d_in, d_in, device='cuda', dtype=torch.float32)
-    _lhs = 15000 * cov.double()
-    cov.cpu(); del cov; torch.cuda.empty_cache()
-    _lhs += torch.randn(d_in, d_in, device='cuda', dtype=torch.float64)  # cache_c
-    _lhs += torch.randn(d_in, n_req, device='cuda', dtype=torch.float64) @ torch.randn(n_req, d_in, device='cuda', dtype=torch.float64)  # K@K^T
-    _lhs += torch.eye(d_in, device='cuda', dtype=torch.float64)
-    _rhs = torch.randn(d_in, d_out, device='cuda', dtype=torch.float64)  # K@R^T - E^T
-    adj_k = torch.linalg.solve(_lhs, _rhs)
-    del _lhs, _rhs, adj_k
-    torch.cuda.empty_cache()
-    mem = torch.cuda.memory_allocated() / 1e9
-    print(f'{mem:.1f} GB allocated')
-
-print('OOM probe PASSED — all 5 layers solved at BS=100 shapes')
-" > "$_bs100_log" 2>&1
-    local _exit=$?
-    local _elapsed=$(( $(date +%s) - _t0 ))
-    if [ "$_exit" -eq 0 ] && ! grep -qi "OutOfMemory\|OOM\|CUDA out of memory" "$_bs100_log"; then
-        PASS=$((PASS+1))
-        log "✓ RECT-Aligned (OTE) BS100 PASSED (${_elapsed}s) — no OOM at production shapes"
-    else
-        log "  Last 10 lines:"; tail -10 "$_bs100_log" | sed 's/^/    /'
-        FAIL=$((FAIL+1))
-        ERRORS="$ERRORS\n  RECT-Aligned (OTE) BS100: OOM or error at production shapes"
-        log "❌ RECT-Aligned (OTE) BS100 FAILED (${_elapsed}s)"
-    fi
-fi
+# OOM probe: RECT-Err at production batch size (BS=100) — catches memory regressions
+# that don't manifest at BS=10 (e.g. autograd graph scales with request count)
+run_and_check "RECT-Aligned (OTE) BS100" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT_rect_err-poly1-lp0.0-ld0.0-cache0-bs100/seed$SEED/batch_0/model_weights.pt" "" \
+    uv run python src/polykernel/polykernel_seqreg_runner.py \
+    --seed $SEED --cuda_device 0 --ds_name mcf \
+    --dataset_size_limit 100 --num_edits 100 \
+    --lambda_prev 0.0 --lambda_delta 0.0 \
+    --kernel_degree 1 --cache_strategy all --cache_max none \
+    --save_interval 1 --base_alg MEMIT_rect_err \
+    --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
 # -----------------------------------------------------------------------
 # GROUP 3: pathguard_runner

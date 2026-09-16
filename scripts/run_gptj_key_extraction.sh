@@ -59,7 +59,7 @@ OUTPUT_DIR = Path('${OUTPUT_DIR}')
 data_candidates = [
     Path('data/dsets/multi_counterfact.json'),
     Path('vendor/AlphaEdit/data/multi_counterfact.json'),
-    Path(os.environ.get('DSETS_ROOT', 'data/dsets')) / 'multi_counterfact.json',
+    Path('/s3-data/continual-learning/alphaedit/dsets/multi_counterfact.json'),
 ]
 mcf_path = None
 for p in data_candidates:

@@ -54,9 +54,10 @@ echo "════════════════════════�
 cd "$EVOEDIT_DIR"
 
 # Link datasets
+S3_DSETS="/s3-data/continual-learning/alphaedit/dsets"
 LOCAL_DSETS="$PROJECT_DIR/data/dsets"
 DSET_SRC="$LOCAL_DSETS"
-[[ -n "${DSETS_ROOT:-}" ]] && [[ -d "$DSETS_ROOT" ]] && DSET_SRC="$DSETS_ROOT"
+[[ -d "$S3_DSETS" ]] && DSET_SRC="$S3_DSETS"
 mkdir -p data
 for f in multi_counterfact.json counterfact.json zsre_mend_eval.json \
          attribute_snippets.json tfidf_vocab.json idf.npy; do

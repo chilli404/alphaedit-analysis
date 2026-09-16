@@ -63,7 +63,7 @@ OUTPUT_DIR = Path('${OUTPUT_DIR}')
 data_candidates = [
     PROJECT / 'data' / 'dsets' / 'zsre_mend_eval.json',
     PROJECT / 'vendor' / 'AlphaEdit' / 'data' / 'zsre_mend_eval.json',
-    Path(os.environ.get('DSETS_ROOT', 'data/dsets')) / 'zsre_mend_eval.json',
+    Path('/s3-data/continual-learning/alphaedit/dsets/zsre_mend_eval.json'),
 ]
 zsre_path = None
 for p in data_candidates:

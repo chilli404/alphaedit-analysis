@@ -127,18 +127,17 @@ model.config._name_or_path = "Llama3-8B"
 import os as _os
 _stats_dst = Path("data/stats/Llama3-8B/wikipedia_stats")
 _stats_dst.mkdir(parents=True, exist_ok=True)
-_stats_ext = _os.environ.get("STATS_ROOT", "")
-if _stats_ext:
-    _s3_src = Path(_stats_ext) / "llama3-8b-instruct"
-    if _s3_src.is_dir():
-        for _f in _s3_src.iterdir():
-            if _f.name.endswith(".npz"):
-                _dst = _stats_dst / _f.name
-                if not _dst.exists():
-                    _os.symlink(str(_f), str(_dst))
-        print(f"[MS] Linked {{len(list(_stats_dst.glob('*.npz')))}} stat files from STATS_ROOT")
-if len(list(_stats_dst.glob("*.npz"))) == 0:
-    print(f"[MS] WARNING: No stats found in {{_stats_dst}}")
+_s3_src = Path("/s3-data/continual-learning/alphaedit/stats/llama3-8b-instruct")
+if _s3_src.is_dir():
+    for _f in _s3_src.iterdir():
+        if _f.name.endswith(".npz"):
+            _dst = _stats_dst / _f.name
+            if not _dst.exists():
+                _os.symlink(str(_f), str(_dst))
+    print(f"[MS] Linked {{len(list(_stats_dst.glob('*.npz')))}} stat files from S3")
+else:
+    print(f"[MS] WARNING: S3 stats not found at {{_s3_src}}")
+    # List what IS available
     _alt = Path("data/stats")
     if _alt.exists():
         print(f"[MS] Available: {{[str(p) for p in _alt.iterdir()]}}")

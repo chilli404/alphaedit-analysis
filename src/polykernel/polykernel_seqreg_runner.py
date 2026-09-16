@@ -370,8 +370,8 @@ def run(args: argparse.Namespace) -> None:
         _nse_npz_count = len(list(_nse_model_dir.glob("*.npz"))) if _nse_model_dir.exists() else 0
 
         if _nse_npz_count < 100:
-            _tar_dir = Path(os.environ["NSE_CACHE_DIR"]) if os.environ.get("NSE_CACHE_DIR") else None
-            if not _tar_dir or not _tar_dir.exists():
+            _tar_dir = Path("/s3-data/continual-learning/alphaedit/nse_kv_cache")
+            if not _tar_dir.exists():
                 _tar_dir = get_project_root() / "data" / "nse_kv_cache"
             if _tar_dir.exists():
                 import tarfile
