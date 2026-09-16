@@ -67,7 +67,8 @@ should_run() {
             EvoEdit)        [[ "$label" == "EvoEdit"* ]] && return 0 ;;
             NSE)            [[ "$label" == "NSE"* ]] && return 0 ;;
             RECT)           [[ "$label" == "RECT"* ]] && return 0 ;;
-            RECT_err)       [[ "$label" == "RECT-Aligned (OTE)" ]] && return 0 ;;
+            RECT_err)       [[ "$label" == "RECT-Aligned (OTE)"* ]] && return 0 ;;
+            RECT_bs100)     [[ "$label" == "RECT-Aligned (OTE) BS100" ]] && return 0 ;;
             # Exact full label match as fallback
             *)              [[ "$label" == "$f"* ]] && return 0 ;;
         esac
@@ -85,7 +86,7 @@ run_and_check() {
     should_run "$label" || return
 
     log "───────────────────────────────────────────"
-    log "START [$((PASS + FAIL + SKIP + 1))/12]: $label"
+    log "START [$((PASS + FAIL + SKIP + 1))/13]: $label"
     log "  Config: $*" | head -c 200
     echo ""
     local t0=$(date +%s)
@@ -253,6 +254,17 @@ validate_log() {
             fi
             log "  ✓ NSE: algorithm invoked"
             ;;
+        *RECT*OTE*BS100*)
+            if ! grep -q "error_cache\|error_temp_norm" "$logfile"; then
+                log "  ❌ RECT-Aligned (OTE) BS100 error correction not active"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: RECT-Err BS100 not invoked"; return 1
+            fi
+            if grep -qi "OutOfMemory\|OOM\|CUDA out of memory" "$logfile"; then
+                log "  ❌ RECT-Aligned (OTE) BS100 OOM at production batch size"
+                FAIL=$((FAIL+1)); ERRORS="$ERRORS\n  $label: OOM at BS=100"; return 1
+            fi
+            log "  ✓ RECT-Aligned (OTE) BS100: no OOM at production batch size"
+            ;;
         *RECT*OTE*)
             if ! grep -q "error_cache\|error_temp_norm\|small_delta\|memit seq rect with error correction" "$logfile"; then
                 log "  ❌ RECT-Aligned (OTE) error correction not active"
@@ -329,7 +341,7 @@ log "  Checkpoints: $CHECKPOINT_ROOT"
 log "  Timeout:     ${TIMEOUT}s per algorithm"
 log "  Batch size:  $EDITS edits"
 log "  Dataset:     $DATASET_LIMIT records ($(($DATASET_LIMIT / $EDITS)) batches)"
-log "  Algorithms:  9 vendor + 3 baselines = 12 total"
+log "  Algorithms:  10 vendor + 3 baselines = 13 total"
 log "============================================"
 log ""
 
@@ -409,6 +421,17 @@ run_and_check "RECT-Aligned (OTE)" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT_rec
     --save_interval 1 --base_alg MEMIT_rect_err \
     --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
+# OOM probe: RECT-Err at production batch size (BS=100) — catches memory regressions
+# that don't manifest at BS=10 (e.g. autograd graph scales with request count)
+run_and_check "RECT-Aligned (OTE) BS100" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT_rect_err-poly1-lp0.0-ld0.0-cache0-bs100/seed$SEED/batch_0/model_weights.pt" "" \
+    uv run python src/polykernel/polykernel_seqreg_runner.py \
+    --seed $SEED --cuda_device 0 --ds_name mcf \
+    --dataset_size_limit 100 --num_edits 100 \
+    --lambda_prev 0.0 --lambda_delta 0.0 \
+    --kernel_degree 1 --cache_strategy all --cache_max none \
+    --save_interval 1 --base_alg MEMIT_rect_err \
+    --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
+
 # -----------------------------------------------------------------------
 # GROUP 3: pathguard_runner
 # -----------------------------------------------------------------------
@@ -436,7 +459,7 @@ run_baseline() {
 
     local logfile=$(mktemp)
     log "───────────────────────────────────────────"
-    log "START [$((PASS + FAIL + SKIP + 1))/12]: $label"
+    log "START [$((PASS + FAIL + SKIP + 1))/13]: $label"
     # EvoEdit uses Woodbury solver with 25 gradient steps per edit — too slow for smoke test.
     # Skip it with a 10s timeout (will be fixed when we add a v_star cache like NSE).
     # NSE uses precomputed v_star from KV cache — fast if cache is extracted.
@@ -528,7 +551,7 @@ TOTAL_TIME=$((END_ALL - START_ALL))
 
 log ""
 log "============================================"
-log "  RESULTS: $PASS passed, $FAIL failed, $SKIP skipped (of 12 algorithms)"
+log "  RESULTS: $PASS passed, $FAIL failed, $SKIP skipped (of 13 algorithms)"
 log "  Total time: ${TOTAL_TIME}s ($((TOTAL_TIME / 60))m)"
 log "============================================"
 if [ "$FAIL" -gt 0 ]; then
