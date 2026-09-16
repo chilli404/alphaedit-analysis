@@ -421,16 +421,51 @@ run_and_check "RECT-Aligned (OTE)" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT_rec
     --save_interval 1 --base_alg MEMIT_rect_err \
     --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
 
-# OOM probe: RECT-Err at production batch size (BS=100) — catches memory regressions
-# that don't manifest at BS=10 (e.g. autograd graph scales with request count)
-run_and_check "RECT-Aligned (OTE) BS100" "$CHECKPOINT_ROOT/polykernel_seqreg/MEMIT_rect_err-poly1-lp0.0-ld0.0-cache0-bs100/seed$SEED/batch_0/model_weights.pt" "" \
-    uv run python src/polykernel/polykernel_seqreg_runner.py \
-    --seed $SEED --cuda_device 0 --ds_name mcf \
-    --dataset_size_limit 100 --num_edits 100 \
-    --lambda_prev 0.0 --lambda_delta 0.0 \
-    --kernel_degree 1 --cache_strategy all --cache_max none \
-    --save_interval 1 --base_alg MEMIT_rect_err \
-    --downstream_eval_steps 0 --conserve_memory --eval_at_checkpoints_only
+# OOM probe: RECT-Err solve at production shapes (BS=100) with dummy tensors.
+# Loads model + runs 5 solve() calls at (14336×14336) — tests memory without compute_z (~30s).
+should_run "RECT-Aligned (OTE) BS100" || true
+if should_run "RECT-Aligned (OTE) BS100"; then
+    log "───────────────────────────────────────────"
+    log "START [$((PASS + FAIL + SKIP + 1))/13]: RECT-Aligned (OTE) BS100 — memory probe"
+    _bs100_log="$RESULT_ROOT/_smoke_RECT_BS100.log"
+    _t0=$(date +%s)
+    PYTHONUNBUFFERED=1 timeout 120 uv run python -c "
+import torch
+from transformers import AutoModelForCausalLM
+import sys; sys.path.insert(0, 'src/util')
+from model_resolve import resolve_model_path
+model_path = resolve_model_path('meta-llama/Meta-Llama-3-8B-Instruct')
+print('Loading model...')
+model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float32).cuda()
+print(f'Model loaded: {torch.cuda.memory_allocated()/1e9:.1f} GB')
+d_in, d_out, n_req = 14336, 4096, 100
+torch.set_grad_enabled(False)
+for layer_idx in range(5):
+    print(f'Layer {layer_idx}: ', end='', flush=True)
+    cov = torch.randn(d_in, d_in, device='cuda', dtype=torch.float32)
+    _lhs = 15000 * cov.double()
+    cov.cpu(); del cov; torch.cuda.empty_cache()
+    _lhs += torch.randn(d_in, d_in, device='cuda', dtype=torch.float64)
+    _lhs += torch.randn(d_in, n_req, device='cuda', dtype=torch.float64) @ torch.randn(n_req, d_in, device='cuda', dtype=torch.float64)
+    _lhs += torch.eye(d_in, device='cuda', dtype=torch.float64)
+    _rhs = torch.randn(d_in, d_out, device='cuda', dtype=torch.float64)
+    adj_k = torch.linalg.solve(_lhs, _rhs)
+    del _lhs, _rhs, adj_k; torch.cuda.empty_cache()
+    print(f'{torch.cuda.memory_allocated()/1e9:.1f} GB')
+print('OOM probe PASSED')
+" > "$_bs100_log" 2>&1
+    _exit=$?
+    _elapsed=$(( $(date +%s) - _t0 ))
+    if [ "$_exit" -eq 0 ] && grep -q "OOM probe PASSED" "$_bs100_log"; then
+        PASS=$((PASS+1))
+        log "✓ RECT-Aligned (OTE) BS100 PASSED (${_elapsed}s)"
+    else
+        tail -10 "$_bs100_log" | sed 's/^/    /'
+        FAIL=$((FAIL+1))
+        ERRORS="$ERRORS\n  RECT-Aligned (OTE) BS100: OOM at production shapes"
+        log "❌ RECT-Aligned (OTE) BS100 FAILED (${_elapsed}s)"
+    fi
+fi
 
 # -----------------------------------------------------------------------
 # GROUP 3: pathguard_runner
