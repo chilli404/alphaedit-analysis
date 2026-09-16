@@ -35,10 +35,9 @@ echo "════════════════════════�
 cd "$EVOEDIT_DIR"
 
 # Link datasets
-S3_DSETS="/s3-data/continual-learning/alphaedit/dsets"
 LOCAL_DSETS="$PROJECT_DIR/data/dsets"
 DSET_SRC="$LOCAL_DSETS"
-[[ -d "$S3_DSETS" ]] && DSET_SRC="$S3_DSETS"
+[[ -n "${DSETS_ROOT:-}" ]] && [[ -d "$DSETS_ROOT" ]] && DSET_SRC="$DSETS_ROOT"
 mkdir -p data
 for f in multi_counterfact.json counterfact.json zsre_mend_eval.json \
          attribute_snippets.json tfidf_vocab.json idf.npy; do
@@ -55,9 +54,6 @@ export TOKENIZERS_PARALLELISM=false
 
 # Override results dir to use S3 FUSE mount if available
 _RESULT_DIR="${RESULT_ROOT:-results}/failure_curve_checkpointed"
-if [ -d "/s3-data" ]; then
-    _RESULT_DIR="/s3-data/continual-learning/alphaedit/results/failure_curve_checkpointed"
-fi
 cat > globals.yml << GLOBALEOF
 ---
   RESULTS_DIR: "$_RESULT_DIR"

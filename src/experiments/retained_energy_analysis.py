@@ -47,7 +47,7 @@ _stats_candidates = [
     PROJECT_ROOT / "data" / "stats" / "gpt-j-6b" / "wikipedia_stats",
     PROJECT_ROOT / "vendor" / "AlphaEdit" / "data" / "stats" / "EleutherAI_gpt-j-6B" / "wikipedia_stats",
     PROJECT_ROOT / "vendor" / "AlphaEdit" / "data" / "stats" / "gpt-j-6b" / "wikipedia_stats",
-    Path("/s3-data/continual-learning/alphaedit/stats/gpt-j-6b"),
+    *([] if not os.environ.get("STATS_ROOT") else [Path(os.environ["STATS_ROOT"]) / "gpt-j-6b"]),
 ]
 for _candidate in _stats_candidates:
     if _candidate.exists():
@@ -110,17 +110,11 @@ def load_checkpoint_weights(ckpt_dir: Path, batch_idx: int) -> Optional[dict]:
 
 
 def load_base_weights(model_name: str = "EleutherAI/gpt-j-6b") -> dict:
-    """Load base model weights for the edited layers only.
-
-    Tries local cache first (S3 FUSE mount), then HuggingFace.
-    """
+    """Load base model weights for the edited layers only."""
     from transformers import AutoModelForCausalLM
 
-    s3_path = Path("/s3-data/continual-learning/models/gpt-j-6b")
-    if s3_path.exists():
-        model_path = str(s3_path)
-    else:
-        model_path = model_name
+    from src.util.model_resolve import resolve_model_path
+    model_path = resolve_model_path(model_name)
 
     print(f"  Loading base model from {model_path}...")
     model = AutoModelForCausalLM.from_pretrained(
