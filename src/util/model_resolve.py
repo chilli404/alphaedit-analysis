@@ -8,9 +8,7 @@ import os
 from pathlib import Path
 
 
-_S3_MODEL_PATHS = [
-    "/s3-data/continual-learning/models",
-]
+_EXTRA_MODEL_PATHS = [os.environ["MODELS_ROOT"]] if os.environ.get("MODELS_ROOT") else []
 
 
 def resolve_model_path(model_name: str) -> str:
@@ -19,7 +17,7 @@ def resolve_model_path(model_name: str) -> str:
     Priority:
       1. MODEL_PATH environment variable (explicit override)
       2. Local path if model_name is already a directory
-      3. S3 FUSE mount (/s3-data/continual-learning/models/)
+      3. MODELS_ROOT env var (extra model search path)
       4. HuggingFace cache (~/.cache/huggingface/hub/)
       5. Return model_name as-is (transformers will download from HF Hub)
     """
@@ -34,10 +32,9 @@ def resolve_model_path(model_name: str) -> str:
     short_name = model_name.split("/")[-1]
     dash_name = model_name.replace("/", "--")
     candidates = [short_name, dash_name, short_name.replace("EleutherAI-", "")]
-    # S3 stores Llama as "Meta-Llama-3-8B" (no -Instruct suffix)
     if "Meta-Llama" in short_name:
         candidates.append(short_name.replace("-Instruct", ""))
-    for base in _S3_MODEL_PATHS:
+    for base in _EXTRA_MODEL_PATHS:
         for candidate in candidates:
             full = os.path.join(base, candidate)
             if os.path.isdir(full):

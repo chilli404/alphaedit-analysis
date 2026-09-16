@@ -156,8 +156,10 @@ hparams = AlphaEditHyperParams.from_json("hparams/AlphaEdit/{hparams_fname}")
 _p_candidates = [
     Path("null_space_project.pt"),
     Path("data/stats/Llama3-8B/wikipedia_stats/null_space_project.pt"),
-    Path("/s3-data/continual-learning/alphaedit/stats/llama3-8b-instruct/null_space_project.pt"),
-    Path("/s3-data/continual-learning/alphaedit/stats/llama3-8b-instruct/wikipedia_stats/null_space_project.pt"),
+    *([] if not os.environ.get("STATS_ROOT") else [
+        Path(os.environ["STATS_ROOT"]) / "llama3-8b-instruct" / "null_space_project.pt",
+        Path(os.environ["STATS_ROOT"]) / "llama3-8b-instruct" / "wikipedia_stats" / "null_space_project.pt",
+    ]),
 ]
 _mn = hparams.model_name.replace("/", "_")
 _p_candidates.append(Path(f"data/stats/{{_mn}}/wikipedia_stats/null_space_project.pt"))

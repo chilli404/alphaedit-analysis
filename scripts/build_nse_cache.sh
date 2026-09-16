@@ -27,31 +27,31 @@ DEVICE="${CUDA_DEVICE:-0}"
 SHARD="${SHARD:-0}"
 NUM_SHARDS="${NUM_SHARDS:-1}"
 
-# Extract existing caches from S3 tar files (if on SkyPilot)
-_NSE_CACHE_S3="/s3-data/continual-learning/alphaedit/nse_kv_cache"
+# Extract existing caches from external dir (e.g. S3 FUSE mount)
+_NSE_CACHE_EXT="${NSE_CACHE_DIR:-}"
 _NSE_CACHE_LOCAL="$PROJECT_DIR/data/nse_kv_cache"
 mkdir -p "$_NSE_CACHE_LOCAL"
 
 _MODEL_TAG=$(echo "$MODEL_NAME" | tr '/' '_')
 
-if [[ -d "$_NSE_CACHE_S3" ]]; then
-    for _tar in "$_NSE_CACHE_S3"/*.tar; do
+if [[ -n "$_NSE_CACHE_EXT" ]] && [[ -d "$_NSE_CACHE_EXT" ]]; then
+    for _tar in "$_NSE_CACHE_EXT"/*.tar; do
         [ -f "$_tar" ] || continue
         echo "  Extracting existing cache from $(basename $_tar)..."
         tar xf "$_tar" -C "$_NSE_CACHE_LOCAL/" 2>/dev/null || true
     done
-    _S3_DIR="$_NSE_CACHE_S3/${_MODEL_TAG}_NSE"
+    _EXT_DIR="$_NSE_CACHE_EXT/${_MODEL_TAG}_NSE"
     _LOCAL_DIR="$_NSE_CACHE_LOCAL/${_MODEL_TAG}_NSE"
-    if [[ -d "$_S3_DIR" ]]; then
-        echo "  Syncing loose cache files from S3..."
+    if [[ -d "$_EXT_DIR" ]]; then
+        echo "  Syncing loose cache files from external dir..."
         mkdir -p "$_LOCAL_DIR"
-        cp -n "$_S3_DIR"/*.npz "$_LOCAL_DIR/" 2>/dev/null || true
+        cp -n "$_EXT_DIR"/*.npz "$_LOCAL_DIR/" 2>/dev/null || true
     fi
 fi
 
-# Use S3 dir as output if available (writes go to S3 via FUSE)
-if [[ -d "$_NSE_CACHE_S3" ]]; then
-    CACHE_OUT="$_NSE_CACHE_S3/${_MODEL_TAG}_NSE"
+# Use external dir as output if available (e.g. S3 FUSE writes directly)
+if [[ -n "$_NSE_CACHE_EXT" ]] && [[ -d "$_NSE_CACHE_EXT" ]]; then
+    CACHE_OUT="$_NSE_CACHE_EXT/${_MODEL_TAG}_NSE"
 else
     CACHE_OUT="$_NSE_CACHE_LOCAL/${_MODEL_TAG}_NSE"
 fi
@@ -71,10 +71,9 @@ echo "════════════════════════�
 
 # Link datasets into baselines/EvoEdit/data/ (same as run_nse_baseline.sh)
 EVOEDIT_DIR="$PROJECT_DIR/baselines/EvoEdit"
-S3_DSETS="/s3-data/continual-learning/alphaedit/dsets"
 LOCAL_DSETS="$PROJECT_DIR/data/dsets"
 DSET_SRC="$LOCAL_DSETS"
-[[ -d "$S3_DSETS" ]] && DSET_SRC="$S3_DSETS"
+[[ -n "${DSETS_ROOT:-}" ]] && [[ -d "$DSETS_ROOT" ]] && DSET_SRC="$DSETS_ROOT"
 mkdir -p "$EVOEDIT_DIR/data"
 for f in multi_counterfact.json counterfact.json zsre_mend_eval.json \
          attribute_snippets.json tfidf_vocab.json idf.npy; do
@@ -181,8 +180,8 @@ print(f'Done shard {shard}. cached={cached} computed={computed} errors={errors} 
 
 echo "Cache build shard $SHARD complete."
 
-# Upload tar to S3 so other clusters can use it
-if [[ -d "$_NSE_CACHE_S3" ]]; then
+# Upload tar to external dir so other clusters can use it
+if [[ -n "$_NSE_CACHE_EXT" ]] && [[ -d "$_NSE_CACHE_EXT" ]]; then
     if [[ "$NUM_SHARDS" -gt 1 ]]; then
         _TAR_NAME="${_MODEL_TAG}_nse_cache_shard${SHARD}.tar"
     else
@@ -191,10 +190,10 @@ if [[ -d "$_NSE_CACHE_S3" ]]; then
     _LOCAL_DIR="$_NSE_CACHE_LOCAL/${_MODEL_TAG}_NSE"
     _CACHE_COUNT=$(find "$_LOCAL_DIR" -name '*.npz' 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$_CACHE_COUNT" -gt 0 ]]; then
-        echo "Uploading cache tar to S3 (${_CACHE_COUNT} files)..."
+        echo "Uploading cache tar (${_CACHE_COUNT} files)..."
         tar cf "/tmp/${_TAR_NAME}" -C "$_NSE_CACHE_LOCAL" "${_MODEL_TAG}_NSE"
-        cp "/tmp/${_TAR_NAME}" "$_NSE_CACHE_S3/${_TAR_NAME}"
+        cp "/tmp/${_TAR_NAME}" "$_NSE_CACHE_EXT/${_TAR_NAME}"
         rm -f "/tmp/${_TAR_NAME}"
-        echo "  Uploaded: ${_NSE_CACHE_S3}/${_TAR_NAME}"
+        echo "  Uploaded: ${_NSE_CACHE_EXT}/${_TAR_NAME}"
     fi
 fi

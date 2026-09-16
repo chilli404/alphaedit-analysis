@@ -28,6 +28,7 @@ Usage:
 
 import argparse
 import json
+import os
 import random
 import re
 import sys
@@ -417,7 +418,7 @@ def main():
         candidates = [
             PROJECT_ROOT / "data" / "dsets",
             PROJECT_ROOT / "vendor" / "AlphaEdit" / "data",
-            Path("/s3-data/continual-learning/alphaedit/dsets"),
+            *([] if not os.environ.get("DSETS_ROOT") else [Path(os.environ["DSETS_ROOT"])]),
         ]
         data_dir = None
         for c in candidates:

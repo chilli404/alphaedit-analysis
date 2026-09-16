@@ -207,11 +207,11 @@ else
     exit 1
 fi
 
-# Sync to S3 if on cluster
-if [[ -d "/s3-data/continual-learning/alphaedit" ]]; then
-    S3_RESULTS="/s3-data/continual-learning/alphaedit/results/matched_ordering_zsre/${ALG}/${ORDERING}/seed${SEED}"
-    mkdir -p "$S3_RESULTS"
-    cp -r "$RESULTS_DIR"/* "$S3_RESULTS/" 2>/dev/null || true
+# Copy results to RESULT_ROOT if different from local
+_REMOTE_RESULTS="${RESULT_ROOT:-}/matched_ordering_zsre/${ALG}/${ORDERING}/seed${SEED}"
+if [[ -n "${RESULT_ROOT:-}" ]] && [[ "$_REMOTE_RESULTS" != "$RESULTS_DIR" ]]; then
+    mkdir -p "$_REMOTE_RESULTS"
+    cp -r "$RESULTS_DIR"/* "$_REMOTE_RESULTS/" 2>/dev/null || true
 fi
 
 echo ""

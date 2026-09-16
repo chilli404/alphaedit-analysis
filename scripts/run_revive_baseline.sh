@@ -42,11 +42,11 @@ BASE_ALG="${BASE_ALG:?ERROR: BASE_ALG must be set (MEMIT or AlphaEdit)}"
 
 # NSE needs precomputed KV caches (25 gradient steps per edit without them)
 if [[ "$BASE_ALG" == "NSE" ]]; then
-    _NSE_CACHE_S3="/s3-data/continual-learning/alphaedit/nse_kv_cache"
+    _NSE_CACHE_EXT="${NSE_CACHE_DIR:-}"
     _NSE_CACHE_LOCAL="$PROJECT_DIR/baselines/EvoEdit/share/projects/rewriting-knowledge/kvs"
-    if [[ -d "$_NSE_CACHE_S3" ]]; then
+    if [[ -n "$_NSE_CACHE_EXT" ]] && [[ -d "$_NSE_CACHE_EXT" ]]; then
         mkdir -p "$_NSE_CACHE_LOCAL"
-        for _tar in "$_NSE_CACHE_S3"/*.tar; do
+        for _tar in "$_NSE_CACHE_EXT"/*.tar; do
             [[ -f "$_tar" ]] || continue
             echo "  Extracting NSE kv cache from $(basename $_tar)..."
             tar xf "$_tar" -C "$_NSE_CACHE_LOCAL/"
@@ -64,7 +64,7 @@ if [[ "$BASE_ALG" == "NSE" ]]; then
         echo "  KV cache loaded: $_kv_count files"
         [[ "$_kv_count" -lt 100 ]] && { echo "ERROR: KV cache too small ($_kv_count files)"; exit 1; }
     else
-        echo "ERROR: NSE KV cache not found at $_NSE_CACHE_S3"
+        echo "ERROR: NSE KV cache not found. Set NSE_CACHE_DIR or run scripts/build_nse_cache.sh"
         exit 1
     fi
 fi

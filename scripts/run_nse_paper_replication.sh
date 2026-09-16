@@ -33,10 +33,9 @@ echo "════════════════════════�
 cd "$EVOEDIT_DIR"
 
 # Link datasets
-S3_DSETS="/s3-data/continual-learning/alphaedit/dsets"
 LOCAL_DSETS="$PROJECT_DIR/data/dsets"
 DSET_SRC="$LOCAL_DSETS"
-[[ -d "$S3_DSETS" ]] && DSET_SRC="$S3_DSETS"
+[[ -n "${DSETS_ROOT:-}" ]] && [[ -d "$DSETS_ROOT" ]] && DSET_SRC="$DSETS_ROOT"
 mkdir -p data
 for f in multi_counterfact.json counterfact.json zsre_mend_eval.json \
          attribute_snippets.json tfidf_vocab.json idf.npy; do
@@ -47,11 +46,11 @@ done
 bash "$PROJECT_DIR/scripts/link_stats.sh" 2>/dev/null || true
 
 # NSE kv cache
-_NSE_CACHE_S3="/s3-data/continual-learning/alphaedit/nse_kv_cache"
+_NSE_CACHE_EXT="${NSE_CACHE_DIR:-}"
 _NSE_CACHE_LOCAL="$EVOEDIT_DIR/share/projects/rewriting-knowledge/kvs"
 mkdir -p "$_NSE_CACHE_LOCAL"
-if [[ -d "$_NSE_CACHE_S3" ]]; then
-    for _tar in "$_NSE_CACHE_S3"/*.tar; do
+if [[ -n "$_NSE_CACHE_EXT" ]] && [[ -d "$_NSE_CACHE_EXT" ]]; then
+    for _tar in "$_NSE_CACHE_EXT"/*.tar; do
         [ -f "$_tar" ] || continue
         echo "  Extracting NSE kv cache from $(basename $_tar)..."
         tar xf "$_tar" -C "$_NSE_CACHE_LOCAL/"
@@ -65,11 +64,7 @@ export SKIP_MEGA_BATCH_EVAL=1
 export PYTHONHASHSEED="$SEED"
 export TOKENIZERS_PARALLELISM=false
 
-# Override results dir to use S3 FUSE mount if available
 _RESULT_DIR="${RESULT_ROOT:-results}/failure_curve_checkpointed"
-if [ -d "/s3-data" ]; then
-    _RESULT_DIR="/s3-data/continual-learning/alphaedit/results/failure_curve_checkpointed"
-fi
 cat > globals.yml << GLOBALEOF
 ---
   RESULTS_DIR: "$_RESULT_DIR"

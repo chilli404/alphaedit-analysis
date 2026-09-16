@@ -51,8 +51,8 @@ if [[ "$PHASE" == "generate" || "$PHASE" == "all" ]]; then
     else
         cd "$PROJECT_DIR"
         # Resolve data_dir for MCF dataset (S3 or local)
-        if [[ -d "/s3-data/continual-learning/alphaedit/dsets" ]]; then
-            DATA_DIR="/s3-data/continual-learning/alphaedit/dsets"
+        if [[ -n "${DSETS_ROOT:-}" ]] && [[ -d "$DSETS_ROOT" ]]; then
+            DATA_DIR="$DSETS_ROOT"
         else
             DATA_DIR="$PROJECT_DIR/data/dsets"
         fi

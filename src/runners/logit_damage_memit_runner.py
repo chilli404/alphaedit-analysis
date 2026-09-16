@@ -127,8 +127,8 @@ model.config._name_or_path = "Llama3-8B"
 import os as _os
 _stats_dst = Path("data/stats/Llama3-8B/wikipedia_stats")
 _stats_dst.mkdir(parents=True, exist_ok=True)
-_s3_src = Path("/s3-data/continual-learning/alphaedit/stats/llama3-8b-instruct")
-if _s3_src.is_dir():
+_s3_src = Path(_os.environ["STATS_ROOT"]) / "llama3-8b-instruct" if _os.environ.get("STATS_ROOT") else None
+if _s3_src and _s3_src.is_dir():
     for _f in _s3_src.iterdir():
         if _f.name.endswith(".npz"):
             _dst = _stats_dst / _f.name
@@ -136,7 +136,7 @@ if _s3_src.is_dir():
                 _os.symlink(str(_f), str(_dst))
     print(f"[MS] Linked {{len(list(_stats_dst.glob('*.npz')))}} stat files from S3")
 else:
-    print(f"[MS] WARNING: S3 stats not found at {{_s3_src}}")
+    print(f"[MS] WARNING: External stats not found (STATS_ROOT={{_os.environ.get('STATS_ROOT', 'not set')}})")
     # List what IS available
     _alt = Path("data/stats")
     if _alt.exists():

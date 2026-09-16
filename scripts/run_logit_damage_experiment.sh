@@ -29,8 +29,8 @@ BA_PATH="$RESULT_ROOT/matched_ordering/diagnostics/fixed_batch_assignment_seed${
 if [[ ! -f "$BA_PATH" ]]; then
     echo "Generating fixed-batch orderings for seed $SEED..."
     cd "$PROJECT_DIR"
-    if [[ -d "/s3-data/continual-learning/alphaedit/dsets" ]]; then
-        DATA_DIR="/s3-data/continual-learning/alphaedit/dsets"
+    if [[ -n "${DSETS_ROOT:-}" ]] && [[ -d "$DSETS_ROOT" ]]; then
+        DATA_DIR="$DSETS_ROOT"
     else
         DATA_DIR="$PROJECT_DIR/data/dsets"
     fi
